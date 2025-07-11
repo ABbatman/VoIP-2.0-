@@ -18,3 +18,5 @@ The main goal is to present VoIP traffic data in a clear and structured way, hel
 ## Notes
 
 This project is built using AI-assisted development as a personal tool for visualizing internal traffic statistics.
+
+Licensed under the Apache License, Version 2.0.
