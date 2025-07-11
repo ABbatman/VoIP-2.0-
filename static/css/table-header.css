@@ -1,0 +1,58 @@
+/* static/css/table-header.css */
+
+/*
+ * ===================================================================
+ *  Table Header Professional Styling
+ * ===================================================================
+ */
+
+.results-display__table thead {
+    /* --- MODIFIED: A darker border to match the new darker header --- */
+    border-bottom: 2px solid #c8d1dc;
+}
+
+.results-display__table th {
+  /* --- Background & Positioning --- */
+  /* --- MODIFIED: A noticeably darker, more prominent background --- */
+  background-color: #eef2f7; /* A cool, slate-gray background */
+  position: relative; 
+  border: none;
+
+  /* --- Typography --- */
+  text-transform: uppercase;
+  font-size: 12px;
+  font-weight: 600; 
+  letter-spacing: 0.05em; 
+  /* --- MODIFIED: Darker text for better contrast and readability --- */
+  color: #000; /* A very dark, almost black, cool gray */
+}
+
+/* 
+ * This pseudo-element creates a subtle shadow effect that gives the header
+ * a sense of depth.
+ */
+.results-display__table th::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: -2px; /* Positioned just on top of the thead's border-bottom */
+  width: 100%;
+  height: 1px;
+  /* --- MODIFIED: A slightly stronger shadow for the darker theme --- */
+  box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.08);
+}
+
+/* --- NEW: Style for the Delta (Δ) symbol in the header --- */
+.results-display__table th.th-delta {
+    /* Increase the font size to make the symbol more prominent */
+    font-size: 15px; 
+    /* Slightly bolder font weight can also help */
+    font-weight: 700;
+    /* Optional: Center the symbol for better visual balance */
+    text-align: center;
+}
+
+/* We need to adjust the alignment of the sort arrow within the delta column */
+.results-display__table th.th-delta .th-content-wrapper {
+    justify-content: center;
+}

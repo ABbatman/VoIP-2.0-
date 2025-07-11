@@ -1,0 +1,44 @@
+/* static/css/layout.css */
+
+/* 
+ * ===================================================================
+ *  CRITICAL FIX FOR STICKY POSITIONING
+ *  This rule removes any overflow restrictions from parent containers,
+ *  which is the #1 reason why `position: sticky` fails.
+ * ===================================================================
+ */
+html,
+body,
+.page-container {
+  overflow: visible;
+}
+
+
+/* --- Custom Flatpickr Theme (existing styles) --- */
+
+.flatpickr-calendar {
+  border-radius: 8px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+  border: 1px solid #ddd;
+}
+
+/* Change the main colors of the calendar */
+.flatpickr-day.selected, 
+.flatpickr-day.startRange, 
+.flatpickr-day.endRange {
+  background: #007bff; /* Main selection color (blue) */
+  border-color: #007bff;
+}
+
+.flatpickr-day.today {
+  border-color: #007bff;
+}
+.flatpickr-day.today:hover {
+  background: #007bff;
+  color: #fff;
+}
+
+.flatpickr-months .flatpickr-prev-month:hover svg,
+.flatpickr-months .flatpickr-next-month:hover svg {
+  fill: #007bff;
+}

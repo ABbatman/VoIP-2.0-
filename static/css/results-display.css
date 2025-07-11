@@ -1,0 +1,186 @@
+/* static/css/results-display.css */
+
+/*
+ * ===================================================================
+ *  BLOCK: .results-display
+ * ===================================================================
+ */
+.results-display {
+  /* No styles needed here */
+}
+
+/*
+ * ===================================================================
+ *  BLOCK: .summary-display
+ * ===================================================================
+ */
+.summary-display {
+  display: none;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px;
+  margin-bottom: 20px;
+}
+.summary-display .metric-item {
+  background: #f4f4f4;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-family: monospace;
+}
+
+/*
+ * ===================================================================
+ *  ELEMENT: .results-display__controls
+ * ===================================================================
+ */
+.results-display__controls {
+  display: none;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  padding: 5px;
+}
+
+/* Sub-elements for controls */
+.results-display__pagination {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.results-display__pagination label { font-size: 14px; color: #555; }
+.results-display__pagination select {
+  padding: 6px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  font-size: 14px;
+}
+.results-display__filter input {
+  padding: 6px 10px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  font-size: 14px;
+  width: 250px;
+}
+
+/*
+ * ===================================================================
+ *  ELEMENT: .results-display__table-wrapper
+ *  This provides HORIZONTAL scrolling only. The entire page handles vertical scroll.
+ * ===================================================================
+ */
+.results-display__table-wrapper {
+    overflow-x: auto;
+    border: 1px solid #ddd;
+}
+
+/*
+ * ===================================================================
+ *  ELEMENT: .results-display__table
+ * ===================================================================
+ */
+ .results-display__table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+/*
+ * ===================================================================
+ *  ELEMENT: .results-display__table th
+ *  --- MODIFIED: This block is now empty. Styles are moved to table-header.css ---
+ * ===================================================================
+ */
+.results-display__table th {
+  /* 
+    The original styles:
+    background-color: #f0f0f0;
+    font-weight: bold;
+    ... are now handled by the new table-header.css file.
+    We leave this block empty to avoid deleting it from the file structure.
+  */
+}
+
+/* 
+ * ===================================================================
+ *  Base styles for all table cells (th and td) 
+ * ===================================================================
+ */
+.results-display__table th,
+.results-display__table td {
+  /* --- MODIFIED: The common border rule is removed to apply it specifically later --- */
+  /* border: 1px solid #ccc; */ 
+  padding: 6px 10px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background-color 0.15s ease-in-out;
+}
+
+/* --- NEW: Add a specific border rule for data cells (td) only --- */
+.results-display__table td {
+    border: 1px solid #e2e8f0; /* A soft, modern border color */
+}
+
+
+/* 
+ * ===================================================================
+ *  NEW FEATURE: Row Hover Highlight
+ * ===================================================================
+ */
+.results-display__table tbody tr:hover td {
+  background-color: #e9ecef; 
+}
+
+/* 
+ * ===================================================================
+ *  NEW FEATURE: Selected Row Highlight (on click)
+ * ===================================================================
+ */
+.results-display__table tr.row-selected td {
+    background-color: #dbeafe;
+}
+
+/* ... The rest of the file remains unchanged and correct ... */
+.results-display__table th:nth-child(1), .results-display__table td:nth-child(1) { border-right: none; padding-right: 5px; }
+.results-display__table th:nth-child(2), .results-display__table td:nth-child(2) { border-left: none; padding-left: 5px; }
+.results-display__table .main-row { background-color: #ffffff; font-weight: 600; }
+.results-display__table .peer-row { background-color: #f8f9fa; font-weight: 400; }
+.results-display__table .hour-row { background-color: #f0f5ff; font-weight: 400; }
+.toggle-btn { font-weight: bold; font-size: 16px; line-height: 1; font-family: monospace; background: transparent; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; margin-right: 8px; width: 20px; height: 20px; text-align: center; padding: 0; }
+.toggle-btn:hover { background-color: #e0e0e0; }
+.cell-positive { background-color: #e7faee !important; color: #157347; }
+.cell-negative { background-color: #fae7e7 !important; color: #b22222; }
+.cell-critical { background-color: #f8d7da !important; color: #8a1f26; }
+.main-cell, .peer-cell { padding: 6px 12px; font-weight: 500; max-width: 160px; width: 160px; }
+.destination-cell { padding: 6px 12px; font-weight: 500; max-width: 180px; width: 180px; }
+.metric-cell { padding: 4px 6px; font-size: 13px; text-align: right; }
+.metric-cell-hour { padding: 3px 6px; font-size: 12px; text-align: right; }
+.results-display__column-filters td { padding: 4px 6px; background-color: #f8f9fa; }
+.results-display__column-filters input { width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; }
+.results-display__column-filters input::placeholder { color: #aaa; font-style: italic; }
+.sort-arrow { cursor: pointer; display: inline-flex; align-items: center; justify-content: center; margin-left: 5px; width: 20px; height: 20px; vertical-align: middle; border: none; border-radius: 50%; background: none; outline: none; transition: background 0.18s, color 0.18s; }
+.sort-arrow svg { width: 16px; height: 16px; stroke-width: 3; stroke: currentColor; fill: none; display: block; margin: auto; }
+.sort-arrow.inactive { color: #bfc1c8; opacity: 0.7; }
+.sort-arrow.inactive svg { transform: rotate(0deg); }
+.sort-arrow.active { background: #eef2fb; color: #2064d1; box-shadow: 0 0 0 2px #d8e3fa; font-weight: 700; opacity: 1; }
+.sort-arrow.secondary-sort { background: #e8e8f7; color: #9e8ff0; box-shadow: none; opacity: 0.8; }
+.sort-arrow:hover { background: #e7ebf5; color: #164baa; opacity: 1; }
+.sort-arrow.down svg { transform: rotate(90deg); }
+.sort-arrow.up svg { transform: rotate(-90deg); }
+.is-hidden { display: none !important; }
+.asr-cell-hover { cursor: help; }
+.pdd-atime-tooltip { display: none; position: fixed; background-color: #2c3e50; color: white; padding: 8px 12px; border-radius: 4px; font-family: 'SF Mono', 'Menlo', 'Consolas', monospace; font-size: 13px; white-space: pre; z-index: 9999; pointer-events: none; box-shadow: 0 2px 8px rgba(0,0,0,0.2); transition: opacity 0.1s ease-in-out; }
+.results-display__table th:nth-child(4), .results-display__table td:nth-child(4), .results-display__table th:nth-child(7), .results-display__table td:nth-child(7), .results-display__table th:nth-child(10), .results-display__table td:nth-child(10), .results-display__table th:nth-child(13), .results-display__table td:nth-child(13), .results-display__table th:nth-child(16), .results-display__table td:nth-child(16) { border-left: 2px solid #a9a9a9; }
+.delta-cell-content { display: flex; align-items: center; justify-content: flex-start; }
+.delta-arrow { width: 10px; height: 10px; margin-left: 5px; }
+.arrow-up { color: #28a745; }
+.arrow-down { color: #dc3545; }
+.arrow-up .delta-arrow { transform: rotate(-90deg); }
+.arrow-down .delta-arrow { transform: rotate(90deg); }
+.datetime-cell-container { display: flex; justify-content: space-between; align-items: center; }
+.results-display__table.y-columns-hidden [data-y-toggleable] { display: none; }
+.th-content-wrapper { display: flex; justify-content: space-between; align-items: center; width: 100%; }
+.th-left-part { display: flex; align-items: center; white-space: nowrap; }
+.y-column-toggle-btn { background: none; border: none; cursor: pointer; padding: 0; margin-left: 8px; line-height: 1; color: #6c757d; border-radius: 4px; display: inline-flex; align-items: center; }
+.y-column-toggle-btn:hover { background-color: #e9ecef; color: #212529; }
+.y-column-toggle-btn svg { width: 16px; height: 16px; display: block; }

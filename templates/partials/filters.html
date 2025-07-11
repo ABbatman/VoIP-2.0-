@@ -1,0 +1,47 @@
+<!-- templates/partials/filters.html -->
+<!-- Block: filters-panel -->
+<div id="filters-block" class="filters-panel">
+
+  <!-- Element: item (Customer Input) -->
+  <div id="customer-filter-item" class="filters-panel__item">
+    <input id="customerInput" class="filters-panel__input" type="text" placeholder="Customer" />
+  </div>
+
+  <!-- Include the reverse button partial (correct path) -->
+  {% include "reverse_button.html" %}
+
+  <!-- Element: item (Supplier Input) -->
+  <div id="supplier-filter-item" class="filters-panel__item">
+    <input id="supplierInput" class="filters-panel__input" type="text" placeholder="Supplier" />
+  </div>
+
+  <!-- Element: item (Destination Input) -->
+  <div id="destination-filter-item" class="filters-panel__item">
+    <input id="destinationInput" class="filters-panel__input" type="text" placeholder="Destination" />
+  </div>
+
+  <!-- Element: spacer -->
+  <div class="filters-panel__spacer"></div>
+
+  <!-- Element: item for datetime picker -->
+  <div class="filters-panel__item filters-panel__item--datetime">
+    <div class="filters-panel__input-group">
+      <input id="fromDate" class="filters-panel__input date-part" type="date" title="From Date" />
+      <input id="fromTime" class="filters-panel__input time-part" type="time" step="1" title="From Time" />
+    </div>
+  </div>
+  <div class="filters-panel__item filters-panel__item--datetime">
+    <div class="filters-panel__input-group">
+      <input id="toDate" class="filters-panel__input date-part" type="date" title="To Date" />
+      <input id="toTime" class="filters-panel__input time-part" type="time" step="1" title="To Time" />
+    </div>
+  </div>
+
+  <!-- Element: spacer -->
+  <div class="filters-panel__spacer"></div>
+  
+  <!-- Include the main action buttons (correct path) -->
+  {% include "buttons.html" %}
+</div>
+
+    

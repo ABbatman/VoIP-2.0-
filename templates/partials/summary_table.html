@@ -1,0 +1,51 @@
+<!-- templates/partials/summary_table.html -->
+
+<!-- The summary metrics block -->
+<div id="summaryMetrics" class="summary-display">
+  <!-- Summary metrics will be dynamically inserted here by JavaScript -->
+</div>
+
+<!-- The main results display block -->
+<div class="results-display">
+
+  <!-- Element: A panel for table-specific controls -->
+  <div id="table-controls" class="results-display__controls">
+    <div class="results-display__pagination">
+      <label for="rows-per-page">Rows per page:</label>
+      <select id="rows-per-page">
+        <option value="25">25</option>
+        <option value="100">100</option>
+        <option value="500">500</option>
+        <option value="-1">All</option>
+      </select>
+       <button id="btnExpandCollapseAll" class="filters-panel__button">Show All</button>
+    </div>
+    <div class="results-display__filter">
+      <input type="text" id="table-filter-input" placeholder="Filter table...">
+    </div>
+  </div>
+  
+  <!-- Top scrollbar for table -->
+  <div id="top-scrollbar-container" class="top-scrollbar-container">
+    <div id="top-scrollbar-content" class="top-scrollbar-content"></div>
+  </div>
+
+  <!-- Element: A wrapper to enable HORIZONTAL scrolling for the table. -->
+  <div class="results-display__table-wrapper">
+    <table id="summaryTable" class="results-display__table">
+      <thead id="tableHead">
+        <!-- Table headers are rendered by JavaScript -->
+      </thead>
+     <tbody id="tableBody">
+        <!-- Table rows are rendered by JavaScript -->
+     </tbody>
+      <tfoot>
+        <tr>
+          <td id="table-footer-info" colspan="24">
+            <!-- Footer info is rendered by JS -->
+          </td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>

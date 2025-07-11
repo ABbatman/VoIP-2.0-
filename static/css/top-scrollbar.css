@@ -1,0 +1,18 @@
+/* top-scrollbar.css */
+.top-scrollbar-container {
+  /* NEW: It is now also sticky */
+  top: 0; /* Sticks right below the controls */
+  z-index: 3; /* Above the header (2) but below controls (5) */
+  position:sticky;
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  height: 17px;
+  background: #f4f4f4;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.top-scrollbar-content {
+  height: 1px;
+  pointer-events: none;
+}
