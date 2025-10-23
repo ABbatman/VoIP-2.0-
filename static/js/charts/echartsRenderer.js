@@ -94,7 +94,9 @@ function buildMultiOption({ data, fromTs, toTs, height, interval }) {
   const acd = seriesLine('ACD', toPairs(data?.ACD), 3, 3, colors.ACD, { area: false, smooth: false, connectNulls: false });
 
   const option = {
-    animation: false,
+    animation: true,
+    animationDurationUpdate: 200,
+    animationEasingUpdate: 'cubicOut',
     grid: grids,
     xAxis: xAxes,
     yAxis: yAxes,
@@ -117,8 +119,22 @@ function buildMultiOption({ data, fromTs, toTs, height, interval }) {
       }
     },
     dataZoom: [
-      { type: 'inside', xAxisIndex: [0, 1, 2, 3] },
-      { type: 'slider', xAxisIndex: [0, 1, 2, 3], height: 16, bottom: 6 }
+      {
+        type: 'inside',
+        xAxisIndex: [0, 1, 2, 3],
+        // Reduce update frequency for wheel to feel smoother and less jittery
+        throttle: 80,
+        // Keep wheel as zoom, but avoid panning on wheel which often feels "too fast"
+        zoomOnMouseWheel: true,
+        moveOnMouseWheel: false,
+      },
+      {
+        type: 'slider',
+        xAxisIndex: [0, 1, 2, 3],
+        height: 16,
+        bottom: 6,
+        throttle: 80,
+      }
     ],
     series: [tcalls, asr, minutes, acd],
   };
