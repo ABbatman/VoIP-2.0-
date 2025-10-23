@@ -1,0 +1,114 @@
+/* Virtual Scroller Styles - Integration with existing table system */
+/* Localized comments in English as requested */
+
+/* Virtual scroll container - replaces pagination with scrollable area */
+.virtual-scroll-container {
+  position: relative;
+  overflow-y: auto;
+  overflow-x: auto;
+  max-height: 600px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: #fff;
+}
+
+/* Spacer element that creates the scrollbar height */
+.virtual-scroll-spacer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Table positioning for virtual scrolling */
+.virtual-scroll-container table {
+  position: relative;
+  width: 100%;
+  border-collapse: collapse;
+  z-index: 2;
+}
+
+/* Ensure smooth scrolling performance */
+.virtual-scroll-container {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+
+/* Style table actions when using virtual scroller */
+.results-display__table-actions {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  transition: all 0.3s ease;
+}
+
+
+
+/* Virtual scroller status indicator */
+.virtual-scroller-status {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  background: rgba(0, 123, 255, 0.1);
+  color: #007bff;
+  padding: 2px 6px;
+  font-size: 11px;
+  border-radius: 3px;
+  z-index: 10;
+}
+
+/* Responsive adjustments for virtual scroller */
+@media (max-width: 768px) {
+  .virtual-scroll-container {
+    max-height: 400px;
+    font-size: 0.9em;
+  }
+}
+
+/* Loading state for virtual scroller */
+.virtual-scroll-container.loading {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.virtual-scroll-container.loading::after {
+  content: 'Loading...';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(255, 255, 255, 0.9);
+  padding: 10px 20px;
+  border-radius: 4px;
+  z-index: 100;
+}
+
+/* Ensure table headers remain visible during virtual scrolling */
+.virtual-scroll-container thead {
+  position: sticky;
+  top: 0;
+  background: #fff;
+  z-index: 10;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Toggle button styling for virtualized rows */
+.virtual-scroll-container .toggle-btn {
+  background: none;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.virtual-scroll-container .toggle-btn:hover {
+  background-color: #f0f0f0;
+  border-color: #999;
+}

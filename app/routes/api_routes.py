@@ -1,29 +1,69 @@
 # app/routes/api_routes.py
 
 import tornado.web
-# Import our centralized config
 from app import config
-from app.handlers.metrics_handler import MetricsHandler
+from app.handlers.metrics_handler import MetricsHandler, Metrics5mHandler, Metrics1hHandler
+from app.handlers.suggest_handler import SuggestHandler
 from app.handlers.main_handler import MainHandler
+from app.utils.vite import vite_script_tag
+from app.observability.metrics import PrometheusMetricsHandler, instrument_tornado
+from markupsafe import Markup
+
+# This is a much simpler approach. We will add the function
+# directly to the handler's namespace instead of creating a complex loader.
+# We can remove the Jinja2Loader class entirely.
 
 def make_app():
     """
     Creates and configures the Tornado application instance.
-    All settings are now taken from the central config module.
     """
-    # Define settings using variables from our config file.
+    # Provide a minimal 'safe' helper compatible with Jinja-like pipe usage `x | safe`
+    class _SafeFilter:
+        # Support right-hand bitwise or: `left | safe` -> SafeFilter.__ror__(left)
+        def __ror__(self, other):  # noqa: D401
+            # Treat value as already safe HTML
+            return Markup(other)
+    safe = _SafeFilter()
+
     settings = {
-        "debug": config.DEBUG,  # Use DEBUG from config
-        "template_path": config.TEMPLATE_PATH,  # Use TEMPLATE_PATH from config
+        "debug": config.DEBUG,
+        "template_path": config.TEMPLATE_PATH,
+        # Disable template autoescape globally; we control HTML injection for vite tags
+        "autoescape": None,
+        # Enable automatic gzip compression for eligible responses
+        "compress_response": True,
+        # We put vite_script_tag into ui_methods.
+        # This makes it available in the template.
+        # This is the original, simplest way to do it in Tornado.
+        "ui_methods": {
+            "vite_script_tag": vite_script_tag,
+            "safe": safe,
+        }
     }
     
-    return tornado.web.Application([
+    app = tornado.web.Application([
         (r"/", MainHandler),
         (r"/api/metrics", MetricsHandler),
-        # Static file handler also uses the path from the config.
+        (r"/api/metrics/5m", Metrics5mHandler),
+        (r"/api/metrics/1h", Metrics1hHandler),
+        # Suggest endpoints for typeahead (prefix filter by kind)
+        (r"/api/suggest/(customer|supplier|destination)", SuggestHandler),
+        # expose /metrics for Prometheus
+        (r"/metrics", PrometheusMetricsHandler),
         (
-            r"/static/(.*)", 
+            config.STATIC_URL_PREFIX + r"(.*)", 
             tornado.web.StaticFileHandler, 
             {"path": config.STATIC_PATH}
         ),
+    
+    
     ], **settings)
+
+    # minimal prometheus instrumentation (no business logic changes)
+    try:
+        instrument_tornado(app)
+    except Exception:
+        # Safe to ignore if prometheus_client is not installed
+        pass
+
+    return app

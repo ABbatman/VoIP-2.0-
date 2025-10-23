@@ -35,7 +35,7 @@ export function initTooltips() {
   tableBody.addEventListener("mouseout", handleMouseOut);
   tableBody.addEventListener("mousemove", handleMouseMove);
 
-  console.log("✅ Tooltips initialized.");
+  
 }
 
 /**
@@ -65,7 +65,7 @@ function handleMouseOver(event) {
   tooltipElement.textContent = `PDD: ${pdd}\nATime: ${atime}`;
 
   // Make the tooltip visible.
-  tooltipElement.style.display = "block";
+  tooltipElement.classList.remove('is-hidden');
 }
 
 /**
@@ -75,7 +75,7 @@ function handleMouseOver(event) {
 function handleMouseOut() {
   // Simply hide the tooltip. No need to check the target.
   // This is safe and ensures the tooltip disappears when the mouse leaves the table.
-  tooltipElement.style.display = "none";
+  tooltipElement.classList.add('is-hidden');
 }
 
 /**
@@ -86,7 +86,7 @@ function handleMouseOut() {
 function handleMouseMove(event) {
   // We only need to update the position if the tooltip is currently visible.
   // This prevents unnecessary calculations when moving the mouse over other cells.
-  if (tooltipElement.style.display === "block") {
+  if (tooltipElement && !tooltipElement.classList.contains('is-hidden')) {
     // Position the tooltip slightly below and to the right of the cursor
     // to prevent it from flickering by being under the cursor itself.
     const x = event.clientX + 15; // `clientX` is relative to the viewport.

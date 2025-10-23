@@ -4,27 +4,54 @@ import {
   setColumnFilter,
   areYColumnsVisible,
 } from "../state/tableState.js"; // <-- Import areYColumnsVisible
+import { renderCoordinator } from "../rendering/render-coordinator.js";
 import {
-  createMainRow,
-  createPeerRow,
-  createHourlyRows,
+  renderMainRowString,
+  renderPeerRowString,
+  renderHourlyRowsString,
 } from "./table-renderers.js";
 import {
   renderTableHeader,
   renderTableFooter,
   updateSortArrows,
-  attachSortArrowHandlers,
 } from "./table-ui.js";
 import { subscribe } from "../state/eventBus.js";
 import { updateTopScrollbar } from "./top-scrollbar.js";
 
-let openMainGroups = new Set();
-let openHourlyGroups = new Set();
+const openMainGroups = new Set();
+const openHourlyGroups = new Set();
+
+function hydrateOpenGroupsFromGlobal() {
+  try {
+    const g = window.__openGroups;
+    if (g && Array.isArray(g.main)) {
+      openMainGroups.clear(); g.main.forEach(id => openMainGroups.add(id));
+    }
+    if (g && Array.isArray(g.hourly)) {
+      openHourlyGroups.clear(); g.hourly.forEach(id => openHourlyGroups.add(id));
+    }
+  } catch(_) {}
+}
+
+function persistOpenGroupsToGlobal() {
+  try {
+    const main = Array.from(openMainGroups);
+    const hourly = Array.from(openHourlyGroups);
+    window.__openGroups = { main, hourly };
+  } catch(_) {}
+}
 
 subscribe("appState:dataChanged", () => {
   openMainGroups.clear();
   openHourlyGroups.clear();
+  persistOpenGroupsToGlobal();
 });
+
+// Allow external flows (e.g., Reverse -> Summary) to reset expansion state explicitly
+export function resetRowOpenState() {
+  try { openMainGroups.clear(); } catch(_) {}
+  try { openHourlyGroups.clear(); } catch(_) {}
+}
 
 /**
  * Renders the grouped table using the persistent state.
@@ -33,6 +60,24 @@ subscribe("appState:dataChanged", () => {
  * @param {Array} hourlyRows - The complete list of hourly rows for all peer groups.
  */
 export function renderGroupedTable(mainRows, peerRows, hourlyRows) {
+  // Гидратация состояния раскрытия перед рендером (сохранённого между режимами)
+  hydrateOpenGroupsFromGlobal();
+  // Deduplicate incoming datasets by their natural keys (robust to minor casing/whitespace)
+  const norm = (v) => (v == null ? '' : String(v).trim().toLowerCase());
+  const uniqueBy = (arr, keyFn) => {
+    if (!Array.isArray(arr)) return [];
+    const seen = new Set();
+    const out = [];
+    for (const r of arr) {
+      const k = keyFn(r);
+      if (!seen.has(k)) { seen.add(k); out.push(r); }
+    }
+    return out;
+  };
+  const mRows = uniqueBy(mainRows, r => [norm(r?.main), norm(r?.destination)].join('|'));
+  const pRows = uniqueBy(peerRows, r => [norm(r?.main), norm(r?.peer), norm(r?.destination)].join('|'));
+  const hKeyName = (Array.isArray(hourlyRows) && hourlyRows.length && Object.prototype.hasOwnProperty.call(hourlyRows[0], 'time')) ? 'time' : 'hour';
+  const hRows = uniqueBy(hourlyRows, r => [norm(r?.main), norm(r?.peer), norm(r?.destination), norm(r?.[hKeyName])].join('|'));
   // ... (весь код до `tbody.innerHTML = ""`) ...
   const activeElement = document.activeElement;
   let activeFilterKey = null;
@@ -46,6 +91,10 @@ export function renderGroupedTable(mainRows, peerRows, hourlyRows) {
   if (typeof renderTableFooter === "function") {
     renderTableFooter();
   }
+  // Ensure visual state is refreshed; sorting clicks are handled by delegated handler
+  try {
+    updateSortArrows(); // refresh visual state (directions)
+  } catch (_) { /* no-op in virtual-only paths */ }
 
   const tbody = document.getElementById("tableBody");
   tbody.innerHTML = "";
@@ -61,31 +110,36 @@ export function renderGroupedTable(mainRows, peerRows, hourlyRows) {
   }
   // --- END NEW LOGIC ---
 
-  if (!mainRows || mainRows.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="24">No data to display.</td></tr>`;
+  if (!mRows || mRows.length === 0) {
+    // Empty state: keep header and footer visible, but remove all data rows
+    // (User wants all rows to disappear when no matches)
+    tbody.innerHTML = `
+      <tr class="empty-state">
+        <td colspan="${document.querySelectorAll("#summaryTable th").length}">
+          No matches found
+        </td>
+      </tr>
+    `;
   } else {
-    // ... (весь остальной код рендеринга строк без изменений) ...
-    const fragment = document.createDocumentFragment();
+    // Build tbody HTML using pure string renderers + morphdom (no direct DOM building)
+    let tbodyHTML = "";
     const { columnFilters, multiSort } = getState();
     const peerFilter = columnFilters.peer?.toLowerCase();
 
-    mainRows.forEach((mainRow) => {
+    mRows.forEach((mainRow) => {
       const mainGroupId = `main-${mainRow.main}-${mainRow.destination}`.replace(
         /[\s.]/g,
         "-"
       );
       const isMainGroupOpen = openMainGroups.has(mainGroupId);
-      const mainTr = createMainRow(mainRow, mainGroupId);
-      if (isMainGroupOpen) {
-        mainTr.querySelector(".toggle-btn").textContent = "−";
-      }
-      fragment.appendChild(mainTr);
+      tbodyHTML += renderMainRowString(mainRow, { mainGroupId, isMainGroupOpen });
 
-      let relevantPeers = peerRows.filter(
-        (p) => p.main === mainRow.main && p.destination === mainRow.destination
+      let relevantPeers = pRows.filter(
+        (p) => norm(p.main) === norm(mainRow.main) && norm(p.destination) === norm(mainRow.destination)
       );
 
-      if (peerFilter) {
+      // Do not apply peer filter when main group is open: toggles must be independent from inputs
+      if (peerFilter && !isMainGroupOpen) {
         relevantPeers = relevantPeers.filter((p) =>
           (p.peer ?? "").toString().toLowerCase().includes(peerFilter)
         );
@@ -94,7 +148,7 @@ export function renderGroupedTable(mainRows, peerRows, hourlyRows) {
       if (multiSort && multiSort.length > 0) {
         relevantPeers.sort((a, b) => {
           for (let i = 0; i < multiSort.length; i++) {
-            let { key, dir } = multiSort[i];
+            const { key, dir } = multiSort[i];
             let aVal = a[key],
               bVal = b[key];
             if (aVal == null) aVal = "";
@@ -124,51 +178,35 @@ export function renderGroupedTable(mainRows, peerRows, hourlyRows) {
             "-"
           );
         const isPeerGroupOpen = openHourlyGroups.has(peerGroupId);
-        const peerTr = createPeerRow(peerRow, mainGroupId, peerGroupId);
+        tbodyHTML += renderPeerRowString(peerRow, { mainGroupId, peerGroupId, isMainGroupOpen, isPeerGroupOpen });
 
-        if (isMainGroupOpen) {
-          peerTr.style.display = "";
-        }
-
-        if (isPeerGroupOpen) {
-          peerTr.querySelector(".toggle-btn").textContent = "−";
-        }
-        fragment.appendChild(peerTr);
-
-        const relevantHours = hourlyRows.filter(
+        const relevantHours = hRows.filter(
           (h) =>
-            h.main === peerRow.main &&
-            h.peer === peerRow.peer &&
-            h.destination === peerRow.destination
+            norm(h.main) === norm(peerRow.main) &&
+            norm(h.peer) === norm(peerRow.peer) &&
+            norm(h.destination) === norm(peerRow.destination)
         );
-        const hourRows = createHourlyRows(relevantHours, peerGroupId, peerRow);
-
-        if (isMainGroupOpen && isPeerGroupOpen) {
-          hourRows.forEach((hr) => (hr.style.display = ""));
-        }
-        hourRows.forEach((hr) => fragment.appendChild(hr));
+        tbodyHTML += renderHourlyRowsString(relevantHours, { peerGroupId, isMainGroupOpen, isPeerGroupOpen, parentPeer: peerRow });
       });
     });
-    tbody.appendChild(fragment);
+    // Apply minimal diff to tbody using morphdom
+    try {
+      if (window.morphdom) {
+        const toHTML = `<tbody id="tableBody">${tbodyHTML}</tbody>`; // keep same root to avoid replacing tbody node
+        // IMPORTANT: allow morphdom to update the tbody inside virtual-scroll-container for standard render
+        window.morphdom(tbody, toHTML);
+      } else {
+        tbody.innerHTML = tbodyHTML;
+      }
+    } catch (e) {
+      tbody.innerHTML = tbodyHTML;
+    }
   }
 
   // ... (весь остальной код функции renderGroupedTable без изменений) ...
-  updateSortArrows();
-  attachSortArrowHandlers();
+  updateSortArrows(); // delegated handler processes clicks; no legacy binding
 
-  const filterRow = document.getElementById("column-filters-row");
-  if (filterRow) {
-    const newFilterRow = filterRow.cloneNode(true);
-    filterRow.parentNode.replaceChild(newFilterRow, filterRow);
-    newFilterRow.addEventListener("input", (event) => {
-      if (event.target.tagName === "INPUT") {
-        const input = event.target;
-        const key = input.dataset.filterKey;
-        const value = input.value.trim();
-        setColumnFilter(key, value);
-      }
-    });
-  }
+  // Remove legacy direct listeners; `connectFilterEventHandlers()` in table-ui handles this with focus restore
 
   if (activeFilterKey) {
     const newActiveInput = document.querySelector(
@@ -181,6 +219,8 @@ export function renderGroupedTable(mainRows, peerRows, hourlyRows) {
   }
 
   setTimeout(updateTopScrollbar, 50);
+  // Зафиксировать текущее состояние раскрытия для других режимов/циклов
+  persistOpenGroupsToGlobal();
 }
 
 // ... (остальная часть файла table.js без изменений)
@@ -192,6 +232,16 @@ export function initTableInteractions() {
     // --- EXPAND/COLLAPSE LOGIC ---
     const targetButton = event.target.closest(".toggle-btn");
     if (targetButton) {
+      // Preserve current window and container scroll to avoid jump-to-top on reflow/rerender
+      const prevX = window.pageXOffset || 0;
+      const prevY = window.pageYOffset || 0;
+      const container = document.getElementById('virtual-scroll-container');
+      const prevCX = container ? container.scrollLeft : null;
+      const prevCY = container ? container.scrollTop : null;
+      // Temporarily disable scroll anchoring on the main scroller (window)
+      const root = document.documentElement;
+      try { if (root) root.style.overflowAnchor = 'none'; } catch(_) {}
+      try { if (document.body) document.body.style.overflowAnchor = 'none'; } catch(_) {}
       const parentRow = targetButton.closest("tr");
       if (!parentRow) return;
       const groupId = targetButton.dataset.targetGroup;
@@ -205,7 +255,9 @@ export function initTableInteractions() {
           openMainGroups.delete(groupId);
           targetButton.textContent = "+";
           childPeerRows.forEach((peerRow) => {
-            peerRow.style.display = "none";
+            peerRow.classList.add("is-hidden");
+            // Ensure inline styles do not conflict with class-based visibility
+            try { peerRow.style.removeProperty('display'); } catch (_) {}
             const peerBtn = peerRow.querySelector(
               "td:nth-child(2) .toggle-btn"
             );
@@ -215,15 +267,40 @@ export function initTableInteractions() {
               peerBtn.textContent = "+";
               tableBody
                 .querySelectorAll(`tr.hour-row[data-group="${hourGroupId}"]`)
-                .forEach((hr) => (hr.style.display = "none"));
+                .forEach((hr) => { hr.classList.add("is-hidden"); try { hr.style.removeProperty('display'); } catch (_) {} });
             }
           });
         } else {
           openMainGroups.add(groupId);
           targetButton.textContent = "−";
           childPeerRows.forEach((peerRow) => {
-            peerRow.style.display = "";
+            peerRow.classList.remove("is-hidden");
+            // Clear any inline display:none that may remain from previous renders
+            try { peerRow.style.removeProperty('display'); } catch (_) {}
           });
+          // If peers were not rendered due to active filters, schedule a coordinated re-render
+          try {
+            const st = getState();
+            const hasPeerFilter = !!(st?.columnFilters?.peer);
+            const hasGlobal = !!((st?.globalFilterQuery || '').trim());
+            if (childPeerRows.length === 0 || hasPeerFilter || hasGlobal) {
+              renderCoordinator.requestRender('table', async () => {
+                try {
+                  const ai = window.appInitializer || (window.App && window.App.appInitializer);
+                  if (ai && ai.tableController && typeof ai.tableController.redrawTable === 'function') {
+                    ai.tableController.redrawTable();
+                  } else {
+                    const mod = await import('../dom/table.js');
+                    const app = await import('../data/tableProcessor.js');
+                    const { getMetricsData } = await import('../state/appState.js');
+                    const data = getMetricsData();
+                    const { pagedData } = app.getProcessedData();
+                    mod.renderGroupedTable(pagedData || [], data?.peer_rows || [], data?.hourly_rows || []);
+                  }
+                } catch (_) {}
+              }, { debounceMs: 0, cooldownMs: 0 });
+            }
+          } catch (_) {}
         }
       } else if (parentRow.classList.contains("peer-row")) {
         const childHourRows = tableBody.querySelectorAll(
@@ -232,14 +309,46 @@ export function initTableInteractions() {
         if (isCurrentlyExpanded) {
           openHourlyGroups.delete(groupId);
           targetButton.textContent = "+";
-          childHourRows.forEach((hr) => (hr.style.display = "none"));
+          childHourRows.forEach((hr) => { hr.classList.add("is-hidden"); try { hr.style.removeProperty('display'); } catch (_) {} });
         } else {
           openHourlyGroups.add(groupId);
           targetButton.textContent = "−";
-          childHourRows.forEach((hr) => (hr.style.display = ""));
+          childHourRows.forEach((hr) => { hr.classList.remove("is-hidden"); try { hr.style.removeProperty('display'); } catch (_) {} });
         }
       }
       setTimeout(updateTopScrollbar, 50);
+      persistOpenGroupsToGlobal();
+      // Prevent default behavior and blur the toggle to avoid focus-driven scroll changes
+      try { event.preventDefault(); event.stopPropagation(); if (typeof targetButton.blur === 'function') targetButton.blur(); } catch (_) {}
+      // Restore previous scroll positions on next frames (container first, then window)
+      requestAnimationFrame(() => {
+        try { if (container && prevCY != null) container.scrollTop = prevCY; if (container && prevCX != null) container.scrollLeft = prevCX; } catch (_) {}
+        requestAnimationFrame(() => {
+          try { window.scrollTo(prevX, prevY); } catch (_) {}
+          // Re-enable scroll anchoring
+          try { if (root) root.style.overflowAnchor = ''; } catch(_) {}
+          try { if (document.body) document.body.style.overflowAnchor = ''; } catch(_) {}
+        });
+      });
+      // Microtask + delayed fallback
+      Promise.resolve().then(() => {
+        try {
+          if (container && prevCY != null) container.scrollTop = prevCY;
+          if (container && prevCX != null) container.scrollLeft = prevCX;
+          window.scrollTo(prevX, prevY);
+          if (root) root.style.overflowAnchor = '';
+          if (document.body) document.body.style.overflowAnchor = '';
+        } catch (_) {}
+      });
+      setTimeout(() => {
+        try {
+          if (container && prevCY != null) container.scrollTop = prevCY;
+          if (container && prevCX != null) container.scrollLeft = prevCX;
+          window.scrollTo(prevX, prevY);
+          if (root) root.style.overflowAnchor = '';
+          if (document.body) document.body.style.overflowAnchor = '';
+        } catch (_) {}
+      }, 50);
       return;
     }
 
@@ -284,6 +393,8 @@ export function initTableInteractions() {
       console.warn(`No filter input found for key: ${filterKey}`);
       return;
     }
+    // Reflect the value in the visible filter input and update state
+    targetInput.value = valueToFilter;
     setColumnFilter(filterKey, valueToFilter);
   });
 }

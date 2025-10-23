@@ -9,21 +9,24 @@ import { updateTopScrollbar } from "./top-scrollbar.js";
 /**
  * Initializes the event listener for the Y-column toggle button.
  */
+let _yToggleInitDone = false;
 export function initYColumnToggle() {
-  const table = document.querySelector(".results-display__table");
-  if (!table) return;
-
-  table.addEventListener("click", (event) => {
-    const toggleButton = event.target.closest(".y-column-toggle-btn");
-    if (!toggleButton) {
-      return;
+  if (_yToggleInitDone) return;
+  const handler = (event) => {
+    // Ignore clicks coming from floating header to avoid double toggles
+    if (event.target && typeof event.target.closest === 'function') {
+      if (event.target.closest('.floating-table-header')) return;
     }
+    const toggleButton = event.target && event.target.closest && event.target.closest(".y-column-toggle-btn");
+    if (!toggleButton) return;
     toggleYColumnsVisible();
-  });
+  };
+  // Always delegate on document so original header works across re-renders; use capture to avoid being blocked
+  document.addEventListener("click", handler, true);
+  _yToggleInitDone = true;
 
   subscribe("tableState:yVisibilityChanged", (isVisible) => {
     const tableEl = document.querySelector(".results-display__table");
-    const button = document.querySelector(".y-column-toggle-btn");
 
     if (tableEl) {
       if (isVisible) {
@@ -33,9 +36,10 @@ export function initYColumnToggle() {
       }
     }
 
-    if (button) {
-      button.innerHTML = getYColumnToggleIcon(isVisible);
-    }
+    // Update ALL toggle buttons (real header + floating header)
+    document.querySelectorAll(".y-column-toggle-btn").forEach((btn) => {
+      btn.innerHTML = getYColumnToggleIcon(isVisible);
+    });
 
     // --- NEW: Call the scrollbar update function after the CSS class has changed ---
     setTimeout(updateTopScrollbar, 50); // Delay to allow browser repaint

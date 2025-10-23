@@ -1,0 +1,56 @@
+openapi: 3.0.3
+info:
+  title: Tornado Metrics API
+  version: 1.0.0
+paths:
+  /api/metrics:
+    get:
+      summary: Get metrics report
+      parameters:
+        - in: query
+          name: customer
+          schema:
+            type: string
+          required: false
+        - in: query
+          name: supplier
+          schema:
+            type: string
+          required: false
+        - in: query
+          name: destination
+          schema:
+            type: string
+          required: false
+        - in: query
+          name: from
+          required: true
+          schema:
+            type: string
+            format: date-time
+          description: Start of time range (ISO8601)
+        - in: query
+          name: to
+          required: true
+          schema:
+            type: string
+            format: date-time
+          description: End of time range (ISO8601)
+        - in: query
+          name: reverse
+          required: false
+          schema:
+            type: boolean
+          description: Reverse mode
+      responses:
+        '200':
+          description: Metrics report
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Validation error
+        '500':
+          description: Server error

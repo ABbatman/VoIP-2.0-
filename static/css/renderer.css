@@ -1,0 +1,181 @@
+/* static/css/renderer.css */
+/* Minimal styles for the Dashboard Renderer - keeping original structure */
+
+/* Page Title - keeping original style */
+.page-title {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin: 0 0 0.5rem 0;
+    text-align: center;
+    color: #333;
+}
+
+/* Basic container styling */
+.page-container {
+    padding: 1rem;
+}
+
+/* Ensure filters panel looks good */
+.filters-panel {
+    margin-bottom: 2rem;
+}
+
+/* Ensure results display is properly styled */
+.results-display {
+    margin-top: 2rem;
+}
+
+/* Charts container: visible placeholder so user sees area for charts */
+.charts-container {
+    margin: 1rem 0 1rem 0; /* reduced bottom margin to bring controls closer */
+    padding: 12px;
+    border: 1px dashed #bbb;
+    border-radius: 6px;
+    background: repeating-linear-gradient(
+        45deg,
+        rgba(0,0,0,0.02),
+        rgba(0,0,0,0.02) 10px,
+        rgba(0,0,0,0.04) 10px,
+        rgba(0,0,0,0.04) 20px
+    );
+}
+
+#chart-area-1 {
+    min-height: 960px; /* 3x larger visible space for charts */
+}
+
+/* Smooth fade for chart transitions */
+.chart-fade {
+    transition: opacity 160ms ease;
+}
+.chart-fade.chart-fade--in {
+    opacity: 1;
+}
+.chart-fade.chart-fade--out {
+    opacity: 0;
+}
+
+/* Toolbar under chart: center and spacing */
+.charts-toolbar {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 4px; /* closer to chart area */
+    /* Keep toolbar minimal without large white area */
+    position: static;
+    padding: 0;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+}
+.charts-toolbar__btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;   /* slightly bigger button */
+    height: 30px;  /* slightly bigger button */
+    border: none;           /* no square wrapper */
+    background: transparent;/* no square wrapper */
+    color: #8a8f98;         /* neutral by default */
+    cursor: pointer;
+    padding: 0;
+    opacity: 0.9;
+    transition: transform 120ms ease, opacity 120ms ease, color 120ms ease;
+}
+.charts-toolbar__btn svg { width: 22px; height: 22px; } /* slightly bigger icon */
+.charts-toolbar__btn:hover { opacity: 1; transform: scale(1.04); }
+.charts-toolbar__btn.is-active { opacity: 1; }
+
+/* Apply color only when active (minimalist accent) */
+.charts-toolbar__btn.is-active.charts-toolbar__btn--line { color: #2f6feb; }
+.charts-toolbar__btn.is-active.charts-toolbar__btn--bar { color: #00a37a; }
+.charts-toolbar__btn.is-active.charts-toolbar__btn--heatmap { color: #e36209; }
+.charts-toolbar__btn.is-active.charts-toolbar__btn--hybrid { color: #6f42c1; }
+
+/* Interval toolbar under chart icons */
+.charts-intervals {
+    display: flex;
+    gap: 8px;
+    margin-left: 14px; /* small separation from icons row */
+}
+.interval-btn {
+    font: inherit;
+    height: 26px;
+    padding: 0 8px;
+    border: 1px solid #d0d7de;
+    border-radius: 999px; /* pill */
+    background: #fff;
+    color: #57606a;
+    cursor: pointer;
+}
+.interval-btn:hover {
+    background: #f6f8fa;
+}
+.interval-btn.is-active {
+    color: #0a58ca;
+    border-color: #0a58ca;
+    background: #eef4ff;
+}
+
+/* Virtual scroller status */
+.virtual-scroller-status {
+    background: #e3f2fd;
+    color: #1976d2;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+/* Loading overlay */
+.loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.95);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+}
+
+.loading-overlay.is-hidden {
+    display: none;
+}
+
+.loading-overlay .spinner {
+    width: 50px;
+    height: 50px;
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #667eea;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+/* Toast container */
+.toast-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 10000;
+    max-width: 400px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .page-title {
+        font-size: 2rem;
+    }
+}

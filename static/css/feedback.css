@@ -1,0 +1,161 @@
+/* static/css/feedback.css */
+
+/*
+ * ===================================================================
+ *  Global Loading Overlay
+ * ===================================================================
+ */
+.loading-overlay {
+  position: fixed;
+  /* Cover the entire viewport */
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(255, 255, 255, 0.7);
+  /* Semi-transparent white */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10000;
+  /* Ensure it's on top of everything */
+  transition: opacity 0.3s ease;
+}
+
+/* Helper to hide the overlay */
+.loading-overlay.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+  /* Allow clicks to pass through when hidden */
+}
+
+/* The spinner element */
+.spinner {
+  width: 50px;
+  height: 50px;
+  border: 5px solid #f3f3f3;
+  /* Light grey circle */
+  border-top: 5px solid #007bff;
+  /* Blue progress part */
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+
+/*
+ * ===================================================================
+ *  Toast Notifications
+ * ===================================================================
+ */
+.toast-container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 10001;
+  /* Above the loading overlay */
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.toast {
+  padding: 12px 20px;
+  border-radius: 6px;
+  color: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 15px;
+  min-width: 250px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  opacity: 0;
+  transform: translateX(100%);
+  transition: all 0.4s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+}
+
+/* Modifier for showing the toast */
+.toast.show {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* Color variants for toast types */
+.toast--success {
+  background-color: #28a745;
+  /* Green */
+}
+
+.toast--error {
+  background-color: #dc3545;
+  /* Red */
+}
+
+/*
+ * ===================================================================
+ *  Summary Metrics Blocks
+ * ===================================================================
+ */
+.summary-card {
+  background: white;
+  border-radius: 8px;
+  padding: 20px;
+  margin: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  min-width: 250px;
+  flex: 1;
+}
+
+.summary-card h3 {
+  margin-top: 0;
+  margin-bottom: 15px;
+  color: #333;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.summary-card p {
+  margin: 8px 0;
+  padding: 4px 0;
+  border-bottom: 1px solid #f0f0f0;
+  display: flex;
+  justify-content: space-between;
+}
+
+.summary-card p:last-child {
+  border-bottom: none;
+}
+
+.summary-card strong {
+  color: #555;
+  font-weight: 600;
+}
+
+.summary-card .metric-value {
+  color: #000000;
+  font-weight: 500;
+}
+
+/* Specific styling for Today/Yesterday blocks */
+.summary-today {
+  background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+}
+
+.summary-yesterday {
+  background: linear-gradient(135deg, #f3e5f5 0%, #ce93d8 100%);
+}
+
+/* Responsive layout */
+@media (max-width: 768px) {
+  .summary-card {
+    margin: 5px;
+    min-width: 200px;
+  }
+}

@@ -62,7 +62,7 @@ def calculate_metrics(rows):
     # The original calculation was already in minutes, we just confirm the rounding.
     acd = round(total_seconds / scal / 60, 1) if scal else 0.0
 
-    # Calculate ASR and round to one decimal place.
+    # Calculate ASR as attempts-to-success ratio (expressed in %).
     asr = round(scal / tcall * 100, 1) if tcall else 0.0
     scall = asr  # Keep the copy of ASR
 

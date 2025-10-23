@@ -57,11 +57,12 @@ function getFilteredAndSortedData() {
     });
   }
 
-  // --- SORTING (no change) ---
+  // --- SORTING (ensure main has priority over destination) ---
   if (multiSort && multiSort.length > 0) {
+    const order = normalizeMultiSort(multiSort);
     filteredMainRows = filteredMainRows.slice().sort((a, b) => {
-      for (let i = 0; i < multiSort.length; i++) {
-        const { key, dir } = multiSort[i];
+      for (let i = 0; i < order.length; i++) {
+        const { key, dir } = order[i];
         let aVal = a[key],
           bVal = b[key];
         if (aVal == null) aVal = "";
@@ -86,25 +87,158 @@ function getFilteredAndSortedData() {
   return { data: filteredMainRows, count: filteredMainRows.length };
 }
 
+// Ensure that when both 'main' and 'destination' are present, 'main' is primary
+function normalizeMultiSort(multiSort) {
+  const arr = Array.isArray(multiSort) ? [...multiSort] : [];
+  const keys = arr.map(s => s.key);
+  const hasMain = keys.includes('main');
+  const hasDest = keys.includes('destination');
+  if (hasMain && hasDest) {
+    // Now Destination is primary, then Main
+    const destItem = arr.find(s => s.key === 'destination');
+    const mainItem = arr.find(s => s.key === 'main');
+    const others = arr.filter(s => s.key !== 'main' && s.key !== 'destination');
+    return [destItem, mainItem, ...others].filter(Boolean);
+  }
+  return arr;
+}
+
 export function getProcessedData() {
-  const { currentPage, rowsPerPage } = getState();
+  // Virtual Scroller Integration: Return all filtered data for virtualization
   const { data, count } = getFilteredAndSortedData();
-  const pagedData = paginateData(data, currentPage, rowsPerPage);
-  return { pagedData, totalFiltered: count };
+  return { pagedData: data, totalFiltered: count };
+}
+
+// --- NEW: Compute aggregate totals/averages for footer ---
+export function computeAggregates() {
+  const { data } = getFilteredAndSortedData();
+  const { columnFilters, globalFilterQuery } = getState();
+  const { peerRows } = getFullData();
+
+  // If peer filter is active, aggregate over matching peer rows (not main totals)
+  const peerFilter = (columnFilters?.peer || '').toString().trim().toLowerCase();
+  let sourceRows = data; // default: main rows
+  if (peerFilter) {
+    sourceRows = peerRows.filter((r) => {
+      if (!(r.peer ?? '').toString().toLowerCase().includes(peerFilter)) return false;
+      // Apply other column filters if present (main, destination, metrics)
+      for (const key in columnFilters) {
+        if (key === 'peer') continue;
+        if (!passesColumnFilter(r[key], columnFilters[key])) return false;
+      }
+      // Apply global query if any
+      if (globalFilterQuery) {
+        const q = globalFilterQuery.toLowerCase();
+        let match = false;
+        for (const k in r) {
+          if ((r[k] ?? '').toString().toLowerCase().includes(q)) { match = true; break; }
+        }
+        if (!match) return false;
+      }
+      return true;
+    });
+  }
+
+  const curr = {
+    totalMinutes: 0,
+    totalSuccessfulCalls: 0,
+    totalCalls: 0,
+  };
+  const y = {
+    totalMinutes: 0,
+    totalSuccessfulCalls: 0,
+    totalCalls: 0,
+  };
+
+  for (const row of sourceRows) {
+    const min = parseNumber(row.Min);
+    const yMin = parseNumber(row.YMin);
+    const sCall = parseNumber(row.SCall);
+    const ySCall = parseNumber(row.YSCall);
+    const tCall = parseNumber(row.TCall);
+    const yTCall = parseNumber(row.YTCall);
+
+    if (!isNaN(min)) curr.totalMinutes += min;
+    if (!isNaN(yMin)) y.totalMinutes += yMin;
+    if (!isNaN(sCall)) curr.totalSuccessfulCalls += sCall;
+    if (!isNaN(ySCall)) y.totalSuccessfulCalls += ySCall;
+    if (!isNaN(tCall)) curr.totalCalls += tCall;
+    if (!isNaN(yTCall)) y.totalCalls += yTCall;
+  }
+
+  const currAcdAvg = curr.totalSuccessfulCalls > 0 ? curr.totalMinutes / curr.totalSuccessfulCalls : 0;
+  const yAcdAvg = y.totalSuccessfulCalls > 0 ? y.totalMinutes / y.totalSuccessfulCalls : 0;
+  const currAsrAvg = curr.totalCalls > 0 ? (curr.totalSuccessfulCalls / curr.totalCalls) * 100 : 0;
+  const yAsrAvg = y.totalCalls > 0 ? (y.totalSuccessfulCalls / y.totalCalls) * 100 : 0;
+
+  // Percentage deltas relative to yesterday values (0 if yesterday is 0)
+  const percentChange = (now, prev) => (Math.abs(prev) > 0 ? ((now - prev) / Math.abs(prev)) * 100 : 0);
+  const delta = {
+    totalMinutes: percentChange(curr.totalMinutes, y.totalMinutes),
+    acdAvg: percentChange(currAcdAvg, yAcdAvg),
+    asrAvg: percentChange(currAsrAvg, yAsrAvg),
+    totalSuccessfulCalls: percentChange(curr.totalSuccessfulCalls, y.totalSuccessfulCalls),
+    totalCalls: percentChange(curr.totalCalls, y.totalCalls),
+  };
+
+  return {
+    curr: {
+      totalMinutes: curr.totalMinutes,
+      acdAvg: currAcdAvg,
+      asrAvg: currAsrAvg,
+      totalSuccessfulCalls: curr.totalSuccessfulCalls,
+      totalCalls: curr.totalCalls,
+    },
+    y: {
+      totalMinutes: y.totalMinutes,
+      acdAvg: yAcdAvg,
+      asrAvg: yAsrAvg,
+      totalSuccessfulCalls: y.totalSuccessfulCalls,
+      totalCalls: y.totalCalls,
+    },
+    delta,
+  };
+}
+
+function parseNumber(val) {
+  if (val == null) return NaN;
+  if (typeof val === 'number') return val;
+  // Remove thousand separators and spaces
+  const cleaned = val.toString().replace(/\s+/g, '').replace(/,/g, '');
+  const n = parseFloat(cleaned);
+  return isNaN(n) ? NaN : n;
 }
 
 function passesColumnFilter(value, filter) {
   const trimmed = filter.trim();
-  const numericValue = parseFloat(value);
-  if (
-    trimmed.startsWith(">") ||
-    trimmed.startsWith("<") ||
-    trimmed.startsWith("=")
-  ) {
-    const operator = trimmed[0];
-    const number = parseFloat(trimmed.slice(1));
+  // Robust numeric parsing for table values (handles spaces/commas)
+  const numericValue = parseNumber(value);
+
+  // Support >=, <=, !=, >, <, = operators
+  const twoCharOp = trimmed.slice(0, 2);
+  const oneCharOp = trimmed[0];
+
+  const tryNumber = (str) => parseFloat(str.trim());
+
+  // Two-char operators first
+  if ([">=", "<=", "!="].includes(twoCharOp)) {
+    const number = tryNumber(trimmed.slice(2));
+    if (isNaN(number) || isNaN(numericValue)) return true; // non-numeric -> do not block
+    switch (twoCharOp) {
+      case ">=":
+        return numericValue >= number;
+      case "<=":
+        return numericValue <= number;
+      case "!=":
+        return numericValue !== number;
+    }
+  }
+
+  // One-char operators
+  if ([">", "<", "="].includes(oneCharOp)) {
+    const number = tryNumber(trimmed.slice(1));
     if (isNaN(number) || isNaN(numericValue)) return true;
-    switch (operator) {
+    switch (oneCharOp) {
       case ">":
         return numericValue > number;
       case "<":
@@ -113,15 +247,14 @@ function passesColumnFilter(value, filter) {
         return numericValue === number;
     }
   }
-  if (!isNaN(trimmed) && !isNaN(numericValue)) {
-    return numericValue >= parseFloat(trimmed);
+
+  // Plain numeric input means ">=" semantics
+  if (!isNaN(tryNumber(trimmed)) && !isNaN(numericValue)) {
+    return numericValue >= tryNumber(trimmed);
   }
+
+  // Fallback to substring match for text
   return (value ?? "").toString().toLowerCase().includes(trimmed.toLowerCase());
 }
 
-function paginateData(data, page, perPage) {
-  if (perPage === -1 || !data) return data;
-  const start = (page - 1) * perPage;
-  const end = start + parseInt(perPage, 10);
-  return data.slice(start, end);
-}
+// Pagination function removed - virtualization handles all data display

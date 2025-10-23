@@ -2,29 +2,35 @@
 <!-- Block: filters-panel -->
 <div id="filters-block" class="filters-panel">
 
+  <form id="filters-typeahead-form" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" onsubmit="return false;" novalidate>
+    <!-- dummy fields to absorb browser autofill/history -->
+    <input type="text" style="position:absolute;left:-9999px;height:0;width:0;opacity:0" autocomplete="off" tabindex="-1" aria-hidden="true" />
+    <input type="password" style="position:absolute;left:-9999px;height:0;width:0;opacity:0" autocomplete="new-password" tabindex="-1" aria-hidden="true" />
+
   <!-- Element: item (Customer Input) -->
   <div id="customer-filter-item" class="filters-panel__item">
-    <input id="customerInput" class="filters-panel__input" type="text" placeholder="Customer" />
+    <input id="customerInput" class="filters-panel__input" type="text" placeholder="Customer" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-autocomplete="list" />
   </div>
 
   <!-- Include the reverse button partial (correct path) -->
-  {% include "reverse_button.html" %}
+  {% include "partials/reverse_button.html" %}
 
   <!-- Element: item (Supplier Input) -->
   <div id="supplier-filter-item" class="filters-panel__item">
-    <input id="supplierInput" class="filters-panel__input" type="text" placeholder="Supplier" />
+    <input id="supplierInput" class="filters-panel__input" type="text" placeholder="Supplier" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-autocomplete="list" />
   </div>
 
   <!-- Element: item (Destination Input) -->
   <div id="destination-filter-item" class="filters-panel__item">
-    <input id="destinationInput" class="filters-panel__input" type="text" placeholder="Destination" />
+    <input id="destinationInput" class="filters-panel__input" type="text" placeholder="Destination" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-autocomplete="list" />
   </div>
+
+  </form>
 
   <!-- Element: spacer -->
   <div class="filters-panel__spacer"></div>
 
   <!-- Element: item for datetime picker -->
-  <div class="filters-panel__item filters-panel__item--datetime">
     <div class="filters-panel__input-group">
       <input id="fromDate" class="filters-panel__input date-part" type="date" title="From Date" />
       <input id="fromTime" class="filters-panel__input time-part" type="time" step="1" title="From Time" />
@@ -39,9 +45,7 @@
 
   <!-- Element: spacer -->
   <div class="filters-panel__spacer"></div>
-  
-  <!-- Include the main action buttons (correct path) -->
-  {% include "buttons.html" %}
-</div>
 
-    
+  <!-- Include the main action buttons (correct path) -->
+  {% include "partials/buttons.html" %}
+</div>

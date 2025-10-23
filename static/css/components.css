@@ -1,0 +1,59 @@
+/* Design system buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ds-space-1, 6px);
+  height: 38px; /* match legacy filters-panel buttons */
+  padding: 0 16px; /* match legacy spacing */
+  font: inherit;
+  font-weight: 600; /* legacy weight */
+  color: var(--ds-color-fg, #333);
+  background: var(--ds-color-bg, #f0f0f0);
+  border: 1px solid var(--ds-color-border, #ccc);
+  border-radius: 5px; /* legacy radius */
+  cursor: pointer;
+  text-decoration: none;
+  line-height: 1;
+}
+.floating-table-footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: var(--ds-z-floating-footer, 100); /* above headers */
+  background: var(--ds-color-bg, #ffffff);
+  white-space: nowrap;
+  user-select: none;
+  transition: all 0.2s ease-in-out;
+}
+
+.btn:hover {
+  background: var(--ds-color-bg-hover, #e0e0e0);
+  border-color: var(--ds-color-border-strong, #bbb);
+}
+
+.btn--primary {
+  background: #007bff;
+  color: #fff;
+  border-color: #007bff;
+}
+
+.btn--primary:hover {
+  background: #0056b3;
+  border-color: #0056b3;
+}
+
+.btn--icon { width: 38px; padding: 0; }
+
+/* Grouped buttons (Summary/CDR) look like one piece */
+.filters-panel__control-group .btn { border-radius: 0; border-left-width: 0; }
+.filters-panel__control-group .btn:first-child { border-top-left-radius: 5px; border-bottom-left-radius: 5px; border-left-width: 1px; }
+.filters-panel__control-group .btn:last-child { border-top-right-radius: 5px; border-bottom-right-radius: 5px; }
+
+/* Reverse button active state: make it dark when reverse mode is ON */
+#btnReverse.btn.btn--icon.active {
+  background-color: #6c757d;
+  color: #fff;
+  border-color: #5a6268;
+}

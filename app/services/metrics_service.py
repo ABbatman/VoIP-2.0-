@@ -1,158 +1,189 @@
 # app/services/metrics_service.py
 
-import psycopg2.extras
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from typing import Optional, Dict, Any, Tuple, List
 
-# Import necessary components from our app structure
-from app.db.db import get_connection
-from app.utils.grouping import build_where_clause
 from app.utils.metrics import calculate_metrics
-from app.utils.grouped import calculate_grouped_metrics, calculate_hourly_metrics
+from app.utils.grouped import calculate_grouped_metrics, calculate_hourly_metrics, calculate_5min_metrics
 from app.utils.logger import log_info
+from app.repositories.metrics_repository import MetricsRepository
+
 
 class MetricsService:
-    """
-    Handles all business logic related to fetching, calculating,
-    and comparing metrics. It is completely decoupled from the web layer.
-    """
+    """Business logic for computing and comparing metrics."""
 
-    def get_full_metrics_report(self, customer, supplier, destination, time_from, time_to, reverse):
-        """
-        The main public method of the service. It orchestrates all the steps
-        to generate a complete metrics report.
-        """
-        log_info("🚀 MetricsService: Starting full report generation.")
+    def __init__(self, repository: MetricsRepository):
+        # Store repository dependency
+        self._repo = repository
 
-        # Step 1: Fetch raw data for today and yesterday from the database.
-        rows_today, rows_yesterday = self._fetch_comparison_data(
+    async def get_full_metrics_report(
+        self,
+        customer: Optional[str],
+        supplier: Optional[str],
+        destination: Optional[str],
+        time_from: datetime,
+        time_to: datetime,
+        reverse: bool = False,
+        granularity: str = "both",
+    ) -> Dict[str, Any]:
+        """Compute totals, grouped and hourly metrics with YoY (yesterday) deltas."""
+        log_info(" Computing full metrics report...")
+
+        rows_today, rows_yesterday = await self._fetch_comparison_data(
             customer, supplier, destination, time_from, time_to
         )
 
-        # Step 2: Calculate all required metric sets for today.
-        today_summary = calculate_metrics(rows_today)
-        today_grouped = calculate_grouped_metrics(rows_today, reverse=reverse)
-        today_hourly = calculate_hourly_metrics(rows_today, reverse=reverse)
+        # Totals for today/yesterday
+        today_metrics = calculate_metrics(rows_today)
+        yesterday_metrics = calculate_metrics(rows_yesterday)
 
-        # Step 3: Calculate all required metric sets for yesterday.
-        yesterday_summary = calculate_metrics(rows_yesterday)
-        yesterday_grouped = calculate_grouped_metrics(rows_yesterday, reverse=reverse)
-        yesterday_hourly = calculate_hourly_metrics(rows_yesterday, reverse=reverse)
+        # Grouped by main/peer/destination
+        grouped_today = calculate_grouped_metrics(rows_today, reverse=reverse)
+        grouped_yesterday = calculate_grouped_metrics(rows_yesterday, reverse=reverse)
 
-        # Step 4: Enrich the data with comparison values (yesterday's data and deltas).
-        enriched_main = self._enrich_rows(
-            today_rows=today_grouped["main_rows"],
-            yesterday_rows=yesterday_grouped["main_rows"],
-            key_fields=("main", "destination")
-        )
-        enriched_peer = self._enrich_rows(
-            today_rows=today_grouped["peer_rows"],
-            yesterday_rows=yesterday_grouped["peer_rows"],
-            key_fields=("main", "peer", "destination")
-        )
-        enriched_hourly = self._enrich_rows(
-            today_rows=today_hourly,
-            yesterday_rows=yesterday_hourly,
-            key_fields=("main", "peer", "destination", "time")
-        )
-        
-        log_info(f"✅ MetricsService: Report built. Sending {len(enriched_main)} main rows.")
+        # Normalize granularity
+        g = (granularity or "both").lower()
+        if g not in ("5m", "1h", "both"):
+            g = "both"
 
-        # Step 5: Assemble the final response dictionary.
+        # Hourly per (main, peer, destination, hour) — compute only if requested
+        if g in ("1h", "both"):
+            hourly_today = calculate_hourly_metrics(rows_today, reverse=reverse)
+            hourly_yesterday = calculate_hourly_metrics(rows_yesterday, reverse=reverse)
+        else:
+            hourly_today = []
+            hourly_yesterday = []
+
+        # Five-minute per (main, peer, destination, 5m slot) — compute only if requested
+        if g in ("5m", "both"):
+            five_today = calculate_5min_metrics(rows_today, reverse=reverse)
+            five_yesterday = calculate_5min_metrics(rows_yesterday, reverse=reverse)
+        else:
+            five_today = []
+            five_yesterday = []
+
+        # Enrich with yesterday values and deltas
+        main_rows = self._enrich_rows(
+            grouped_today.get("main_rows", []),
+            grouped_yesterday.get("main_rows", []),
+            key_fields=["main", "destination"],
+        )
+        peer_rows = self._enrich_rows(
+            grouped_today.get("peer_rows", []),
+            grouped_yesterday.get("peer_rows", []),
+            key_fields=["main", "peer", "destination"],
+        )
+        hourly_rows = self._enrich_rows(
+            hourly_today,
+            hourly_yesterday,
+            key_fields=["main", "peer", "destination", "time"],
+            extra_fields=("time",),  # keep full "time" for display
+        )
+
+        # Enrich 5-minute rows (key on HH:MM slot, keep full 'time')
+        five_min_rows = self._enrich_rows(
+            five_today,
+            five_yesterday,
+            key_fields=["main", "peer", "destination", "time"],
+            extra_fields=("time",),
+        )
+
         return {
-            "today_metrics": today_summary,
-            "yesterday_metrics": yesterday_summary,
-            "main_rows": enriched_main,
-            "peer_rows": enriched_peer,
-            "hourly_rows": enriched_hourly,
+            "today_metrics": today_metrics,
+            "yesterday_metrics": yesterday_metrics,
+            "main_rows": main_rows,
+            "peer_rows": peer_rows,
+            "hourly_rows": hourly_rows,
+            "five_min_rows": five_min_rows,
         }
 
-    def _fetch_comparison_data(self, customer, supplier, destination, time_from_str, time_to_str):
+    async def _fetch_comparison_data(
+        self,
+        customer: Optional[str],
+        supplier: Optional[str],
+        destination: Optional[str],
+        time_from_dt: datetime,
+        time_to_dt: datetime,
+    ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """Fetch rows for period and same period minus one day.
+        Convert inputs to UTC-aware datetimes to match TIMESTAMP WITH TIME ZONE.
         """
-        Fetches data for the specified period and the same period offset by one day.
-        """
-        # Calculate yesterday's time range based on the provided 'from' and 'to' strings.
-        time_from_dt = datetime.fromisoformat(time_from_str)
-        time_to_dt = datetime.fromisoformat(time_to_str)
-        y_time_from_str = (time_from_dt - timedelta(days=1)).isoformat()
-        y_time_to_str = (time_to_dt - timedelta(days=1)).isoformat()
+        def _to_utc_aware(dt: datetime) -> datetime:
+            # If None, pass through
+            if dt is None:
+                return dt
+            # If timezone-aware, convert to UTC
+            if dt.tzinfo is not None:
+                return dt.astimezone(timezone.utc)
+            # If naive, treat as already UTC (inputs are in GMT0)
+            return dt.replace(tzinfo=timezone.utc)
 
-        # Build SQL WHERE clauses and parameters for both periods.
-        where_today, params_today = build_where_clause(customer, supplier, destination, time_from_str, time_to_str)
-        where_yesterday, params_yesterday = build_where_clause(customer, supplier, destination, y_time_from_str, y_time_to_str)
-        
-        # Execute both queries.
-        rows_today = self._execute_query(where_today, params_today)
-        rows_yesterday = self._execute_query(where_yesterday, params_yesterday)
+        time_from_dt = _to_utc_aware(time_from_dt)
+        time_to_dt = _to_utc_aware(time_to_dt)
 
+        # Calculate yesterday's time range in UTC
+        y_time_from_dt = _to_utc_aware(time_from_dt - timedelta(days=1))
+        y_time_to_dt = _to_utc_aware(time_to_dt - timedelta(days=1))
+
+        rows_today = await self._fetch_with_repository(
+            customer, supplier, destination, time_from_dt, time_to_dt
+        )
+        rows_yesterday = await self._fetch_with_repository(
+            customer, supplier, destination, y_time_from_dt, y_time_to_dt
+        )
         return rows_today, rows_yesterday
 
-    def _execute_query(self, where_clause, params):
-        """
-        Executes a single SELECT query against the database.
-        """
-        query = f"""
-            SELECT
-                time, customer, supplier, destination, seconds,
-                start_nuber, start_attempt, start_uniq_attempt,
-                answer_time, pdd
-            FROM public.sonus_aggregation_new
-            {where_clause}
-            ORDER BY time
-        """
-        
-        # Use a 'with' statement for connection and cursor to ensure they are closed properly.
-        with get_connection() as conn:
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute(query, params)
-                rows = cur.fetchall()
-        
-        # Format timestamps to ISO format strings for JSON serialization.
-        for row in rows:
-            if isinstance(row.get("time"), datetime):
-                row["time"] = row["time"].isoformat()
-        
-        return rows
-        
-    def _enrich_rows(self, today_rows, yesterday_rows, key_fields):
-        """
-        Combines today's data with yesterday's data and calculates percentage deltas.
-        This is a generic function that can enrich any list of metric rows.
-        """
-        # Create a lookup map from yesterday's data for efficient access.
-        yesterday_map = {
-            tuple(r.get(k) for k in key_fields): r for r in yesterday_rows
+    async def _fetch_with_repository(
+        self,
+        customer: Optional[str],
+        supplier: Optional[str],
+        destination: Optional[str],
+        time_from: datetime,
+        time_to: datetime,
+        limit: int = 0,
+    ) -> List[Dict[str, Any]]:
+        """Thin wrapper to query repository with filters."""
+        filters: Dict[str, Any] = {
+            "customer": customer,
+            "supplier": supplier,
+            "destination": destination,
+            "time_from": time_from,
+            "time_to": time_to,
         }
+        return await self._repo.get_metrics(filters, limit=limit)
 
-        enriched_rows = []
-        # CORRECTED: Define all the final metrics we expect from the calculation step.
-        # These are the keys that should already exist in today_rows and yesterday_rows.
+    def _enrich_rows(
+        self,
+        today_rows: List[Dict[str, Any]],
+        yesterday_rows: List[Dict[str, Any]],
+        key_fields: List[str],
+        extra_fields: Tuple[str, ...] = (),
+    ) -> List[Dict[str, Any]]:
+        """Attach yesterday values and percentage deltas to today's rows."""
+        yesterday_map = {tuple(r.get(k) for k in key_fields): r for r in yesterday_rows}
+
+        enriched_rows: List[Dict[str, Any]] = []
         metrics_to_compare = ["Min", "ACD", "ASR", "PDD", "ATime", "SCall", "TCall"]
 
         for today_row in today_rows:
-            # Find the corresponding row from yesterday using the composite key.
             key = tuple(today_row.get(k) for k in key_fields)
             yesterday_row = yesterday_map.get(key, {})
+            combined = {field: today_row.get(field) for field in key_fields}
+            # Preserve extra display fields (e.g. full "time" for hourly)
+            for f in extra_fields:
+                combined[f] = today_row.get(f)
 
-            # Start with the key fields (e.g., main, destination).
-            combined_data = {field: today_row.get(field) for field in key_fields}
-
-            # Calculate today, yesterday, and delta values for each metric.
             for metric in metrics_to_compare:
-                today_val = today_row.get(metric, 0)
-                yesterday_val = yesterday_row.get(metric, 0)
-                
-                # Prevent division by zero and handle growth from zero
-                if yesterday_val == 0:
-                    delta = 100.0 if today_val > 0 else 0.0
+                t_val = today_row.get(metric, 0) or 0
+                y_val = yesterday_row.get(metric, 0) or 0
+                if y_val == 0:
+                    delta = 100.0 if t_val > 0 else 0.0
                 else:
-                    delta = round(((today_val - yesterday_val) / yesterday_val) * 100, 1)
+                    delta = round(((t_val - y_val) / y_val) * 100, 1)
+                combined[metric] = t_val
+                combined[f"Y{metric}"] = y_val
+                combined[f"{metric}_delta"] = delta
 
-                # The column names are already correct (Min, ACD, ASR, etc.),
-                # so no mapping is needed anymore.
-                combined_data[metric] = today_val
-                combined_data[f"Y{metric}"] = yesterday_val
-                combined_data[f"{metric}_delta"] = delta
+            enriched_rows.append(combined)
 
-            enriched_rows.append(combined_data)
-            
         return enriched_rows

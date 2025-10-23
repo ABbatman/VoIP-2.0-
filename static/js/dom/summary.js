@@ -7,19 +7,19 @@ import { subscribe } from "../state/eventBus.js";
  */
 export function initSummary() {
   subscribe("appState:dataChanged", (newData) => {
-    console.log("[Event] appState:dataChanged triggered summary update.");
-
     const container = document.getElementById("summaryMetrics");
-    if (!container) return; // Exit if the container doesn't exist
+    if (!container) return;
 
-    // If there is new data with metrics, render it and show the container.
-    if (newData?.today_metrics) {
-      renderSummaryMetrics(newData.today_metrics, newData.yesterday_metrics);
-      container.style.display = "flex"; // Make it visible
+    // Check both today and yesterday metrics
+    const hasTodayData = newData?.today_metrics && Object.keys(newData.today_metrics).length > 0;
+    const hasYesterdayData = newData?.yesterday_metrics && Object.keys(newData.yesterday_metrics).length > 0;
+
+    if (hasTodayData || hasYesterdayData) {
+      renderSummaryMetrics(newData.today_metrics || {}, newData.yesterday_metrics || {});
+      container.classList.remove('is-hidden');
     } else {
-      // If data is cleared (e.g., by clicking Reverse), clear and hide the container.
       container.innerHTML = "";
-      container.style.display = "none";
+      container.classList.add('is-hidden');
     }
   });
 }
@@ -49,7 +49,7 @@ function renderSummaryMetrics(today, yesterday) {
   container.appendChild(yesterdayBlock);
 
   // Make the container visible.
-  container.style.display = "flex"; // Use flex for side-by-side layout.
+  container.classList.remove('is-hidden');
 }
 
 /**
@@ -60,26 +60,32 @@ function renderSummaryMetrics(today, yesterday) {
  */
 function createMetricsBlock(title, metrics) {
   const block = document.createElement("div");
-  // You can add a class here for styling, e.g., block.classList.add('summary-card');
+  block.classList.add('summary-card');
+  if (title.toLowerCase() === 'today') {
+    block.classList.add('summary-today');
+  } else if (title.toLowerCase() === 'yesterday') {
+    block.classList.add('summary-yesterday');
+  }
 
   const titleEl = document.createElement("h3");
   titleEl.textContent = title;
   block.appendChild(titleEl);
 
-  // Check if metrics object is valid.
   if (metrics && Object.keys(metrics).length > 0) {
-    // Loop through each metric and create a line for it.
     for (const key in metrics) {
       const p = document.createElement("p");
       const strong = document.createElement("strong");
       strong.textContent = `${key}: `;
 
+      const valueSpan = document.createElement("span");
+      valueSpan.classList.add("metric-value");
+      valueSpan.textContent = metrics[key];
+
       p.appendChild(strong);
-      p.append(metrics[key]); // Use append to safely add the value.
+      p.appendChild(valueSpan);
       block.appendChild(p);
     }
   } else {
-    // Display a message if no metrics are available.
     const p = document.createElement("p");
     p.textContent = "No data available.";
     block.appendChild(p);

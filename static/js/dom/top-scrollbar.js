@@ -19,7 +19,7 @@ export function updateTopScrollbar() {
   const table = tableWrapper.querySelector("table");
   if (!table) {
     // If table is not present, ensure scrollbar is hidden
-    topScrollbarContainer.style.display = "none";
+    topScrollbarContainer.classList.add("is-hidden");
     return;
   }
 
@@ -31,9 +31,9 @@ export function updateTopScrollbar() {
 
   // Show the top scrollbar ONLY if the table is actually wider than its container
   if (scrollWidth > clientWidth) {
-    topScrollbarContainer.style.display = "block";
+    topScrollbarContainer.classList.remove("is-hidden");
   } else {
-    topScrollbarContainer.style.display = "none";
+    topScrollbarContainer.classList.add("is-hidden");
   }
 }
 

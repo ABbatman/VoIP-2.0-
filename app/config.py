@@ -42,3 +42,7 @@ if not DATABASE_URL:
 STATIC_PATH = os.path.join(PROJECT_ROOT, 'static')
 TEMPLATE_PATH = os.path.join(PROJECT_ROOT, 'templates')
 LOGS_PATH = os.path.join(PROJECT_ROOT, 'logs')
+
+# --- NEW: URL prefix for static files ---
+# This is the prefix used in the browser to request static assets.
+STATIC_URL_PREFIX = '/static/'

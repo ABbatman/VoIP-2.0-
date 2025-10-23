@@ -1,0 +1,37 @@
+{
+  "name": "tornadonew",
+  "version": "1.0.0",
+  "description": "This project is a tool for visualizing key performance indicators (KPIs) related to VoIP traffic. It provides clear statistical tables and dynamic charts to analyze traffic patterns, quality metrics, and trends.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "eslint \"static/js/**/*.js\"",
+    "format": "prettier --write js/**/*.js",
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ABbatman/VoIP-2.0-.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ABbatman/VoIP-2.0-/issues"
+  },
+  "homepage": "https://github.com/ABbatman/VoIP-2.0-#readme",
+  "devDependencies": {
+    "eslint": "^8.57.1",
+    "eslint-config-prettier": "^10.1.5",
+    "prettier": "^3.6.2",
+    "vite": "^7.0.4",
+    "vite-plugin-manifest": "^0.0.1"
+  },
+  "dependencies": {
+    "d3": "^7.9.0",
+    "echarts": "^6.0.0",
+    "flatpickr": "^4.6.13",
+    "morphdom": "^2.7.7"
+  }
+}

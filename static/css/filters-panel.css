@@ -8,16 +8,17 @@
  */
 .filters-panel {
   display: flex;
-  align-items: center;    /* Vertically align items to the center */
-  gap: 8px;               /* Space between items */
+  align-items: flex-start;
+  /* Allow multi-row top alignment */
+  gap: 8px;
+  /* Space between items */
   padding: 10px;
   background-color: #f8f9fa;
   border-radius: 8px;
   margin-bottom: 20px;
-  
-  /* Key layout rules for single-line behavior */
-  flex-wrap: nowrap;      /* Prevents items from wrapping to the next line */
-  overflow-x: auto;
+
+  /* Allow wrapping to create a true second row */
+  flex-wrap: wrap;
 }
 
 /*
@@ -29,7 +30,13 @@
 .filters-panel__item {
   display: flex;
   align-items: center;
-  flex-shrink: 0;         /* Prevent items from shrinking by default */
+  flex-shrink: 0;
+  /* Prevent items from shrinking by default */
+}
+
+/* Optional: add small bottom spacing so second row isn't cramped */
+.filters-panel__item {
+  margin-bottom: 4px;
 }
 
 /*
@@ -42,7 +49,8 @@
   height: 38px;
   padding: 6px 10px;
   font-size: 14px;
-  box-sizing: border-box; /* Ensures padding doesn't increase total width/height */
+  box-sizing: border-box;
+  /* Ensures padding doesn't increase total width/height */
   border: 1px solid #ccc;
   border-radius: 4px;
   background-color: #fff;
@@ -55,9 +63,30 @@
 }
 
 /* Sizing for specific inputs using their parent's ID for targeting */
-#customer-filter-item .filters-panel__input { width: 160px; }
-#supplier-filter-item .filters-panel__input { width: 160px; }
-#destination-filter-item .filters-panel__input { width: 200px; }
+#customer-filter-item .filters-panel__input {
+  width: 160px;
+}
+
+#supplier-filter-item .filters-panel__input {
+  width: 160px;
+}
+
+#destination-filter-item .filters-panel__input {
+  width: 200px;
+}
+
+/* Match group input widths to align under primary filters */
+#customer-group-filter-item .filters-panel__input {
+  width: 160px;
+}
+
+#supplier-group-filter-item .filters-panel__input {
+  width: 160px;
+}
+
+#destination-group-filter-item .filters-panel__input {
+  width: 200px;
+}
 
 /*
  * ===================================================================
@@ -67,11 +96,11 @@
 
 /* Sets a minimum width for the container of a date-time picker */
 .filters-panel__item--datetime {
-  min-width: 240px; 
+  min-width: 240px;
 }
 
 /* Adds a 10px margin to the left of the second date-time picker */
-.filters-panel__item--datetime + .filters-panel__item--datetime {
+.filters-panel__item--datetime+.filters-panel__item--datetime {
   margin-left: 10px;
 }
 
@@ -80,7 +109,8 @@
   display: flex;
   border: 1px solid #ccc;
   border-radius: 4px;
-  overflow: hidden; /* This is crucial for the inner border-radius to work */
+  overflow: hidden;
+  /* This is crucial for the inner border-radius to work */
 }
 
 /* Adds a blue glow to the whole group when either input is focused */
@@ -95,7 +125,8 @@
   border-radius: 0;
   font-family: 'SF Mono', 'Menlo', 'Consolas', 'Courier New', monospace;
   font-size: 13px;
-  flex-grow: 1; /* Allows inputs to grow and fill the space */
+  flex-grow: 1;
+  /* Allows inputs to grow and fill the space */
 }
 
 /* --- NEW: Spacing between date and time --- */
@@ -105,13 +136,13 @@
   /* A 1px line to visually separate date from time */
   border-right: 1px solid #ccc;
   /* Adds 6px of space to the right of the text, before the separator line */
-  padding-right: 6px; 
+  padding-right: 6px;
 }
 
 /* Styles for the time part of the pair */
 .filters-panel__input-group .time-part {
-   /* Adds 6px of space to the left of the text */
-   padding-left: 6px;
+  /* Adds 6px of space to the left of the text */
+  padding-left: 6px;
 }
 
 /* Hides the default calendar icon provided by some browsers */
@@ -126,64 +157,13 @@
  * ===================================================================
  */
 .filters-panel__spacer {
-  flex-grow: 1; /* This is the magic that creates space */
+  flex-grow: 1;
+  /* This is the magic that creates space */
 }
 
-/*
- * ===================================================================
- *  ELEMENT: .filters-panel__button
- *  A generic button within the filters panel.
- * ===================================================================
- */
-.filters-panel__button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 38px;
-  padding: 8px 16px;
-  font-size: 14px;
-  font-weight: 600;
-  border-radius: 5px;
-  border: 1px solid #ccc;
-  background-color: #f0f0f0;
-  color: #333;
-  cursor: pointer;
-  box-sizing: border-box;
-  white-space: nowrap; /* Prevent text from wrapping */
-  transition: all 0.2s ease-in-out;
-}
-
-.filters-panel__button:hover {
-  background-color: #e0e0e0;
-  border-color: #bbb;
-}
-
-/* --- Button Modifiers --- */
-
-/* Modifier for the primary action button (e.g., "Find") */
-.filters-panel__button--primary {
-  background-color: #007bff;
-  color: white;
-  border-color: #007bff;
-}
-.filters-panel__button--primary:hover {
-  background-color: #0056b3;
-  border-color: #0056b3;
-}
-
-/* Modifier for buttons that only contain an icon */
-.filters-panel__button--icon {
-  width: 38px;
-  padding: 0; /* Remove padding to center the icon */
-  background-color: #f0f0f0;
-  border-color: #ccc;
-}
-
-/* Modifier for the active state on any button */
-.filters-panel__button.active {
-  background-color: #6c757d;
-  color: white;
-  border-color: #5a6268;
+.filters-panel__row-sep {
+  flex-basis: 100%;
+  height: 0;
 }
 
 /*
@@ -192,12 +172,13 @@
  * ===================================================================
  */
 .filters-panel__icon {
-  stroke: currentColor; /* Icon color will match the button's text color */
+  stroke: currentColor;
+  /* Icon color will match the button's text color */
   transition: transform 0.3s ease-in-out;
 }
 
 /* Animate the icon when its parent button is active */
-.filters-panel__button.active .filters-panel__icon {
+.btn.active .filters-panel__icon {
   transform: rotate(180deg);
   stroke: white;
 }
@@ -210,31 +191,21 @@
 .filters-panel__control-group {
   display: flex;
 }
-/* Style the buttons inside the group to look like one piece */
-.filters-panel__control-group .filters-panel__button {
-  border-radius: 0;
-  border-left-width: 0; /* Remove left border for all but the first */
-}
-.filters-panel__control-group .filters-panel__button:first-child {
-  border-top-left-radius: 5px;
-  border-bottom-left-radius: 5px;
-  border-left-width: 1px; /* Add it back for the first button */
-}
-.filters-panel__control-group .filters-panel__button:last-child {
-  border-top-right-radius: 5px;
-  border-bottom-right-radius: 5px;
-}
+
+/* No longer needed, as the legacy buttons have been removed */
+
 /* --- NEW: Add a specific, permanent style for the #btnSummary --- */
 #btnSummary {
-    background-color: #28a745; /* A pleasant green */
-    border-color: #28a745;
-    color: white;
-    font-weight: bold;
+  background-color: #28a745;
+  border-color: #28a745;
+  color: white;
+  font-weight: bold;
 }
 
 #btnSummary:hover {
-    background-color: #218838; /* A darker green for hover */
-    border-color: #1e7e34;
+  background-color: #218838;
+  /* A darker green for hover */
+  border-color: #1e7e34;
 }
 
 
@@ -245,14 +216,16 @@
  * ===================================================================
  */
 .time-popup {
-  display: none; /* Hidden by default, shown by JS */
+  display: none;
+  /* Hidden by default, shown by JS */
   position: absolute;
   background-color: #f0f0f0;
   border: 1px solid #ccc;
   border-radius: 4px;
   padding: 4px;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.15);
-  z-index: 1000; /* High z-index to appear on top of other elements */
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  /* High z-index to appear on top of other elements */
 }
 
 .time-popup__button {

@@ -1,42 +1,19 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <title>Call Metrics Dashboard</title>
-
-  <!-- Flatpickr CSS -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-<!-- New, refactored CSS for the filters panel -->
-<link rel="stylesheet" href="/static/css/filters-panel.css" />
-<!-- New, refactored CSS for the results display -->
-<link rel="stylesheet" href="/static/css/results-display.css" />
-<link rel="stylesheet" href="/static/css/table-header.css" />
-  <link rel="stylesheet" href="/static/css/layout.css" />
-  <link rel="stylesheet" href="/static/css/top-scrollbar.css" />
-  <link rel="stylesheet" href="/static/css/hideYColumns.css" />
+  <!-- CSS is bundled by Vite via static/js/main.js imports -->
 </head>
 
 <body>
-  <div class="page-container">
-    <h1 class="page-title">Monitoring by Burcovschi</h1>
+  <div id="dashboard-container"></div>
 
-    <!-- 🔗 Include filters block (buttons will be inside it now) -->
-    {% include "partials/filters.html" %}
 
-    <!-- 🔗 Include summary table block -->
-    {% include "partials/summary_table.html" %}
+  <!-- Vite entry script (dev server injects, prod uses manifest) -->
+  {{ vite_tags }}
 
-  </div>
-
-  <!-- 🔗 Include the globally positioned time controls popup -->
-  {% include "partials/time_controls.html" %}
-
-  <!-- Flatpickr JS -->
-  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-
-  <!-- JS main entry point -->
-  <script type="module" src="/static/js/main.js"></script>
-    <!-- NEW: Add the tooltip container to the page -->
-  <div id="pdd-atime-tooltip" class="pdd-atime-tooltip"></div>
 </body>
+
 </html>

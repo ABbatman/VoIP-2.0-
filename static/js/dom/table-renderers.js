@@ -5,12 +5,23 @@
 import { getAnomalyClass } from "../utils/helpers.js";
 import { getColumnConfig } from "./table-ui.js";
 
-// --- Row Creation Functions (no changes below) ---
+// --- Row Creation Functions (legacy DOM creators) ---
+// deprecated: prefer string renderers (renderMainRowString/renderPeerRowString/renderHourlyRowsString)
+function createCell(content) {
+  const td = document.createElement('td');
+  if (content === '' || content == null) {
+    td.textContent = '-';
+  } else {
+    td.textContent = String(content);
+  }
+  return td;
+}
 export function createMainRow(mainRow, groupId) {
   const tr = document.createElement("tr");
   tr.classList.add("main-row");
   const mainCell = document.createElement("td");
   const toggleBtn = document.createElement("button");
+  toggleBtn.type = "button";
   toggleBtn.className = "toggle-btn";
   toggleBtn.textContent = "+";
   toggleBtn.dataset.targetGroup = groupId;
@@ -31,6 +42,7 @@ export function createPeerRow(peerRow, mainGroupId, peerGroupId) {
   tr.appendChild(createCell(""));
   const peerCell = document.createElement("td");
   const toggleBtn = document.createElement("button");
+  toggleBtn.type = "button";
   toggleBtn.className = "toggle-btn";
   toggleBtn.textContent = "+";
   toggleBtn.dataset.targetGroup = peerGroupId;
@@ -114,11 +126,13 @@ function addMetricCells(tr, rowData) {
       typeof yesterdayValue === "number" &&
       yesterdayValue !== 0
     ) {
-      deltaPercent =
-        ((value - yesterdayValue) / Math.abs(yesterdayValue)) * 100;
+      deltaPercent = ((value - yesterdayValue) / Math.abs(yesterdayValue)) * 100;
     }
+
+    // main metric cell
     const tdMain = createCell(value);
-    tdMain.className = getAnomalyClass({
+    const shouldDisable = metricName === "Min" || metricName === "SCall" || metricName === "TCall";
+    tdMain.className = shouldDisable ? "" : getAnomalyClass({
       key: metricName,
       value,
       yesterdayValue,
@@ -130,19 +144,20 @@ function addMetricCells(tr, rowData) {
       tdMain.dataset.atime = rowData.ATime ?? "N/A";
     }
     tr.appendChild(tdMain);
+
+    // yesterday cell
     const tdYesterday = createCell(yesterdayValue);
     tdYesterday.dataset.yToggleable = "true";
     tr.appendChild(tdYesterday);
+
+    // delta cell
     const tdDelta = document.createElement("td");
     if (typeof delta === "number" && delta !== 0) {
       const absDelta = Math.abs(delta);
       const contentWrapper = document.createElement("span");
       contentWrapper.className = "delta-cell-content";
       const textNode = document.createTextNode(absDelta.toFixed(1));
-      const arrowSvg = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "svg"
-      );
+      const arrowSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
       arrowSvg.setAttribute("class", "delta-arrow");
       arrowSvg.setAttribute("viewBox", "0 0 10 10");
       arrowSvg.setAttribute("fill", "currentColor");
@@ -162,15 +177,148 @@ function addMetricCells(tr, rowData) {
   });
 }
 
-function createCell(content) {
-  const td = document.createElement("td");
-  td.textContent = content !== null && content !== undefined ? content : "-";
-  return td;
-}
-
 function formatDateToKey(d) {
   const pad = (num) => num.toString().padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(
-    d.getHours()
-  )}:00`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:00`;
+}
+
+// ================== STRING RENDERERS (PURE) ==================
+// Return HTML strings only (no DOM nodes, no event handlers)
+
+/**
+ * Render main row as HTML string
+ */
+export function renderMainRowString(mainRow, { mainGroupId, isMainGroupOpen }) {
+  const toggle = isMainGroupOpen ? '−' : '+';
+  let html = `<tr class="main-row">`;
+  html += `<td data-filter-value="${escapeHtml(mainRow.main)}"><button type="button" class="toggle-btn" data-target-group="${mainGroupId}">${toggle}</button> ${escapeHtml(mainRow.main)}</td>`;
+  html += `<td></td>`;
+  html += `<td>${escapeHtml(mainRow.destination)}</td>`;
+  html += renderMetricCellsString(mainRow);
+  html += `</tr>`;
+  return html;
+}
+
+/**
+ * Render peer row as HTML string
+ */
+export function renderPeerRowString(peerRow, { mainGroupId, peerGroupId, isMainGroupOpen, isPeerGroupOpen }) {
+  const toggle = isPeerGroupOpen ? '−' : '+';
+  // Use class-based visibility to allow runtime toggles to work reliably
+  const rowClasses = ['peer-row'];
+  if (!isMainGroupOpen) rowClasses.push('is-hidden');
+  let html = `<tr class="${rowClasses.join(' ')}" data-group="${mainGroupId}">`;
+  html += `<td></td>`;
+  html += `<td data-filter-value="${escapeHtml(peerRow.peer)}"><button type="button" class="toggle-btn" data-target-group="${peerGroupId}">${toggle}</button> ${escapeHtml(peerRow.peer)}</td>`;
+  html += `<td data-filter-value="${escapeHtml(peerRow.destination)}">${escapeHtml(peerRow.destination)}</td>`;
+  html += renderMetricCellsString(peerRow);
+  html += `</tr>`;
+  return html;
+}
+
+/**
+ * Render hourly rows as HTML string
+ */
+export function renderHourlyRowsString(relevantHours, { peerGroupId, isMainGroupOpen, isPeerGroupOpen, parentPeer }) {
+  if (!Array.isArray(relevantHours) || relevantHours.length === 0) return '';
+  const hourDataMap = new Map(relevantHours.map((h) => [h.time, h]));
+  const times = relevantHours.map((h) => new Date(h.time).getTime());
+  const minTime = new Date(Math.min(...times));
+  const maxTime = new Date(Math.max(...times));
+  const metricColumns = getColumnConfig().slice(3);
+  const visible = isMainGroupOpen && isPeerGroupOpen;
+  let html = '';
+  const sorted = Array.from(new Set(times)).sort((a,b)=>a-b);
+  let minDiff = Infinity;
+  for (let i = 1; i < sorted.length; i++) { const diff = sorted[i] - sorted[i-1]; if (diff > 0 && diff < minDiff) minDiff = diff; }
+  const isFive = minDiff < 30 * 60e3;
+  const stepMs = isFive ? 5 * 60e3 : 60 * 60e3;
+  const formatFull = (d) => {
+    const pad = (n) => String(n).padStart(2,'0');
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+  for (let t = minTime.getTime(); t <= maxTime.getTime(); t += stepMs) {
+    const d = new Date(t);
+    const key = isFive ? formatFull(d) : formatDateToKey(d);
+    const rowData = hourDataMap.get(key);
+    // Use class-based visibility to avoid inline style conflicts with toggles
+    const rowClasses = ['hour-row'];
+    if (!visible) rowClasses.push('is-hidden');
+    const [datePart, timePart] = key.split(' ');
+    html += `<tr class="${rowClasses.join(' ')}" data-group="${peerGroupId}">`;
+    html += `<td data-filter-value="${escapeHtml(datePart)}"><div class="datetime-cell-container"><span class="date-part">${escapeHtml(datePart)}</span><span class="time-part">${escapeHtml(timePart)}</span></div></td>`;
+    html += `<td data-filter-value="${escapeHtml(parentPeer.peer)}">${escapeHtml(parentPeer.peer)}</td>`;
+    html += `<td data-filter-value="${escapeHtml(parentPeer.destination)}">${escapeHtml(parentPeer.destination)}</td>`;
+    if (rowData) {
+      html += renderMetricCellsString(rowData);
+    } else {
+      metricColumns.forEach((col) => {
+        const yAttr = col.isYColumn ? ' data-y-toggleable="true"' : '';
+        html += `<td${yAttr}>-</td>`;
+      });
+    }
+    html += `</tr>`;
+  }
+  return html;
+}
+
+// ---- helpers for string rendering ----
+function renderMetricCellsString(rowData) {
+  const metrics = ["Min", "ACD", "ASR", "SCall", "TCall"];
+  let html = '';
+  metrics.forEach((metricName) => {
+    const value = rowData[metricName];
+    const yesterdayValue = rowData[`Y${metricName}`];
+    const delta = rowData[`${metricName}_delta`];
+    let deltaPercent = null;
+    if (
+      typeof value === 'number' &&
+      typeof yesterdayValue === 'number' &&
+      yesterdayValue !== 0
+    ) {
+      deltaPercent = ((value - yesterdayValue) / Math.abs(yesterdayValue)) * 100;
+    }
+    // main metric cell
+    const shouldDisable = (metricName === 'Min' || metricName === 'SCall' || metricName === 'TCall');
+    const cls = shouldDisable ? '' : getAnomalyClass({ key: metricName, value, yesterdayValue, deltaPercent });
+    const extraASR = (metricName === 'ASR') ? ` class="${[cls,'asr-cell-hover'].filter(Boolean).join(' ').trim()}" data-pdd="${escapeHtml(rowData.PDD ?? 'N/A')}" data-atime="${escapeHtml(rowData.ATime ?? 'N/A')}"` : (cls ? ` class="${cls}"` : '');
+    html += `<td${extraASR}>${formatCellValue(metricName, value)}</td>`;
+    // yesterday cell (Y)
+    html += `<td data-y-toggleable="true">${formatCellValue(metricName, yesterdayValue)}</td>`;
+    // delta cell
+    if (typeof delta === 'number' && delta !== 0) {
+      const absDelta = Math.abs(delta);
+      const dirClass = delta > 0 ? 'arrow-up' : 'arrow-down';
+      html += `<td class="${dirClass}"><span class="delta-cell-content">${absDelta.toFixed(1)}<svg class="delta-arrow" viewBox="0 0 10 10" fill="currentColor"><polygon points="0,0 10,5 0,10" /></svg></span></td>`;
+    } else {
+      html += `<td>-</td>`;
+    }
+  });
+  return html;
+}
+
+function formatCellValue(metricName, val) {
+  if (val === '' || val == null) return '-';
+  const toOneDecimal = (n) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+  if (typeof val === 'number') {
+    if (metricName === 'Min') return String(Math.round(val));
+    if (metricName === 'ACD' || metricName === 'ASR') return toOneDecimal(val);
+    return Number.isInteger(val) ? String(val) : String(val); // без навяз. округления
+  }
+  const n = parseFloat(val);
+  if (!isNaN(n)) {
+    if (metricName === 'Min') return String(Math.round(n));
+    if (metricName === 'ACD' || metricName === 'ASR') return toOneDecimal(n);
+    return Number.isInteger(n) ? String(n) : String(n);
+  }
+  return escapeHtml(String(val));
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }

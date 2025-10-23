@@ -1,9 +1,9 @@
 /* top-scrollbar.css */
 .top-scrollbar-container {
-  /* NEW: It is now also sticky */
-  top: 0; /* Sticks right below the controls */
-  z-index: 3; /* Above the header (2) but below controls (5) */
-  position:sticky;
+  /* No longer sticky; only table header should be sticky */
+  position: relative;
+  top: auto;
+  z-index: 1;
   width: 100%;
   overflow-x: auto;
   overflow-y: hidden;

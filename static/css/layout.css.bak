@@ -1,0 +1,69 @@
+/* Make the table fill viewport and push other content above */
+html,
+body {
+  height: 100%;
+}
+
+.page-container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.results-display {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  /* allow child scroll container to size correctly */
+}
+
+#virtual-scroll-container {
+  /* Use page scroll instead of internal container scroll */
+  flex: 1 1 auto;
+  height: auto;
+  max-height: none;
+  /* override inline if any */
+  overflow-y: visible;
+}
+
+/* static/css/layout.css */
+
+/* Enable page scroll */
+html,
+body,
+.page-container {
+  overflow: visible;
+}
+
+
+/* --- Custom Flatpickr Theme (existing styles) --- */
+
+.flatpickr-calendar {
+  border-radius: 8px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+  border: 1px solid #ddd;
+}
+
+/* Change the main colors of the calendar */
+.flatpickr-day.selected,
+.flatpickr-day.startRange,
+.flatpickr-day.endRange {
+  background: #007bff;
+  /* Main selection color (blue) */
+  border-color: #007bff;
+}
+
+.flatpickr-day.today {
+  border-color: #007bff;
+}
+
+.flatpickr-day.today:hover {
+  background: #007bff;
+  color: #fff;
+}
+
+.flatpickr-months .flatpickr-prev-month:hover svg,
+.flatpickr-months .flatpickr-next-month:hover svg {
+  fill: #007bff;
+}

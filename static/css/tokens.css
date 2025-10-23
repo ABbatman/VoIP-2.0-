@@ -1,0 +1,33 @@
+/* static/css/tokens.css */
+/* Design tokens: colors, fonts, spacing (no inline styles in components) */
+:root {
+  /* colors */
+  --ds-color-bg: #ffffff;
+  --ds-color-fg: #111827; /* gray-900 */
+  --ds-color-primary: #2563eb; /* blue-600 */
+  --ds-color-muted: #6b7280;   /* gray-500 */
+  --ds-color-positive: #16a34a;/* green-600 */
+  --ds-color-negative: #ef4444;/* red-500 */
+
+  /* fonts */
+  --ds-font-family-base: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  --ds-font-size-xs: 12px;
+  --ds-font-size-sm: 14px;
+  --ds-font-size-md: 16px;
+
+  /* spacing */
+  --ds-space-0: 0;
+  --ds-space-1: 4px;
+  --ds-space-2: 8px;
+  --ds-space-3: 12px;
+  --ds-space-4: 16px;
+  --ds-space-5: 20px;
+  --ds-space-6: 24px;
+}
+
+/* Optional minimal utility hooks using tokens (no overrides of existing styles) */
+.token-text-base {
+  font-family: var(--ds-font-family-base);
+  font-size: var(--ds-font-size-sm);
+  color: var(--ds-color-fg);
+}
