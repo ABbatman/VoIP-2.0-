@@ -57,17 +57,108 @@
 
 /* Toolbar under chart: center and spacing */
 .charts-toolbar {
-    display: flex;
-    justify-content: center;
-    gap: 10px;
-    margin-top: 4px; /* closer to chart area */
-    /* Keep toolbar minimal without large white area */
-    position: static;
-    padding: 0;
-    background: transparent;
-    border: none;
-    box-shadow: none;
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 4px; /* closer to chart area */
+  /* Keep toolbar minimal without large white area */
+  position: static;
+  padding: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
 }
+
+/* Custom dropdowns under charts toolbar */
+.charts-dd {
+  position: relative;
+  min-width: 120px;
+}
+.charts-dd__button {
+  width: 100%;
+  height: 30px;
+  padding: 0 28px 0 12px;
+  border: 1px solid #d0d7de;
+  border-radius: 10px;
+  background: #fff;
+  color: #24292f;
+  font: 14px/30px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  text-align: center;
+  cursor: pointer;
+  position: relative;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.charts-dd__button:hover { border-color: #0a58ca; box-shadow: 0 1px 6px rgba(10,88,202,0.12); }
+.charts-dd__button::after { display: none; content: none; }
+.charts-dd__menu {
+  position: absolute;
+  top: calc(100% + 6px); /* always open downward */
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 140px;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: #fff;
+  border: 1px solid #d0d7de;
+  border-radius: 10px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.12);
+  z-index: 1000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+.charts-dd.is-open .charts-dd__menu { opacity: 1; pointer-events: auto; }
+.charts-dd__item {
+  padding: 8px 10px;
+  font: 14px/1.2 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  color: #24292f;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: center;
+}
+.charts-dd__item:hover { background: #f6f8fa; }
+.charts-dd__item.is-selected { background: #eef4ff; color: #0a58ca; }
+
+/* Highlight styles by selected step */
+.charts-dd.is-5m .charts-dd__button {
+  color: #0a58ca;
+  border-color: #0a58ca;
+  background: #eef4ff;
+}
+.charts-dd.is-1h .charts-dd__button {
+  color: #00a37a;
+  border-color: #00a37a;
+  background: #eafaf5;
+}
+.charts-dd.is-1d .charts-dd__button {
+  color: #e36209;
+  border-color: #e36209;
+  background: #fff3e6;
+}
+
+/* Highlight styles by selected chart type */
+.charts-dd.is-line .charts-dd__button {
+  color: #2f6feb;
+  border-color: #2f6feb;
+  background: #eef3ff;
+}
+.charts-dd.is-bar .charts-dd__button {
+  color: #00a37a;
+  border-color: #00a37a;
+  background: #eafaf5;
+}
+.charts-dd.is-heatmap .charts-dd__button {
+  color: #e36209;
+  border-color: #e36209;
+  background: #fff3e6;
+}
+.charts-dd.is-hybrid .charts-dd__button {
+  color: #6f42c1;
+  border-color: #6f42c1;
+  background: #f3eaff;
+}
+
 .charts-toolbar__btn {
     display: inline-flex;
     align-items: center;

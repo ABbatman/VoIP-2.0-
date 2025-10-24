@@ -126,41 +126,44 @@ export async function initD3Dashboard() {
     if (!available || available.length === 0) {
       available = ['line', 'bar', 'heatmap', 'hybrid'];
     }
-    // Rebuild content each time to avoid duplicates/stale buttons
     controls.innerHTML = '';
-    available.forEach((t) => {
+
+    const makeDd = (id, items, selected) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'charts-dd';
+      wrap.id = id;
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = `charts-toolbar__btn charts-toolbar__btn--${t}`;
-      btn.dataset.type = t;
-      const title = t.charAt(0).toUpperCase() + t.slice(1);
-      btn.title = title;
-      btn.setAttribute('aria-label', title);
-      btn.innerHTML = icons[t] || icons.line;
-      controls.appendChild(btn);
-    });
+      btn.className = 'charts-dd__button';
+      btn.textContent = items.find(x => x.value === selected)?.label || items[0].label;
+      const menu = document.createElement('ul');
+      menu.className = 'charts-dd__menu';
+      items.forEach(it => {
+        const li = document.createElement('li');
+        li.className = 'charts-dd__item';
+        li.dataset.value = it.value;
+        li.textContent = it.label;
+        if (it.value === selected) li.classList.add('is-selected');
+        menu.appendChild(li);
+      });
+      wrap.appendChild(btn);
+      wrap.appendChild(menu);
+      return wrap;
+    };
 
-    const intervals = document.createElement('div');
-    intervals.id = 'charts-intervals';
-    intervals.className = 'charts-intervals';
-    const intervalDefs = [
-      { key: '1m', label: '1m' },
-      { key: '5m', label: '5m' },
-      { key: '1h', label: '1h' },
-      { key: '1d', label: '1d' },
-      { key: '1w', label: '1w' },
-      { key: '1M', label: '1M' },
+    const typeItems = available.map(t => ({ value: t, label: t.charAt(0).toUpperCase() + t.slice(1) }));
+    const typeDd = makeDd('chart-type-dropdown', typeItems, (controls.dataset.type || available[0]));
+    controls.appendChild(typeDd);
+
+    const stepItems = [
+      { value: '5m', label: '5m' },
+      { value: '1h', label: '1h' },
+      { value: '1d', label: '1d' },
     ];
-    intervalDefs.forEach(({ key, label }) => {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'interval-btn';
-      b.dataset.interval = key;
-      b.textContent = label;
-      intervals.appendChild(b);
-    });
-    controls.appendChild(intervals);
-    try { console.debug('[charts] controls populated:', { types: available.length, intervals: intervalDefs.length }); } catch(_) {}
+    const stepDd = makeDd('chart-interval-dropdown', stepItems, (controls.dataset.interval || '5m'));
+    controls.appendChild(stepDd);
+
+    try { console.debug('[charts] controls populated (dropdowns)'); } catch(_) {}
   };
 
   // Compute chart area height on every render; robust against small container on first open
@@ -207,16 +210,36 @@ export async function initD3Dashboard() {
   try { console.debug('[charts] controls ready'); } catch(_) {}
 
   // State
-  let currentType = (controls.querySelector('.charts-toolbar__btn')?.dataset.type) || 'line';
+  let currentType = (controls.dataset.type) || 'line';
   let currentInterval = '5m'; // default aggregation step
   try { if (typeof window !== 'undefined') window.__chartsCurrentInterval = currentInterval; } catch(_) {}
   let cleanup = () => {};
   const setActive = (type) => {
-    controls.querySelectorAll('.charts-toolbar__btn').forEach((b) => b.classList.toggle('is-active', b.dataset.type === type));
-    const intBtns = controls.querySelectorAll('.interval-btn');
-    if (intBtns.length) {
-      intBtns.forEach(b => b.classList.toggle('is-active', b.dataset.interval === currentInterval));
-    }
+    try {
+      const typeDd = controls.querySelector('#chart-type-dropdown');
+      const btn = typeDd?.querySelector('.charts-dd__button');
+      const items = Array.from(typeDd?.querySelectorAll('.charts-dd__item') || []);
+      items.forEach(li => li.classList.toggle('is-selected', li.dataset.value === type));
+      if (btn) btn.textContent = (items.find(li => li.dataset.value === type)?.textContent) || btn.textContent;
+      // highlight by type
+      if (typeDd) {
+        typeDd.classList.remove('is-line','is-bar','is-heatmap','is-hybrid');
+        typeDd.classList.add(`is-${type}`);
+      }
+    } catch(_) {}
+    try {
+      const stepDd = controls.querySelector('#chart-interval-dropdown');
+      const btn = stepDd?.querySelector('.charts-dd__button');
+      const items = Array.from(stepDd?.querySelectorAll('.charts-dd__item') || []);
+      items.forEach(li => li.classList.toggle('is-selected', li.dataset.value === currentInterval));
+      if (btn) btn.textContent = (items.find(li => li.dataset.value === currentInterval)?.textContent) || btn.textContent;
+      // highlight by step
+      if (stepDd) {
+        stepDd.classList.remove('is-5m','is-1h','is-1d');
+        stepDd.classList.add(`is-${currentInterval}`);
+      }
+    } catch(_) {}
+    try { controls.dataset.type = type; controls.dataset.interval = currentInterval; } catch(_) {}
   };
 
   const renderSelected = (type) => {
@@ -464,47 +487,60 @@ export async function initD3Dashboard() {
       renderWhenMountReady(currentType);
     }
   } catch(_) {}
-  // Click handlers (type + interval)
-  const onClick = (e) => {
-    const typeBtn = e.target.closest('.charts-toolbar__btn');
-    const intBtn = e.target.closest('.interval-btn');
-    if (!typeBtn && !intBtn) return;
-    if (typeBtn) {
-      currentType = typeBtn.dataset.type;
-      cleanup();
-      renderWhenMountReady(currentType);
+  const closeAllDd = () => {
+    try { controls.querySelectorAll('.charts-dd').forEach(dd => dd.classList.remove('is-open')); } catch(_) {}
+  };
+  const onControlsClick = (e) => {
+    const btn = e.target.closest('.charts-dd__button');
+    const item = e.target.closest('.charts-dd__item');
+    if (btn) {
+      const dd = btn.parentElement;
+      const open = dd.classList.contains('is-open');
+      closeAllDd();
+      if (!open) dd.classList.add('is-open');
       return;
     }
-    if (intBtn) {
-      const requested = intBtn.dataset.interval;
-      // Prefer zoom window for enforcement; fallback to base filters
-      try {
-        const zr = (typeof window !== 'undefined') ? window.__chartsZoomRange : null;
-        let fromTs, toTs;
-        if (zr && Number.isFinite(zr.fromTs) && Number.isFinite(zr.toTs) && zr.toTs > zr.fromTs) {
-          fromTs = zr.fromTs; toTs = zr.toTs;
-        } else {
-          const { from, to } = getFilters();
-          fromTs = parseUtc(from); toTs = parseUtc(to);
-        }
-        const diffDays = (toTs - fromTs) / (24 * 3600e3);
-        if (requested === '5m' && diffDays > 5.0001) {
-          try { toast('5-minute interval is available only for ranges up to 5 days. Switching to 1 hour.', { type: 'warning', duration: 3500 }); } catch(_) {}
-          currentInterval = '1h';
-        } else {
-          currentInterval = requested;
-        }
-      } catch(_) {
-        currentInterval = requested;
+    if (item) {
+      const dd = item.closest('.charts-dd');
+      const value = String(item.dataset.value || '');
+      if (dd?.id === 'chart-type-dropdown') {
+        if ((value || 'line') === currentType) { closeAllDd(); return; }
+        currentType = value || 'line';
+        closeAllDd();
+        setActive(currentType);
+        cleanup();
+        renderWhenMountReady(currentType);
+        return;
       }
-      try { if (typeof window !== 'undefined') window.__chartsCurrentInterval = currentInterval; } catch(_) {}
-      setActive(currentType);
-      // Do NOT render immediately to avoid using old granularity; wait for fresh data
-      try { publish('charts:intervalChanged', { interval: currentInterval }); } catch(_) {}
-      return;
+      if (dd?.id === 'chart-interval-dropdown') {
+        const requested = value || '5m';
+        if (requested === currentInterval) { closeAllDd(); return; }
+        try {
+          const zr = (typeof window !== 'undefined') ? window.__chartsZoomRange : null;
+          let fromTs, toTs;
+          if (zr && Number.isFinite(zr.fromTs) && Number.isFinite(zr.toTs) && zr.toTs > zr.fromTs) {
+            fromTs = zr.fromTs; toTs = zr.toTs;
+          } else {
+            const { from, to } = getFilters();
+            fromTs = parseUtc(from); toTs = parseUtc(to);
+          }
+          const diffDays = (toTs - fromTs) / (24 * 3600e3);
+          if (requested === '5m' && diffDays > 5.0001) {
+            try { toast('5-minute interval is available only for ranges up to 5 days. Switching to 1 hour.', { type: 'warning', duration: 3500 }); } catch(_) {}
+            currentInterval = '1h';
+          } else {
+            currentInterval = requested;
+          }
+        } catch(_) { currentInterval = requested; }
+        try { if (typeof window !== 'undefined') window.__chartsCurrentInterval = currentInterval; } catch(_) {}
+        closeAllDd();
+        setActive(currentType);
+        try { publish('charts:intervalChanged', { interval: currentInterval }); } catch(_) {}
+        return;
+      }
     }
   };
-  controls.addEventListener('click', onClick);
+  controls.addEventListener('click', onControlsClick);
 
   // Re-render when data changes (after Find)
   subscribe('appState:dataChanged', () => {
@@ -513,8 +549,8 @@ export async function initD3Dashboard() {
       controls = ensureControls();
     }
     populateButtons(controls);
-    controls.removeEventListener('click', onClick);
-    controls.addEventListener('click', onClick);
+    controls.removeEventListener('click', onControlsClick);
+    controls.addEventListener('click', onControlsClick);
     // Reflect the current active type/interval immediately
     setActive(currentType);
     cleanup();
@@ -546,9 +582,9 @@ export async function initD3Dashboard() {
     // In case charts-controls was replaced externally, re-bind handler and re-assert active state
     const cc = document.getElementById('charts-controls');
     if (cc && cc !== controls) {
-      try { controls.removeEventListener('click', onClick); } catch(_) {}
+      try { controls.removeEventListener('click', onControlsClick); } catch(_) {}
       controls = cc;
-      controls.addEventListener('click', onClick);
+      controls.addEventListener('click', onControlsClick);
     }
     setActive(currentType);
   });
