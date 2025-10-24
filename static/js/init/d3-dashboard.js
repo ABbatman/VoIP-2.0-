@@ -542,6 +542,17 @@ export async function initD3Dashboard() {
   };
   controls.addEventListener('click', onControlsClick);
 
+  // Sync UI when interval changes programmatically (e.g., zoom > 5 days forces 1h)
+  subscribe('charts:intervalChanged', (payload) => {
+    try {
+      const interval = payload && payload.interval ? String(payload.interval) : '';
+      if (!interval) return;
+      currentInterval = interval;
+      try { if (typeof window !== 'undefined') window.__chartsCurrentInterval = currentInterval; } catch(_) {}
+      setActive(currentType);
+    } catch(_) {}
+  });
+
   // Re-render when data changes (after Find)
   subscribe('appState:dataChanged', () => {
     // Always re-render if we have ANY data to keep charts visible
