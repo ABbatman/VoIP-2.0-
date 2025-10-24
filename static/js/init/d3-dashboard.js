@@ -571,6 +571,7 @@ export async function initD3Dashboard() {
 
   // Render on 'success' only
   subscribe('appState:statusChanged', (status) => {
+    try { if (typeof window !== 'undefined' && window.__summaryFetchInProgress) return; } catch(_) {}
     if (status === 'success') {
       setActive(currentType);
       try { cleanup(); } catch(_) {}

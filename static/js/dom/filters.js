@@ -133,16 +133,30 @@ export function initFilters(isStateLoaded) {
     console.warn("⚠️ Reverse button not found");
   }
 
-  // Enforce table hidden state during Find across DOM patches
+  // Enforce UI state changes per operation type across DOM patches
   try {
     subscribe("appState:statusChanged", (status) => {
-      if (status === "loading" || (typeof window !== "undefined" && window.__hideTableUntilSummary)) {
-        try { setShowTable(false); } catch(_) {}
-      }
-      // toggle global overlay
+      const w = (typeof window !== 'undefined') ? window : {};
+      const isIntervalFetch = !!w.__intervalFetchInFlight; // chart-only fetch
+      const isSummaryFetch = !!w.__summaryFetchInProgress; // summary-only fetch
+      const hideUntilSummary = !!w.__hideTableUntilSummary; // after Find until user clicks Summary
+
+      // Table visibility
+      try {
+        if (status === 'loading') {
+          // Do NOT hide table for chart-only interval fetches
+          if (isSummaryFetch) {
+            setShowTable(false);
+          }
+        }
+        // Enforcement from Find flow: keep hidden until Summary is clicked
+        if (hideUntilSummary) setShowTable(false);
+      } catch(_) {}
+
+      // Toggle global overlay only for non-interval operations (Find/Summary)
       try {
         const overlayEl = document.getElementById('loading-overlay');
-        if (overlayEl) overlayEl.classList.toggle('is-hidden', status !== 'loading');
+        if (overlayEl) overlayEl.classList.toggle('is-hidden', !(status === 'loading' && !isIntervalFetch));
       } catch(_) {}
       // reinforce charts/mode controls visibility across patches
       if (status === 'loading' || status === 'success') {
@@ -452,6 +466,7 @@ async function handleSummaryClick() {
 
   // Set loading status
   // Important: allow table to be shown for summary flow
+  try { if (typeof window !== 'undefined') window.__summaryFetchInProgress = true; } catch(_) {}
   try { window.__hideTableUntilSummary = false; } catch(_) {}
   setAppStatus("loading");
 
@@ -578,6 +593,8 @@ async function handleSummaryClick() {
     console.error("❌ Error fetching data for Summary Table:", error);
     setAppStatus("error");
     alert('Error loading data. Please try again.');
+  } finally {
+    try { if (typeof window !== 'undefined') window.__summaryFetchInProgress = false; } catch(_) {}
   }
 }
 

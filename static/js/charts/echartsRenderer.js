@@ -80,8 +80,13 @@ function buildMultiOption({ data, fromTs, toTs, height, interval, noFiveMinData 
     axisLabel: { color: '#6e7781' }, axisLine: { lineStyle: { color: '#888' } }, axisTick: { alignWithLabel: true },
   }));
 
+  const axisNames = ['TCalls', 'ASR', 'Minutes', 'ACD'];
   const yAxes = grids.map((g, i) => ({
-    type: 'value', gridIndex: i, axisLabel: { show: false }, splitLine: { show: false }, axisLine: { lineStyle: { color: '#000' } }
+    type: 'value',
+    gridIndex: i,
+    axisLabel: { show: false },
+    splitLine: { show: false },
+    axisLine: { lineStyle: { color: '#000' } }
   }));
 
   const colors = {
@@ -187,6 +192,20 @@ function buildMultiOption({ data, fromTs, toTs, height, interval, noFiveMinData 
     ],
     series: [tcalls, asr, minutes, acd],
   };
+  // Place custom labels above their own panel and just under the previous panel (between panels)
+  try {
+    const labels = axisNames.map((name, i) => {
+      const isFirst = i === 0;
+      // First panel: near the top of its own grid; others: slightly inside their own top (just under previous X)
+      const y = isFirst ? (grids[i].top + 6) : (grids[i].top + 4);
+      return {
+        type: 'text', left: 6, top: y,
+        z: 10,
+        style: { text: name, fill: '#6e7781', font: '600 12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif' }
+      };
+    });
+    option.graphic = (option.graphic || []).concat(labels);
+  } catch(_) {}
   return option;
 }
 
@@ -287,8 +306,9 @@ export function renderMultiLineChartEcharts(container, data, options = {}) {
     // Replace only series and xAxis min/max to keep layout stable
     chart.setOption({
       xAxis: next.xAxis,
-      series: next.series
-    }, { replaceMerge: ['series'], lazyUpdate: true });
+      series: next.series,
+      graphic: next.graphic || []
+    }, { replaceMerge: ['series','graphic'], lazyUpdate: true });
     try {
       const baseLo = Number(merged.fromTs);
       const baseHi = Number(merged.toTs);
