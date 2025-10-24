@@ -20,6 +20,8 @@ import { initFlatpickr, initTimeControls } from "./ui-widgets.js";
 import { initTableInteractions } from "./table.js";
 import { initStickyFooter, initStickyHeader } from "./sticky-table-chrome.js";
 import { renderCoordinator } from "../rendering/render-coordinator.js";
+import { getCachedMetrics, putCachedMetrics } from "../data/metricsCache.js";
+import { toast } from "../ui/notify.js";
 
 export function initFilters(isStateLoaded) {
   const findButton = document.getElementById("findButton");
@@ -169,6 +171,8 @@ export function initFilters(isStateLoaded) {
         } catch(_) {}
         try { refreshFilterValues(); } catch(_) {}
         const base = buildFilterParams();
+        // Prefer zoom window if present
+        const zr = (typeof window !== 'undefined') ? window.__chartsZoomRange : null;
         const fmt = (ts) => {
           const d = new Date(ts);
           const p = (n) => String(n).padStart(2, '0');
@@ -182,37 +186,57 @@ export function initFilters(isStateLoaded) {
         };
         let fromStr = base.from;
         let toStr = base.to;
-        let useZoom = false; // always fetch full base range so panning is possible
-        const fromTs = new Date(fromStr.replace(' ', 'T') + 'Z').getTime();
-        const toTs = new Date(toStr.replace(' ', 'T') + 'Z').getTime();
-        if (!Number.isFinite(fromTs) || !Number.isFinite(toTs) || toTs <= fromTs) return;
-        // Choose granularity by selected interval
-        // For zoomed ranges (<= 1 day) always use 5m; for larger base ranges use 1h unless user explicitly selects 5m
-        const diffDays = (toTs - fromTs) / (24 * 3600e3);
-        const diffHours = (toTs - fromTs) / 3600e3;
-        const userWants5m = interval === '5m';
-        const userWants1h = interval === '1h';
+        let effFromTs = new Date(fromStr.replace(' ', 'T') + 'Z').getTime();
+        let effToTs = new Date(toStr.replace(' ', 'T') + 'Z').getTime();
+        if (zr && Number.isFinite(zr.fromTs) && Number.isFinite(zr.toTs) && zr.toTs > zr.fromTs) {
+          effFromTs = zr.fromTs; effToTs = zr.toTs;
+          // NOTE: do NOT override fromStr/toStr for the request; requests must use base filters
+        }
+        if (!Number.isFinite(effFromTs) || !Number.isFinite(effToTs) || effToTs <= effFromTs) {
+          try { if (typeof window !== 'undefined') window.__intervalFetchInFlight = false; } catch(_) {}
+          return;
+        }
+        // Choose granularity by selected interval based on EFFECTIVE window (zoom if present)
+        const diffDays = (effToTs - effFromTs) / (24 * 3600e3);
+        const diffHours = (effToTs - effFromTs) / 3600e3;
+        let effInterval = interval;
+        const userWants5m = effInterval === '5m';
+        const userWants1h = effInterval === '1h';
+        // Enforce rule: if > 5 days, block 5m and warn (English)
+        if (userWants5m && diffDays > 5.0001) {
+          try { toast('5-minute interval is available only for ranges up to 5 days. Switching to 1 hour.', { type: 'warning', duration: 3500 }); } catch(_) {}
+          effInterval = '1h';
+        }
+        // Persist chosen interval globally for backend hinting
+        try { if (typeof window !== 'undefined') window.__chartsCurrentInterval = effInterval; } catch(_) {}
         let gran = '5m';
-        // For very small ranges (<= 6 hours), always force 5m regardless of user selection
         if (diffHours <= 6) {
           gran = '5m';
-        } else if (userWants1h) {
+        } else if (userWants1h || effInterval === '1h') {
           gran = '1h';
-        } else if (userWants5m) {
+        } else if (userWants5m && effInterval === '5m') {
           gran = '5m';
         } else {
-          // Auto: choose based on range
           gran = diffDays <= 1.0 ? '5m' : '1h';
         }
-        // For very long non-zoomed ranges, force 1h to avoid data overload
-        if (gran === '5m' && diffDays > 5.0001 && !useZoom) gran = '1h';
-        const params = { ...base, from: fromStr, to: toStr, granularity: gran };
-        // Don't clear data - keep old chart visible during fetch
+        if (gran === '5m' && diffDays > 5.0001) gran = '1h';
+        // Build params using EFFECTIVE window (zoom if present)
+        const params = { ...base, from: fromStr, to: toStr, granularity: gran, __reverse: !!isReverseMode() };
+        // Try cache first
+        const cached = getCachedMetrics(params);
+        if (cached) {
+          setMetricsData(cached);
+          setAppStatus('success');
+          try { if (typeof window !== 'undefined') window.__intervalFetchInFlight = false; } catch(_) {}
+          return;
+        }
+        // No cache -> fetch
         setAppStatus('loading');
         const data = await fetchMetrics(params);
         if (data) {
           setMetricsData(data);
           setAppStatus('success');
+          try { putCachedMetrics(params, data); } catch(_) {}
         } else {
           setAppStatus('error');
         }
@@ -368,8 +392,7 @@ async function handleFindClick() {
         fetchParams.granularity = (ci === '5m') ? '5m' : '1h';
       }
     } catch(_) {}
-    // Clear chart zoom state so next render is full-range per inputs
-    try { window.__chartsZoomRange = null; } catch(_) {}
+    // Preserve current chart zoom state; Find fetch uses filter inputs only
     let usedZoom = false;
 
     // Persist original filters from inputs (including customer/supplier/destination)
@@ -378,13 +401,22 @@ async function handleFindClick() {
 
     // remember that last fetch did not use zoom
     try { window.__chartsUsedZoomForLastFetch = false; } catch(_) {}
-    const data = await fetchMetrics(fetchParams);
+    // Try cache before fetching
+    const cacheKeyParams = { ...fetchParams, __reverse: isReverseMode ? !!isReverseMode() : false };
+    const cached = getCachedMetrics(cacheKeyParams);
+    let data;
+    if (cached) {
+      data = cached;
+    } else {
+      data = await fetchMetrics(fetchParams);
+    }
 
     if (data) {
       // Set the new data first so appState:dataChanged fires before statusChanged
       setMetricsData(data);
       setAppStatus("success");
       saveStateToUrl();
+      try { if (!cached) putCachedMetrics(cacheKeyParams, data); } catch(_) {}
       // Explicitly ensure summary metrics are visible after data arrives
       try {
         const summary = document.getElementById("summaryMetrics");

@@ -7,6 +7,7 @@ import { getFilters, getMetricsData, getAppStatus, setUI } from '../state/appSta
 import { attachChartZoom } from '../charts/zoom/brushZoom.js';
 import { shapeChartPayload, intervalToStep } from '../charts/engine/timeSeriesEngine.js';
 import { parseUtc } from '../utils/date.js';
+import { toast } from '../ui/notify.js';
 
 async function whenReadyForCharts() {
   // Wait until charts-container and chart-area-1 appear in DOM (renderer may mount later)
@@ -475,7 +476,27 @@ export async function initD3Dashboard() {
       return;
     }
     if (intBtn) {
-      currentInterval = intBtn.dataset.interval;
+      const requested = intBtn.dataset.interval;
+      // Prefer zoom window for enforcement; fallback to base filters
+      try {
+        const zr = (typeof window !== 'undefined') ? window.__chartsZoomRange : null;
+        let fromTs, toTs;
+        if (zr && Number.isFinite(zr.fromTs) && Number.isFinite(zr.toTs) && zr.toTs > zr.fromTs) {
+          fromTs = zr.fromTs; toTs = zr.toTs;
+        } else {
+          const { from, to } = getFilters();
+          fromTs = parseUtc(from); toTs = parseUtc(to);
+        }
+        const diffDays = (toTs - fromTs) / (24 * 3600e3);
+        if (requested === '5m' && diffDays > 5.0001) {
+          try { toast('5-minute interval is available only for ranges up to 5 days. Switching to 1 hour.', { type: 'warning', duration: 3500 }); } catch(_) {}
+          currentInterval = '1h';
+        } else {
+          currentInterval = requested;
+        }
+      } catch(_) {
+        currentInterval = requested;
+      }
       try { if (typeof window !== 'undefined') window.__chartsCurrentInterval = currentInterval; } catch(_) {}
       setActive(currentType);
       // Do NOT render immediately to avoid using old granularity; wait for fresh data
@@ -494,6 +515,8 @@ export async function initD3Dashboard() {
     populateButtons(controls);
     controls.removeEventListener('click', onClick);
     controls.addEventListener('click', onClick);
+    // Reflect the current active type/interval immediately
+    setActive(currentType);
     cleanup();
     renderWhenMountReady(currentType);
     // Do not force visibility here; filters flow will manage UI via setUI
@@ -502,6 +525,7 @@ export async function initD3Dashboard() {
   // Render on 'success' only
   subscribe('appState:statusChanged', (status) => {
     if (status === 'success') {
+      setActive(currentType);
       try { cleanup(); } catch(_) {}
       renderWhenMountReady(currentType);
     }
@@ -510,6 +534,7 @@ export async function initD3Dashboard() {
   // When UI indicates charts should be visible, render if we have data
   subscribe('appState:uiChanged', (ui) => {
     if (ui && ui.showCharts) {
+      setActive(currentType);
       try { cleanup(); } catch(_) {}
       renderWhenMountReady(currentType);
     }

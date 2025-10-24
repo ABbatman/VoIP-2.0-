@@ -5,6 +5,7 @@
 
 /* global window */
 import * as echarts from 'echarts';
+import { toast } from '../ui/notify.js';
 
 export async function registerEchartsRenderers() {
   const { registerChart } = await import('./registry.js');
@@ -27,7 +28,7 @@ function ensureContainer(container) {
 function computeGrids(heightPx) {
   // 4 stacked panels with small gaps
   const topPad = 8;
-  const bottomPad = 26; // leave space for slider dataZoom
+  const bottomPad = 76; // leave more space for slider dataZoom (additional +10px lower)
   const gap = 8;
   const usable = Math.max(160, (heightPx || 600) - topPad - bottomPad - gap * 3);
   const h = Math.floor(usable / 4);
@@ -179,7 +180,7 @@ function buildMultiOption({ data, fromTs, toTs, height, interval, noFiveMinData 
         xAxisIndex: [0, 1, 2, 3],
         startValue: startVal,
         endValue: endVal,
-        height: 16,
+        height: 32, // double thickness
         bottom: 6,
         throttle: 80,
       }
@@ -257,6 +258,25 @@ export function renderMultiLineChartEcharts(container, data, options = {}) {
     try {
       if (zr) {
         window.__chartsZoomRange = zr;
+        // If current interval is 5m and zoom window exceeds 5 days, switch to 1h with a toast
+        try {
+          const diffDays = (zr.toTs - zr.fromTs) / (24 * 3600e3);
+          const curInt = (typeof window !== 'undefined' && window.__chartsCurrentInterval) ? String(window.__chartsCurrentInterval) : '5m';
+          if (curInt === '5m' && Number.isFinite(diffDays) && diffDays > 5.0001) {
+            const now = Date.now();
+            const last = window.__zoomPolicyLastSwitchTs || 0;
+            if (now - last > 600) {
+              window.__zoomPolicyLastSwitchTs = now;
+              try { toast('5-minute interval is available only for ranges up to 5 days. Switching to 1 hour.', { type: 'warning', duration: 3500 }); } catch(_) {}
+              try { window.__chartsCurrentInterval = '1h'; } catch(_) {}
+              try {
+                import('../state/eventBus.js').then(({ publish }) => {
+                  try { publish('charts:intervalChanged', { interval: '1h' }); } catch(_) {}
+                }).catch(() => {});
+              } catch(_) {}
+            }
+          }
+        } catch(_) {}
       }
     } catch(_) {}
   });
