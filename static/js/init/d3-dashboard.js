@@ -224,21 +224,26 @@ export async function initD3Dashboard() {
     if (!renderer) { try { console.error('[charts] renderer not found for type', type); } catch(_) {} return; }
     let stepMs = intervalToStep(currentInterval);
 
-    // Read global filters for date range using shared parser
+    // Read base filters for full data range
     const { from, to } = getFilters();
-    // If a zoom selection exists, use it for chart rendering (do not alter filters)
+    const baseFromTs = parseUtc(from);
+    const baseToTs = parseUtc(to);
+    // If a zoom exists, use it only for initial visible window, not for data shaping
     const zr = (typeof window !== 'undefined' && window.__chartsZoomRange) ? window.__chartsZoomRange : null;
-    let fromTs = zr && Number.isFinite(zr.fromTs) ? zr.fromTs : parseUtc(from);
-    let toTs = zr && Number.isFinite(zr.toTs) ? zr.toTs : parseUtc(to);
+    let viewFromTs = zr && Number.isFinite(zr.fromTs) ? zr.fromTs : baseFromTs;
+    let viewToTs = zr && Number.isFinite(zr.toTs) ? zr.toTs : baseToTs;
     const now = Date.now();
     // Fallbacks: last 24h if range not set
-    if (isNaN(fromTs) || isNaN(toTs) || fromTs >= toTs) {
-      toTs = now;
-      fromTs = toTs - 24 * 3600e3;
+    if (isNaN(baseFromTs) || isNaN(baseToTs) || baseFromTs >= baseToTs) {
+      // fallback base range
+      const toDef = now;
+      const fromDef = toDef - 24 * 3600e3;
+      viewFromTs = fromDef;
+      viewToTs = toDef;
     }
     try {
-      const diffDays = (toTs - fromTs) / (24 * 3600e3);
-      const diffHours = (toTs - fromTs) / 3600e3;
+      const diffDays = (viewToTs - viewFromTs) / (24 * 3600e3);
+      const diffHours = (viewToTs - viewFromTs) / 3600e3;
       const hasZoom = !!(zr && Number.isFinite(zr.fromTs) && Number.isFinite(zr.toTs) && zr.toTs > zr.fromTs);
       if (diffHours <= 6 && currentInterval !== '5m') {
         currentInterval = '5m';
@@ -277,7 +282,21 @@ export async function initD3Dashboard() {
     // For 5m: use raw points (no binning). Otherwise: use engine shaping (binning).
     const m = getMount();
     if (!m) { try { console.warn('[charts] mount not found at render time'); } catch(_) {} return; }
-    if (currentInterval === '5m' && useFive) {
+    if (currentInterval === '5m') {
+      if (!useFive) {
+        // Fallback: no 5m rows available -> use engine shaping with 5m bins from hourly rows
+        const fiveStep = intervalToStep('5m');
+        const { data: shapedData, options: shapedOptions } = shapeChartPayload(rows || [], {
+          type,
+          fromTs: baseFromTs,
+          toTs: baseToTs,
+          stepMs: fiveStep,
+          height: fixedH,
+        });
+        const mergedOptions = { ...shapedOptions, stepMs: fiveStep, interval: '5m', noFiveMinData: true };
+        renderer(m, shapedData, mergedOptions);
+        return;
+      }
       const parseRowTs = (raw) => {
         if (raw instanceof Date) return raw.getTime();
         if (typeof raw === 'number') return raw;
@@ -290,7 +309,7 @@ export async function initD3Dashboard() {
         }
         return NaN;
       };
-      const inRange = (t) => Number.isFinite(t) && t >= fromTs && t <= toTs;
+      const inRange = (t) => Number.isFinite(t) && t >= baseFromTs && t <= baseToTs;
       const toNum = (v) => { const n = Number(v); return Number.isFinite(n) ? n : null; };
       // Aggregate by exact timestamp to avoid multiple points with same X (vertical spikes)
       const agg = new Map(); // t(ms) -> { t, tcall, minutes, asrSum, acdSum, asrCnt, acdCnt }
@@ -335,14 +354,14 @@ export async function initD3Dashboard() {
         Minutes: fillLinear(pts.map(p => ({ x: p.t, y: p.minutes }))),
         ACD: fillLinear(pts.map(p => ({ x: p.t, y: p.acdCnt ? (p.acdSum / p.acdCnt) : 0 }))),
       };
-      const rawOptions = { height: fixedH, fromTs, toTs, noDefined: true, stepMs, interval: currentInterval };
+      const rawOptions = { height: fixedH, fromTs: baseFromTs, toTs: baseToTs, noDefined: true, stepMs, interval: currentInterval, noFiveMinData: false };
       renderer(m, rawData, rawOptions);
     } else {
       // Thin-facade: delegate shaping to the engine (binning)
       const { data: shapedData, options: shapedOptions } = shapeChartPayload(rows || [], {
         type,
-        fromTs,
-        toTs,
+        fromTs: baseFromTs,
+        toTs: baseToTs,
         stepMs,
         height: fixedH,
       });
@@ -373,8 +392,8 @@ export async function initD3Dashboard() {
       const useEcharts = (typeof window !== 'undefined') && !!window.__chartsUseEcharts;
       if (!useEcharts) {
         const zoomCleanup = attachChartZoom(m, {
-          fromTs,
-          toTs,
+          fromTs: baseFromTs,
+          toTs: baseToTs,
           onApplyRange: () => {
             // Smooth transition for zoom and rollback
             const el = getMount() || m;

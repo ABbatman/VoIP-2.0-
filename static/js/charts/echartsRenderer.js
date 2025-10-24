@@ -52,14 +52,15 @@ function toPairs(arr) {
     .filter(p => Number.isFinite(p[0]));
 }
 
-function seriesLine(name, data, xAxisIndex, yAxisIndex, color, { area = false, smooth = false, connectNulls = false } = {}) {
+function seriesLine(name, data, xAxisIndex, yAxisIndex, color, { area = false, smooth = false, connectNulls = false, showSymbol = false, sampling = 'lttb' } = {}) {
   return {
     name,
     type: 'line',
     xAxisIndex,
     yAxisIndex,
-    showSymbol: false,
-    sampling: 'lttb',
+    showSymbol: !!showSymbol,
+    ...(sampling && sampling !== 'none' ? { sampling } : {}),
+    symbolSize: showSymbol ? 4 : 0,
     connectNulls: !!connectNulls,
     smooth: !!smooth,
     lineStyle: { width: 1.8, color },
@@ -69,10 +70,12 @@ function seriesLine(name, data, xAxisIndex, yAxisIndex, color, { area = false, s
   };
 }
 
-function buildMultiOption({ data, fromTs, toTs, height, interval }) {
+function buildMultiOption({ data, fromTs, toTs, height, interval, noFiveMinData }) {
   const grids = computeGrids(height);
+  const minX = Number.isFinite(fromTs) ? Number(fromTs) : null;
+  const maxX = Number.isFinite(toTs) ? Number(toTs) : null;
   const xAxes = grids.map((g, i) => ({
-    type: 'time', gridIndex: i, min: fromTs || null, max: toTs || null,
+    type: 'time', gridIndex: i, min: minX, max: maxX,
     axisLabel: { color: '#6e7781' }, axisLine: { lineStyle: { color: '#888' } }, axisTick: { alignWithLabel: true },
   }));
 
@@ -88,10 +91,49 @@ function buildMultiOption({ data, fromTs, toTs, height, interval }) {
   };
 
   // Do not connect across gaps: always keep connectNulls false to prevent bridging disjoint segments
-  const tcalls = seriesLine('TCalls', toPairs(data?.TCalls), 0, 0, colors.TCalls, { area: true, smooth: true, connectNulls: false });
-  const asr = seriesLine('ASR', toPairs(data?.ASR), 1, 1, colors.ASR, { area: false, smooth: false, connectNulls: false });
-  const minutes = seriesLine('Minutes', toPairs(data?.Minutes), 2, 2, colors.Minutes, { area: false, smooth: false, connectNulls: false });
-  const acd = seriesLine('ACD', toPairs(data?.ACD), 3, 3, colors.ACD, { area: false, smooth: false, connectNulls: false });
+  const conn = !!noFiveMinData;
+  const symb = !!noFiveMinData;
+  const samp = symb ? 'none' : 'lttb';
+  const tcalls = seriesLine('TCalls', toPairs(data?.TCalls), 0, 0, colors.TCalls, { area: true, smooth: true, connectNulls: conn, showSymbol: symb, sampling: samp });
+  const asr = seriesLine('ASR', toPairs(data?.ASR), 1, 1, colors.ASR, { area: false, smooth: false, connectNulls: conn, showSymbol: symb, sampling: samp });
+  const minutes = seriesLine('Minutes', toPairs(data?.Minutes), 2, 2, colors.Minutes, { area: false, smooth: false, connectNulls: conn, showSymbol: symb, sampling: samp });
+  const acd = seriesLine('ACD', toPairs(data?.ACD), 3, 3, colors.ACD, { area: false, smooth: false, connectNulls: conn, showSymbol: symb, sampling: samp });
+
+  let startVal = fromTs || null;
+  let endVal = toTs || null;
+  try {
+    const zr = (typeof window !== 'undefined') ? window.__chartsZoomRange : null;
+    if (zr && Number.isFinite(zr.fromTs) && Number.isFinite(zr.toTs) && zr.toTs > zr.fromTs) {
+      const lo = Number(fromTs);
+      const hi = Number(toTs);
+      const clamp = (v) => Number.isFinite(lo) && Number.isFinite(hi) ? Math.max(lo, Math.min(hi, v)) : v;
+      startVal = clamp(zr.fromTs);
+      endVal = clamp(zr.toTs);
+    } else {
+      const wantPanInit = (typeof window !== 'undefined') && !!window.__chartsPanInit;
+      const total = (Number(toTs) - Number(fromTs));
+      if (wantPanInit && Number.isFinite(total) && total > 0) {
+        let span = 0;
+        if (interval === '5m') {
+          span = Math.min(total, 24 * 3600e3);
+        } else if (interval === '1h') {
+          span = Math.min(total, 7 * 24 * 3600e3);
+        } else {
+          span = Math.min(total, Math.max(Math.floor(total / 4), 7 * 24 * 3600e3));
+        }
+        startVal = Math.max(Number(fromTs), Number(toTs) - span);
+        endVal = Number(toTs);
+        try { window.__chartsPanInit = false; } catch(_) {}
+      }
+    }
+  } catch(_) {}
+  // Fallback safety: ensure start < end and both finite; else drop to base domain
+  try {
+    if (!(Number.isFinite(startVal) && Number.isFinite(endVal) && endVal > startVal)) {
+      startVal = Number.isFinite(fromTs) ? Number(fromTs) : null;
+      endVal = Number.isFinite(toTs) ? Number(toTs) : null;
+    }
+  } catch(_) {}
 
   const option = {
     animation: true,
@@ -122,15 +164,21 @@ function buildMultiOption({ data, fromTs, toTs, height, interval }) {
       {
         type: 'inside',
         xAxisIndex: [0, 1, 2, 3],
+        startValue: startVal,
+        endValue: endVal,
         // Reduce update frequency for wheel to feel smoother and less jittery
         throttle: 80,
         // Keep wheel as zoom, but avoid panning on wheel which often feels "too fast"
-        zoomOnMouseWheel: true,
+        zoomOnMouseWheel: 'shift',
         moveOnMouseWheel: false,
+        moveOnMouseMove: true,
+        brushSelect: false,
       },
       {
         type: 'slider',
         xAxisIndex: [0, 1, 2, 3],
+        startValue: startVal,
+        endValue: endVal,
         height: 16,
         bottom: 6,
         throttle: 80,
@@ -143,6 +191,10 @@ function buildMultiOption({ data, fromTs, toTs, height, interval }) {
 
 export function renderMultiLineChartEcharts(container, data, options = {}) {
   const el = ensureContainer(container);
+  try {
+    const existing = echarts.getInstanceByDom(el);
+    if (existing) existing.dispose();
+  } catch(_) {}
   const chart = echarts.init(el);
 
   const base = {
@@ -150,9 +202,64 @@ export function renderMultiLineChartEcharts(container, data, options = {}) {
     toTs: options.toTs || null,
     height: options.height || (el.clientHeight || 600),
     interval: options.interval || (options.stepMs === 5 * 60e3 ? '5m' : (options.stepMs === 3600e3 ? '1h' : undefined)),
+    noFiveMinData: !!options.noFiveMinData,
   };
   const option = buildMultiOption({ data, ...base });
   chart.setOption(option, { notMerge: true, lazyUpdate: true });
+
+  try {
+    const applyZoom = () => {
+      const baseLo = Number(base.fromTs);
+      const baseHi = Number(base.toTs);
+      const zr = (typeof window !== 'undefined') ? window.__chartsZoomRange : null;
+      const clamp = (v) => (Number.isFinite(baseLo) && Number.isFinite(baseHi)) ? Math.max(baseLo, Math.min(baseHi, v)) : v;
+      let sv = Number.isFinite(zr?.fromTs) ? clamp(Number(zr.fromTs)) : baseLo;
+      let ev = Number.isFinite(zr?.toTs) ? clamp(Number(zr.toTs)) : baseHi;
+      if (base.interval === '5m' && base.noFiveMinData) {
+        const minSpan = 2 * 3600e3; // 2h
+        if (Number.isFinite(sv) && Number.isFinite(ev) && (ev - sv) < minSpan) {
+          const mid = (sv + ev) / 2;
+          sv = clamp(mid - minSpan / 2);
+          ev = clamp(mid + minSpan / 2);
+        }
+      }
+      if (Number.isFinite(sv) && Number.isFinite(ev) && ev > sv) {
+        chart.setOption({ dataZoom: [ { startValue: sv, endValue: ev }, { startValue: sv, endValue: ev } ] }, { lazyUpdate: true });
+        try {
+          const dz = (chart.getOption()?.dataZoom) || [];
+          dz.forEach((_, idx) => {
+            chart.dispatchAction({ type: 'dataZoom', dataZoomIndex: idx, startValue: sv, endValue: ev });
+          });
+        } catch(_) {}
+      }
+    };
+    // Delay to ensure option applied
+    requestAnimationFrame(() => setTimeout(applyZoom, 0));
+  } catch(_) {}
+
+  const getZoomRange = () => {
+    try {
+      const model = chart.getModel();
+      const xa = model && model.getComponent('xAxis', 0);
+      const scale = xa && xa.axis && xa.axis.scale;
+      if (scale && typeof scale.getExtent === 'function') {
+        const ext = scale.getExtent();
+        const fromTs = Math.floor(ext[0]);
+        const toTs = Math.ceil(ext[1]);
+        if (Number.isFinite(fromTs) && Number.isFinite(toTs) && toTs > fromTs) return { fromTs, toTs };
+      }
+    } catch(_) {}
+    return null;
+  };
+
+  chart.on('dataZoom', () => {
+    const zr = getZoomRange();
+    try {
+      if (zr) {
+        window.__chartsZoomRange = zr;
+      }
+    } catch(_) {}
+  });
 
   function update(newData = data, newOptions = {}) {
     const merged = { ...base, ...newOptions };
@@ -162,6 +269,23 @@ export function renderMultiLineChartEcharts(container, data, options = {}) {
       xAxis: next.xAxis,
       series: next.series
     }, { replaceMerge: ['series'], lazyUpdate: true });
+    try {
+      const baseLo = Number(merged.fromTs);
+      const baseHi = Number(merged.toTs);
+      const zr = (typeof window !== 'undefined') ? window.__chartsZoomRange : null;
+      const clamp = (v) => (Number.isFinite(baseLo) && Number.isFinite(baseHi)) ? Math.max(baseLo, Math.min(baseHi, v)) : v;
+      let sv = Number.isFinite(zr?.fromTs) ? clamp(Number(zr.fromTs)) : baseLo;
+      let ev = Number.isFinite(zr?.toTs) ? clamp(Number(zr.toTs)) : baseHi;
+      if (Number.isFinite(sv) && Number.isFinite(ev) && ev > sv) {
+        chart.setOption({ dataZoom: [ { startValue: sv, endValue: ev }, { startValue: sv, endValue: ev } ] }, { lazyUpdate: true });
+        try {
+          const dz = (chart.getOption()?.dataZoom) || [];
+          dz.forEach((_, idx) => {
+            chart.dispatchAction({ type: 'dataZoom', dataZoomIndex: idx, startValue: sv, endValue: ev });
+          });
+        } catch(_) {}
+      }
+    } catch(_) {}
   }
 
   function dispose() { try { chart.dispose(); } catch (_) {} }

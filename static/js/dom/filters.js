@@ -182,15 +182,7 @@ export function initFilters(isStateLoaded) {
         };
         let fromStr = base.from;
         let toStr = base.to;
-        let useZoom = false;
-        try {
-          const zr = window.__chartsZoomRange;
-          if (zr && Number.isFinite(zr.fromTs) && Number.isFinite(zr.toTs) && zr.toTs > zr.fromTs) {
-            fromStr = fmt(zr.fromTs);
-            toStr = fmt(zr.toTs);
-            useZoom = true;
-          }
-        } catch(_) {}
+        let useZoom = false; // always fetch full base range so panning is possible
         const fromTs = new Date(fromStr.replace(' ', 'T') + 'Z').getTime();
         const toTs = new Date(toStr.replace(' ', 'T') + 'Z').getTime();
         if (!Number.isFinite(fromTs) || !Number.isFinite(toTs) || toTs <= fromTs) return;
