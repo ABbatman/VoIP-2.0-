@@ -15,6 +15,39 @@ export async function registerEchartsRenderers() {
   registerChart('heatmap', renderHeatmapEcharts);
 }
 
+function buildPrevDayPairs(pairs, dayMs) {
+  try {
+    if (!Array.isArray(pairs) || pairs.length === 0) return [];
+    const map = new Map();
+    for (const [t, y] of pairs) { if (y != null && !isNaN(y)) map.set(Number(t), Number(y)); }
+    const out = [];
+    for (const [t, _y] of pairs) {
+      const yPrev = map.get(Number(t) - dayMs);
+      if (yPrev == null || isNaN(yPrev)) continue;
+      out.push([Number(t), yPrev]);
+    }
+    return out;
+  } catch(_) { return []; }
+}
+
+function withGapBreaks(pairs, stepMs) {
+  try {
+    if (!Array.isArray(pairs) || pairs.length === 0 || !Number.isFinite(stepMs)) return pairs || [];
+    const sorted = [...pairs].sort((a,b) => a[0] - b[0]);
+    const out = [];
+    let prevT = null;
+    for (const [t, y] of sorted) {
+      if (prevT != null && (t - prevT) > stepMs * 1.5) {
+        // insert a null to break the line
+        out.push([prevT + stepMs, null]);
+      }
+      out.push([t, y]);
+      prevT = t;
+    }
+    return out;
+  } catch(_) { return pairs || []; }
+}
+
 function ensureContainer(container) {
   if (typeof container === 'string') {
     const el = document.querySelector(container);
@@ -53,7 +86,7 @@ function toPairs(arr) {
     .filter(p => Number.isFinite(p[0]));
 }
 
-function seriesLine(name, data, xAxisIndex, yAxisIndex, color, { area = false, smooth = false, connectNulls = false, showSymbol = false, sampling = 'lttb' } = {}) {
+function seriesLine(name, data, xAxisIndex, yAxisIndex, color, { area = false, smooth = false, smoothMonotone = undefined, connectNulls = false, showSymbol = false, sampling = 'lttb' } = {}) {
   return {
     name,
     type: 'line',
@@ -63,7 +96,8 @@ function seriesLine(name, data, xAxisIndex, yAxisIndex, color, { area = false, s
     ...(sampling && sampling !== 'none' ? { sampling } : {}),
     symbolSize: showSymbol ? 4 : 0,
     connectNulls: !!connectNulls,
-    smooth: !!smooth,
+    smooth: (typeof smooth === 'number' ? smooth : !!smooth),
+    ...(smoothMonotone ? { smoothMonotone } : {}),
     lineStyle: { width: 1.8, color },
     areaStyle: area ? { opacity: 0.15, color } : undefined,
     data,
@@ -98,12 +132,40 @@ function buildMultiOption({ data, fromTs, toTs, height, interval, noFiveMinData 
 
   // Do not connect across gaps: always keep connectNulls false to prevent bridging disjoint segments
   const conn = !!noFiveMinData;
-  const symb = !!noFiveMinData;
-  const samp = symb ? 'none' : 'lttb';
-  const tcalls = seriesLine('TCalls', toPairs(data?.TCalls), 0, 0, colors.TCalls, { area: true, smooth: true, connectNulls: conn, showSymbol: symb, sampling: samp });
-  const asr = seriesLine('ASR', toPairs(data?.ASR), 1, 1, colors.ASR, { area: false, smooth: false, connectNulls: conn, showSymbol: symb, sampling: samp });
-  const minutes = seriesLine('Minutes', toPairs(data?.Minutes), 2, 2, colors.Minutes, { area: false, smooth: false, connectNulls: conn, showSymbol: symb, sampling: samp });
-  const acd = seriesLine('ACD', toPairs(data?.ACD), 3, 3, colors.ACD, { area: false, smooth: false, connectNulls: conn, showSymbol: symb, sampling: samp });
+  const symb = !!noFiveMinData; // show symbols when data is sparse
+  const is5m = interval === '5m';
+  // Use LTTB sampling to align with dataZoom's dataShadow behavior for all dense cases
+  const samp = (symb ? 'none' : 'lttb');
+  const smoothVal = is5m ? 0.35 : true;
+  const smoothMono = is5m ? 'x' : undefined;
+
+  const pairsT = toPairs(data?.TCalls);
+  const pairsA = toPairs(data?.ASR);
+  const pairsM = toPairs(data?.Minutes);
+  const pairsC = toPairs(data?.ACD);
+
+  const tcalls = seriesLine('TCalls', pairsT, 0, 0, colors.TCalls, { area: true, smooth: smoothVal, smoothMonotone: smoothMono, connectNulls: conn, showSymbol: symb, sampling: samp });
+  const asr = seriesLine('ASR', pairsA, 1, 1, colors.ASR, { area: true, smooth: smoothVal, smoothMonotone: smoothMono, connectNulls: conn, showSymbol: symb, sampling: samp });
+  const minutes = seriesLine('Minutes', pairsM, 2, 2, colors.Minutes, { area: true, smooth: smoothVal, smoothMonotone: smoothMono, connectNulls: conn, showSymbol: symb, sampling: samp });
+  const acd = seriesLine('ACD', pairsC, 3, 3, colors.ACD, { area: true, smooth: smoothVal, smoothMonotone: smoothMono, connectNulls: conn, showSymbol: symb, sampling: samp });
+  // ensure colored series are above overlays
+  tcalls.z = 3; asr.z = 3; minutes.z = 3; acd.z = 3;
+
+  // Prev-24h gray overlays (only for timestamps where previous day data exists)
+  const dayMs = 24 * 3600e3;
+  const stepMs = (interval === '5m') ? 5 * 60e3 : (interval === '1h' ? 3600e3 : 24 * 3600e3);
+  const prevColor = 'rgba(140,148,156,0.85)';
+  const tcallsPrev = seriesLine('TCalls -24h', withGapBreaks(buildPrevDayPairs(pairsT, dayMs), stepMs), 0, 0, prevColor, { area: false, smooth: smoothVal, smoothMonotone: smoothMono, connectNulls: false, showSymbol: false, sampling: samp });
+  const asrPrev = seriesLine('ASR -24h', withGapBreaks(buildPrevDayPairs(pairsA, dayMs), stepMs), 1, 1, prevColor, { area: false, smooth: smoothVal, smoothMonotone: smoothMono, connectNulls: false, showSymbol: false, sampling: samp });
+  const minutesPrev = seriesLine('Minutes -24h', withGapBreaks(buildPrevDayPairs(pairsM, dayMs), stepMs), 2, 2, prevColor, { area: false, smooth: smoothVal, smoothMonotone: smoothMono, connectNulls: false, showSymbol: false, sampling: samp });
+  const acdPrev = seriesLine('ACD -24h', withGapBreaks(buildPrevDayPairs(pairsC, dayMs), stepMs), 3, 3, prevColor, { area: false, smooth: smoothVal, smoothMonotone: smoothMono, connectNulls: false, showSymbol: false, sampling: samp });
+  // overlays under colored
+  tcallsPrev.z = 1; asrPrev.z = 1; minutesPrev.z = 1; acdPrev.z = 1;
+  // exclude prev-day overlays from tooltip/interaction
+  tcallsPrev.tooltip = { show: false }; tcallsPrev.silent = true;
+  asrPrev.tooltip = { show: false }; asrPrev.silent = true;
+  minutesPrev.tooltip = { show: false }; minutesPrev.silent = true;
+  acdPrev.tooltip = { show: false }; acdPrev.silent = true;
 
   let startVal = fromTs || null;
   let endVal = toTs || null;
@@ -162,7 +224,10 @@ function buildMultiOption({ data, fromTs, toTs, height, interval, noFiveMinData 
         if (!Array.isArray(params) || params.length === 0) return '';
         const header = params[0].axisValueLabel || '';
         const fmt = (v) => (v == null || isNaN(v) ? '-' : (Math.round(Number(v) * 10) / 10).toFixed(1));
-        const lines = params.map(p => `${p.marker} ${p.seriesName}: ${fmt(p.data && Array.isArray(p.data) ? p.data[1] : p.value?.[1] ?? p.value)}`);
+        // show only current series (exclude prev-day overlays)
+        const lines = params
+          .filter(p => typeof p.seriesName === 'string' && !/\-24h$/.test(p.seriesName))
+          .map(p => `${p.marker} ${p.seriesName}: ${fmt(p.data && Array.isArray(p.data) ? p.data[1] : p.value?.[1] ?? p.value)}`);
         return [header, ...lines].join('<br/>');
       }
     },
@@ -182,15 +247,22 @@ function buildMultiOption({ data, fromTs, toTs, height, interval, noFiveMinData 
       },
       {
         type: 'slider',
-        xAxisIndex: [0, 1, 2, 3],
+        // Use only the first xAxis (TCalls) for slider preview to ensure matching shadow
+        xAxisIndex: 0,
         startValue: startVal,
         endValue: endVal,
         height: 32, // double thickness
         bottom: 6,
         throttle: 80,
+        showDataShadow: true,
+        dataBackground: {
+          lineStyle: { color: '#2f6feb', width: 1 },
+          areaStyle: { color: 'rgba(47,111,235,0.18)' }
+        }
       }
     ],
-    series: [tcalls, asr, minutes, acd],
+    // Ensure dataZoom preview (blue area) uses first series (TCalls)
+    series: [tcalls, tcallsPrev, asrPrev, minutesPrev, acdPrev, asr, minutes, acd],
   };
   // Place custom labels above their own panel and just under the previous panel (between panels)
   try {
