@@ -15,6 +15,41 @@ export async function registerEchartsRenderers() {
   registerChart('heatmap', renderHeatmapEcharts);
 }
 
+function findPrevWithin(pairs, ts, maxDelta) {
+  try {
+    if (!Array.isArray(pairs) || pairs.length === 0) return null;
+    // binary search for rightmost index with t <= ts
+    let lo = 0, hi = pairs.length - 1, ans = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      const t = Number(pairs[mid][0]);
+      if (t <= ts) { ans = mid; lo = mid + 1; } else { hi = mid - 1; }
+    }
+    if (ans === -1) return null;
+    const t = Number(pairs[ans][0]);
+    const y = pairs[ans][1];
+    if (y == null || isNaN(y)) return null;
+    if (!Number.isFinite(maxDelta)) return Number(y);
+    return (ts - t) <= maxDelta ? Number(y) : null;
+  } catch(_) { return null; }
+}
+
+function makeGrid(pairs, fromTs, toTs, stepMs) {
+  try {
+    if (!Array.isArray(pairs)) pairs = [];
+    const map = new Map();
+    for (const [t, y] of pairs) { map.set(Number(t), (y == null || isNaN(y)) ? null : Number(y)); }
+    const start = Math.floor(Number(fromTs) / stepMs) * stepMs;
+    const end = Math.ceil(Number(toTs) / stepMs) * stepMs;
+    const out = [];
+    for (let t = start; t <= end; t += stepMs) {
+      const v = map.has(t) ? map.get(t) : null;
+      out.push([t, v]);
+    }
+    return out;
+  } catch(_) { return pairs || []; }
+}
+
 function buildPrevDayPairs(pairs, dayMs) {
   try {
     if (!Array.isArray(pairs) || pairs.length === 0) return [];
@@ -37,15 +72,26 @@ function withGapBreaks(pairs, stepMs) {
     const out = [];
     let prevT = null;
     for (const [t, y] of sorted) {
-      if (prevT != null && (t - prevT) > stepMs * 1.5) {
-        // insert a null to break the line
-        out.push([prevT + stepMs, null]);
+      const is5m = stepMs <= 5 * 60e3;
+      const diff = prevT == null ? 0 : (t - prevT);
+      const approxHourJump = is5m && Math.abs(diff - 3600e3) <= 3 * stepMs; // tolerate DST-like 1h jump
+      const thr = stepMs * (is5m ? 9 : 2.2); // be much more tolerant for 5m
+      if (prevT != null && !approxHourJump && diff > thr) {
+        // break exactly at current boundary
+        out.push([t, null]);
       }
       out.push([t, y]);
       prevT = t;
     }
     return out;
   } catch(_) { return pairs || []; }
+}
+
+function shiftForwardPairs(pairs, deltaMs) {
+  try {
+    if (!Array.isArray(pairs) || pairs.length === 0 || !Number.isFinite(deltaMs)) return [];
+    return pairs.map(([t, y]) => [Number(t) + deltaMs, y]);
+  } catch(_) { return []; }
 }
 
 function ensureContainer(container) {
@@ -107,11 +153,14 @@ function seriesLine(name, data, xAxisIndex, yAxisIndex, color, { area = false, s
 
 function buildMultiOption({ data, fromTs, toTs, height, interval, noFiveMinData }) {
   const grids = computeGrids(height);
+  const dayMs = 24 * 3600e3;
   const minX = Number.isFinite(fromTs) ? Number(fromTs) : null;
-  const maxX = Number.isFinite(toTs) ? Number(toTs) : null;
+  const baseMaxX = Number.isFinite(toTs) ? Number(toTs) : null;
+  const maxX = baseMaxX == null ? null : (baseMaxX + dayMs);
   const xAxes = grids.map((g, i) => ({
     type: 'time', gridIndex: i, min: minX, max: maxX,
     axisLabel: { color: '#6e7781' }, axisLine: { lineStyle: { color: '#888' } }, axisTick: { alignWithLabel: true },
+    axisPointer: { show: true, snap: true, triggerTooltip: true }
   }));
 
   const axisNames = ['TCalls', 'ASR', 'Minutes', 'ACD'];
@@ -134,15 +183,17 @@ function buildMultiOption({ data, fromTs, toTs, height, interval, noFiveMinData 
   const conn = !!noFiveMinData;
   const symb = !!noFiveMinData; // show symbols when data is sparse
   const is5m = interval === '5m';
-  // Use LTTB sampling to align with dataZoom's dataShadow behavior for all dense cases
+  // Use LTTB sampling to preserve shape without losing key points
   const samp = (symb ? 'none' : 'lttb');
   const smoothVal = is5m ? 0.35 : true;
   const smoothMono = is5m ? 'x' : undefined;
 
-  const pairsT = toPairs(data?.TCalls);
-  const pairsA = toPairs(data?.ASR);
-  const pairsM = toPairs(data?.Minutes);
-  const pairsC = toPairs(data?.ACD);
+  const stepMs = (interval === '5m') ? 5 * 60e3 : (interval === '1h' ? 3600e3 : 24 * 3600e3);
+  // Keep original pairs for rendering (avoid gridding regressions)
+  const pairsT = toPairs(data?.TCalls).sort((a,b) => a[0]-b[0]);
+  const pairsA = toPairs(data?.ASR).sort((a,b) => a[0]-b[0]);
+  const pairsM = toPairs(data?.Minutes).sort((a,b) => a[0]-b[0]);
+  const pairsC = toPairs(data?.ACD).sort((a,b) => a[0]-b[0]);
 
   const tcalls = seriesLine('TCalls', pairsT, 0, 0, colors.TCalls, { area: true, smooth: smoothVal, smoothMonotone: smoothMono, connectNulls: conn, showSymbol: symb, sampling: samp });
   const asr = seriesLine('ASR', pairsA, 1, 1, colors.ASR, { area: true, smooth: smoothVal, smoothMonotone: smoothMono, connectNulls: conn, showSymbol: symb, sampling: samp });
@@ -151,14 +202,21 @@ function buildMultiOption({ data, fromTs, toTs, height, interval, noFiveMinData 
   // ensure colored series are above overlays
   tcalls.z = 3; asr.z = 3; minutes.z = 3; acd.z = 3;
 
-  // Prev-24h gray overlays (only for timestamps where previous day data exists)
-  const dayMs = 24 * 3600e3;
-  const stepMs = (interval === '5m') ? 5 * 60e3 : (interval === '1h' ? 3600e3 : 24 * 3600e3);
+  // Prev-24h gray overlays (shifted forward by 24h)
   const prevColor = 'rgba(140,148,156,0.85)';
-  const tcallsPrev = seriesLine('TCalls -24h', withGapBreaks(buildPrevDayPairs(pairsT, dayMs), stepMs), 0, 0, prevColor, { area: false, smooth: smoothVal, smoothMonotone: smoothMono, connectNulls: false, showSymbol: false, sampling: samp });
-  const asrPrev = seriesLine('ASR -24h', withGapBreaks(buildPrevDayPairs(pairsA, dayMs), stepMs), 1, 1, prevColor, { area: false, smooth: smoothVal, smoothMonotone: smoothMono, connectNulls: false, showSymbol: false, sampling: samp });
-  const minutesPrev = seriesLine('Minutes -24h', withGapBreaks(buildPrevDayPairs(pairsM, dayMs), stepMs), 2, 2, prevColor, { area: false, smooth: smoothVal, smoothMonotone: smoothMono, connectNulls: false, showSymbol: false, sampling: samp });
-  const acdPrev = seriesLine('ACD -24h', withGapBreaks(buildPrevDayPairs(pairsC, dayMs), stepMs), 3, 3, prevColor, { area: false, smooth: smoothVal, smoothMonotone: smoothMono, connectNulls: false, showSymbol: false, sampling: samp });
+  // Build overlays by shifting source series forward by 24h
+  const prevSamp = is5m ? 'none' : samp;
+  const prevConn = is5m ? true : false;
+  const tcallsPrev = seriesLine('TCalls -24h', withGapBreaks(shiftForwardPairs(pairsT, dayMs), stepMs), 0, 0, prevColor, { area: false, smooth: smoothVal, smoothMonotone: smoothMono, connectNulls: prevConn, showSymbol: false, sampling: prevSamp });
+  const asrPrev = seriesLine('ASR -24h', withGapBreaks(shiftForwardPairs(pairsA, dayMs), stepMs), 1, 1, prevColor, { area: false, smooth: smoothVal, smoothMonotone: smoothMono, connectNulls: prevConn, showSymbol: false, sampling: prevSamp });
+  const minutesPrev = seriesLine('Minutes -24h', withGapBreaks(shiftForwardPairs(pairsM, dayMs), stepMs), 2, 2, prevColor, { area: false, smooth: smoothVal, smoothMonotone: smoothMono, connectNulls: prevConn, showSymbol: false, sampling: prevSamp });
+  const acdPrev = seriesLine('ACD -24h', withGapBreaks(shiftForwardPairs(pairsC, dayMs), stepMs), 3, 3, prevColor, { area: false, smooth: smoothVal, smoothMonotone: smoothMono, connectNulls: prevConn, showSymbol: false, sampling: prevSamp });
+  // prevent overlay flicker on hover
+  tcallsPrev.emphasis = { disabled: true };
+  asrPrev.emphasis = { disabled: true };
+  minutesPrev.emphasis = { disabled: true };
+  acdPrev.emphasis = { disabled: true };
+  tcallsPrev.hoverAnimation = false; asrPrev.hoverAnimation = false; minutesPrev.hoverAnimation = false; acdPrev.hoverAnimation = false;
   // overlays under colored
   tcallsPrev.z = 1; asrPrev.z = 1; minutesPrev.z = 1; acdPrev.z = 1;
   // exclude prev-day overlays from tooltip/interaction
@@ -202,6 +260,13 @@ function buildMultiOption({ data, fromTs, toTs, height, interval, noFiveMinData 
       endVal = Number.isFinite(toTs) ? Number(toTs) : null;
     }
   } catch(_) {}
+  // Extend view window by +24h to display the shifted gray overlays' tail
+  try {
+    if (Number.isFinite(endVal)) {
+      const cap = (typeof maxX === 'number' && Number.isFinite(maxX)) ? Number(maxX) : (Number(endVal) + dayMs);
+      endVal = Math.min(Number(endVal) + dayMs, cap);
+    }
+  } catch(_) {}
 
   const option = {
     animation: true,
@@ -213,22 +278,32 @@ function buildMultiOption({ data, fromTs, toTs, height, interval, noFiveMinData 
     color: Object.values(colors),
     axisPointer: {
       link: [{ xAxisIndex: [0, 1, 2, 3] }],
-      lineStyle: { color: '#999' }
+      lineStyle: { color: '#999' },
+      snap: true
     },
     tooltip: {
       trigger: 'axis',
-      axisPointer: { type: 'cross' },
+      axisPointer: { type: 'cross', snap: true },
       confine: true,
       order: 'valueAsc',
       formatter: (params) => {
         if (!Array.isArray(params) || params.length === 0) return '';
         const header = params[0].axisValueLabel || '';
         const fmt = (v) => (v == null || isNaN(v) ? '-' : (Math.round(Number(v) * 10) / 10).toFixed(1));
-        // show only current series (exclude prev-day overlays)
-        const lines = params
-          .filter(p => typeof p.seriesName === 'string' && !/\-24h$/.test(p.seriesName))
-          .map(p => `${p.marker} ${p.seriesName}: ${fmt(p.data && Array.isArray(p.data) ? p.data[1] : p.value?.[1] ?? p.value)}`);
-        return [header, ...lines].join('<br/>');
+        // compute target timestamp snapped to grid step
+        let ts = Number(params[0].axisValue);
+        if (!Number.isFinite(ts)) {
+          try { ts = Date.parse(params[0].axisValueLabel); } catch(_) {}
+        }
+        if (Number.isFinite(ts)) ts = Math.round(ts / stepMs) * stepMs;
+        const half = Math.floor(stepMs / 2);
+        const lines = [];
+        // fixed order and labels, taking nearest previous value within half-step window
+        lines.push(`TCalls: ${fmt(findPrevWithin(pairsT, ts, half))}`);
+        lines.push(`ASR: ${fmt(findPrevWithin(pairsA, ts, half))}`);
+        lines.push(`Minutes: ${fmt(findPrevWithin(pairsM, ts, half))}`);
+        lines.push(`ACD: ${fmt(findPrevWithin(pairsC, ts, half))}`);
+        return [header, ...lines].join('<br/>' );
       }
     },
     dataZoom: [
@@ -307,6 +382,7 @@ export function renderMultiLineChartEcharts(container, data, options = {}) {
       const clamp = (v) => (Number.isFinite(baseLo) && Number.isFinite(baseHi)) ? Math.max(baseLo, Math.min(baseHi, v)) : v;
       let sv = Number.isFinite(zr?.fromTs) ? clamp(Number(zr.fromTs)) : baseLo;
       let ev = Number.isFinite(zr?.toTs) ? clamp(Number(zr.toTs)) : baseHi;
+      try { if (Number.isFinite(ev)) ev = Number(ev) + 24 * 3600e3; } catch(_) {}
       if (base.interval === '5m' && base.noFiveMinData) {
         const minSpan = 2 * 3600e3; // 2h
         if (Number.isFinite(sv) && Number.isFinite(ev) && (ev - sv) < minSpan) {
@@ -388,6 +464,7 @@ export function renderMultiLineChartEcharts(container, data, options = {}) {
       const clamp = (v) => (Number.isFinite(baseLo) && Number.isFinite(baseHi)) ? Math.max(baseLo, Math.min(baseHi, v)) : v;
       let sv = Number.isFinite(zr?.fromTs) ? clamp(Number(zr.fromTs)) : baseLo;
       let ev = Number.isFinite(zr?.toTs) ? clamp(Number(zr.toTs)) : baseHi;
+      try { if (Number.isFinite(ev)) ev = Number(ev) + 24 * 3600e3; } catch(_) {}
       if (Number.isFinite(sv) && Number.isFinite(ev) && ev > sv) {
         chart.setOption({ dataZoom: [ { startValue: sv, endValue: ev }, { startValue: sv, endValue: ev } ] }, { lazyUpdate: true });
         try {
