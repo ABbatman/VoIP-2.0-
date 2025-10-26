@@ -269,7 +269,8 @@ export async function initD3Dashboard() {
       const diffDays = (viewToTs - viewFromTs) / (24 * 3600e3);
       const diffHours = (viewToTs - viewFromTs) / 3600e3;
       const hasZoom = !!(zr && Number.isFinite(zr.fromTs) && Number.isFinite(zr.toTs) && zr.toTs > zr.fromTs);
-      if (diffHours <= 6 && currentInterval !== '5m') {
+      // Do not auto-switch to 5m when a zoom window is active; respect user's interval selection
+      if (!hasZoom && diffHours <= 6 && currentInterval !== '5m') {
         currentInterval = '5m';
         try { if (typeof window !== 'undefined') window.__chartsCurrentInterval = '5m'; } catch(_) {}
         stepMs = intervalToStep(currentInterval);

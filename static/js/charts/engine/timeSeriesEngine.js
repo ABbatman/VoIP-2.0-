@@ -137,7 +137,7 @@ export function shapeChartPayload(rows, { type, fromTs, toTs, stepMs, height }) 
     options = { height, fromTs, toTs, xDomain: [fromTs, toTs] };
   } else if (type === 'bar') {
     data = buildBarHybridData(bins, fromTs, toTs, stepMs).bars;
-    options = { height };
+    options = { height, fromTs, toTs, acdSeries: series.ACD };
   } else if (type === 'hybrid') {
     const bh = buildBarHybridData(bins, fromTs, toTs, stepMs);
     data = { bars: bh.bars, line: bh.line };

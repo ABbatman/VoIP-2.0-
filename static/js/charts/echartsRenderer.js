@@ -6,11 +6,12 @@
 /* global window */
 import * as echarts from 'echarts';
 import { toast } from '../ui/notify.js';
+import { renderBarChartEcharts as renderBarEcharts } from './echartsBarChart.js';
 
 export async function registerEchartsRenderers() {
   const { registerChart } = await import('./registry.js');
   registerChart('line', renderMultiLineChartEcharts);
-  registerChart('bar', renderBarChartEcharts);
+  registerChart('bar', renderBarEcharts);
   registerChart('hybrid', renderHybridChartEcharts);
   registerChart('heatmap', renderHeatmapEcharts);
 }
@@ -485,20 +486,7 @@ export function renderMultiLineChartEcharts(container, data, options = {}) {
 
 // --- Additional renderers (minimal viable) ---
 
-export function renderBarChartEcharts(container, data = [], options = {}) {
-  const el = ensureContainer(container);
-  const chart = echarts.init(el);
-  const pairs = Array.isArray(data) ? data.map(d => [d.x, d.y]) : [];
-  const option = {
-    animation: false,
-    xAxis: { type: 'category' },
-    yAxis: { type: 'value' },
-    tooltip: { trigger: 'axis' },
-    series: [{ type: 'bar', data: pairs }]
-  };
-  chart.setOption(option, { notMerge: true });
-  return { update: (arr) => chart.setOption({ series: [{ data: (arr || []).map(d => [d.x, d.y]) }] }, { replaceMerge: ['series'] }), dispose: () => chart.dispose(), getInstance: () => chart };
-}
+// Bar renderer moved to './echartsBarChart.js'
 
 export function renderHybridChartEcharts(container, data = { bars: [], line: [] }, options = {}) {
   const el = ensureContainer(container);
