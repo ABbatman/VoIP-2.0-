@@ -2,6 +2,7 @@
 /* global window */
 import * as echarts from 'echarts';
 import { toast } from '../ui/notify.js';
+import { makeBarLineLikeTooltip } from './tooltip.js';
 
 function ensureContainer(container) {
   if (typeof container === 'string') {
@@ -55,12 +56,20 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
     height: options.height || (el.clientHeight || 300),
     interval: options.interval || (options.stepMs === 5 * 60e3 ? '5m' : (options.stepMs === 3600e3 ? '1h' : '1d')),
     stepMs: getStepMs(options.interval, options.stepMs),
+    // series for all metrics to support 4-panel bar chart
+    tCallsSeries: Array.isArray(options.tCallsSeries) ? options.tCallsSeries : [],
+    asrSeries: Array.isArray(options.asrSeries) ? options.asrSeries : [],
+    minutesSeries: Array.isArray(options.minutesSeries) ? options.minutesSeries : [],
     acdSeries: Array.isArray(options.acdSeries) ? options.acdSeries : [],
   };
 
-  const buildPairs = (opts, d) => {
-    // Prefer options.acdSeries; fallback to data.ACD; lastly treat data as array
-    let src = Array.isArray(opts.acdSeries) && opts.acdSeries.length ? opts.acdSeries : (Array.isArray(d?.ACD) ? d.ACD : (Array.isArray(d) ? d : []));
+  const buildPairs = (opts, d, srcOverride) => {
+    // Prefer provided srcOverride; otherwise use options.acdSeries; lastly treat input data
+    let src = Array.isArray(srcOverride) && srcOverride.length
+      ? srcOverride
+      : (Array.isArray(opts.acdSeries) && opts.acdSeries.length
+        ? opts.acdSeries
+        : (Array.isArray(d?.ACD) ? d.ACD : (Array.isArray(d) ? d : [])));
     let pairs = toPairs(src).sort((a,b) => a[0] - b[0]);
     const step = Number(opts.stepMs) || getStepMs(opts.interval);
     // Snap to step grid and dedupe by snapped x
@@ -79,7 +88,39 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
   const buildOption = (opts, d) => {
     const fromTs = Number(opts.fromTs);
     const toTs = Number(opts.toTs);
-    const pairs = buildPairs(opts, d);
+    const step = Number(opts.stepMs) || getStepMs(opts.interval);
+    const dayMs = 24 * 3600e3;
+
+    const buildCenters = () => {
+      const centers = [];
+      if (Number.isFinite(fromTs) && Number.isFinite(toTs) && Number.isFinite(step) && step > 0) {
+        const start = Math.floor(fromTs / step) * step;
+        const end = Math.ceil(toTs / step) * step;
+        for (let t = start; t <= end; t += step) centers.push(t + Math.floor(step / 2));
+      }
+      return centers;
+    };
+    const centers = buildCenters();
+
+    const makePairSets = (srcArr) => {
+      const currPairs = buildPairs(opts, d, srcArr);
+      const currMap = new Map(currPairs);
+      const curr = [];
+      const prev = [];
+      const hasCenters = centers.length > 0 ? centers : currPairs.map(p => p[0]);
+      for (const c of hasCenters) {
+        const yCur = currMap.get(c);
+        if (yCur != null && !isNaN(yCur)) curr.push([c, yCur]);
+        const yPrev = currMap.get(c - dayMs);
+        if (yPrev != null && !isNaN(yPrev)) prev.push([c, yPrev]);
+      }
+      return { curr, prev };
+    };
+
+    const setsT = makePairSets((Array.isArray(opts.tCallsSeries) && opts.tCallsSeries.length) ? opts.tCallsSeries : (Array.isArray(d?.TCalls) ? d.TCalls : []));
+    const setsA = makePairSets((Array.isArray(opts.asrSeries) && opts.asrSeries.length) ? opts.asrSeries : (Array.isArray(d?.ASR) ? d.ASR : []));
+    const setsM = makePairSets((Array.isArray(opts.minutesSeries) && opts.minutesSeries.length) ? opts.minutesSeries : (Array.isArray(d?.Minutes) ? d.Minutes : []));
+    const setsC = makePairSets((Array.isArray(opts.acdSeries) && opts.acdSeries.length) ? opts.acdSeries : (Array.isArray(d?.ACD) ? d.ACD : []));
     const bw = chooseBarWidthPx(opts.interval);
 
     // Initialize zoom window from global range if present
@@ -100,42 +141,35 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
       }
     } catch (_) {}
 
+    // compute 4 grids
+    const topPad = 8;
+    const bottomPad = 76;
+    const gap = 8;
+    const usable = Math.max(160, (opts.height || el.clientHeight || 600) - topPad - bottomPad - gap * 3);
+    const h = Math.floor(usable / 4);
+    const grids = Array.from({ length: 4 }, (_, i) => ({ left: 40, right: 16, top: topPad + i * (h + gap), height: h }));
+    const xAxes = grids.map((g, i) => ({
+      type: 'time', gridIndex: i, min: Number.isFinite(fromTs) ? fromTs : null, max: Number.isFinite(toTs) ? toTs : null,
+      axisLabel: { color: '#6e7781' }, axisLine: { lineStyle: { color: '#888' } }, axisTick: { alignWithLabel: true },
+      axisPointer: { show: true, snap: true, triggerTooltip: true }
+    }));
+    const yAxes = grids.map((g, i) => ({ type: 'value', gridIndex: i, axisLabel: { show: false }, splitLine: { show: false }, axisLine: { lineStyle: { color: '#000' } } }));
+
+    const colors = { TCalls: '#2f6feb', ASR: '#00a37a', Minutes: '#e36209', ACD: '#6f42c1' };
+
     return {
       animation: true,
       animationDurationUpdate: 200,
       animationEasingUpdate: 'cubicOut',
-      grid: { left: 40, right: 16, top: 8, bottom: 56, containLabel: false },
-      xAxis: {
-        type: 'time',
-        min: Number.isFinite(fromTs) ? fromTs : null,
-        max: Number.isFinite(toTs) ? toTs : null,
-        axisLabel: { color: '#6e7781' },
-        axisLine: { lineStyle: { color: '#888' } },
-        axisTick: { alignWithLabel: true },
-        axisPointer: { show: true, snap: true, triggerTooltip: true }
-      },
-      yAxis: {
-        type: 'value',
-        axisLabel: { color: '#6e7781' },
-        splitLine: { show: true, lineStyle: { color: 'rgba(0,0,0,0.08)' } },
-        axisLine: { lineStyle: { color: '#000' } }
-      },
-      tooltip: {
-        trigger: 'axis',
-        axisPointer: { type: 'shadow', snap: true },
-        confine: true,
-        formatter: (params) => {
-          if (!Array.isArray(params) || params.length === 0) return '';
-          const p = params.find(s => s.seriesName === 'ACD') || params[0];
-          const header = params[0].axisValueLabel || '';
-          const v = (p && p.data && p.data[1]);
-          const fmt = (x) => (x == null || isNaN(x) ? '-' : (Math.round(Number(x) * 10) / 10).toFixed(1));
-          return `${header}<br/>ACD: ${fmt(v)}`;
-        }
-      },
+      grid: grids,
+      xAxis: xAxes,
+      yAxis: yAxes,
+      tooltip: { trigger: 'axis', axisPointer: { type: 'cross', snap: true }, confine: true, order: 'valueAsc', formatter: makeBarLineLikeTooltip({ chart, stepMs: step }) },
+      axisPointer: { link: [{ xAxisIndex: [0,1,2,3] }] },
       dataZoom: [
         {
           type: 'inside',
+          xAxisIndex: [0,1,2,3],
           startValue: startVal,
           endValue: endVal,
           throttle: 80,
@@ -153,21 +187,24 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
           throttle: 80,
           showDataShadow: true,
           dataBackground: {
-            lineStyle: { color: '#6f42c1', width: 1 },
-            areaStyle: { color: 'rgba(111,66,193,0.18)' }
+            lineStyle: { color: '#2f6feb', width: 1 },
+            areaStyle: { color: 'rgba(47,111,235,0.18)' }
           }
         }
       ],
       series: [
-        {
-          id: 'acd',
-          name: 'ACD',
-          type: 'bar',
-          large: true,
-          barWidth: bw,
-          itemStyle: { color: '#6f42c1' },
-          data: pairs
-        }
+        // TCalls panel (index 0)
+        { id: 'tc', name: 'TCalls', type: 'bar', xAxisIndex: 0, yAxisIndex: 0, large: true, barWidth: bw, barGap: '10%', barCategoryGap: '20%', emphasis: { focus: 'series', blurScope: 'coordinateSystem' }, blur: { itemStyle: { opacity: 0.12 } }, itemStyle: { color: colors.TCalls }, data: setsT.curr },
+        { id: 'tcPrev', name: 'TCalls -24h', type: 'bar', xAxisIndex: 0, yAxisIndex: 0, large: true, barWidth: bw, barGap: '10%', barCategoryGap: '20%', itemStyle: { color: 'rgba(140,148,156,0.85)' }, data: setsT.prev, emphasis: { disabled: true }, tooltip: { show: false }, silent: true, blur: { itemStyle: { opacity: 0.4 } } },
+        // ASR panel (index 1)
+        { id: 'as', name: 'ASR', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, large: true, barWidth: bw, barGap: '10%', barCategoryGap: '20%', emphasis: { focus: 'series', blurScope: 'coordinateSystem' }, blur: { itemStyle: { opacity: 0.12 } }, itemStyle: { color: colors.ASR }, data: setsA.curr },
+        { id: 'asPrev', name: 'ASR -24h', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, large: true, barWidth: bw, barGap: '10%', barCategoryGap: '20%', itemStyle: { color: 'rgba(140,148,156,0.85)' }, data: setsA.prev, emphasis: { disabled: true }, tooltip: { show: false }, silent: true, blur: { itemStyle: { opacity: 0.4 } } },
+        // Minutes panel (index 2)
+        { id: 'mn', name: 'Minutes', type: 'bar', xAxisIndex: 2, yAxisIndex: 2, large: true, barWidth: bw, barGap: '10%', barCategoryGap: '20%', emphasis: { focus: 'series', blurScope: 'coordinateSystem' }, blur: { itemStyle: { opacity: 0.12 } }, itemStyle: { color: colors.Minutes }, data: setsM.curr },
+        { id: 'mnPrev', name: 'Minutes -24h', type: 'bar', xAxisIndex: 2, yAxisIndex: 2, large: true, barWidth: bw, barGap: '10%', barCategoryGap: '20%', itemStyle: { color: 'rgba(140,148,156,0.85)' }, data: setsM.prev, emphasis: { disabled: true }, tooltip: { show: false }, silent: true, blur: { itemStyle: { opacity: 0.4 } } },
+        // ACD panel (index 3)
+        { id: 'ac', name: 'ACD', type: 'bar', xAxisIndex: 3, yAxisIndex: 3, large: true, barWidth: bw, barGap: '10%', barCategoryGap: '20%', emphasis: { focus: 'series', blurScope: 'coordinateSystem' }, blur: { itemStyle: { opacity: 0.12 } }, itemStyle: { color: colors.ACD }, data: setsC.curr },
+        { id: 'acPrev', name: 'ACD -24h', type: 'bar', xAxisIndex: 3, yAxisIndex: 3, large: true, barWidth: bw, barGap: '10%', barCategoryGap: '20%', itemStyle: { color: 'rgba(140,148,156,0.85)' }, data: setsC.prev, emphasis: { disabled: true }, tooltip: { show: false }, silent: true, blur: { itemStyle: { opacity: 0.4 } } },
       ]
     };
   };
@@ -196,7 +233,15 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
       // leave a small gap between bars (~8%)
       const desired = Math.max(2, Math.floor(w * 0.92));
       try {
-        chart.setOption({ series: [ { id: 'acd', barWidth: desired } ] }, { replaceMerge: ['series'], lazyUpdate: true });
+        // each bar narrower to fit two per step and keep inner gap
+        const each = Math.max(2, Math.floor(desired * 0.48));
+        const upd = [
+          { id: 'tc', barWidth: each }, { id: 'tcPrev', barWidth: each },
+          { id: 'as', barWidth: each }, { id: 'asPrev', barWidth: each },
+          { id: 'mn', barWidth: each }, { id: 'mnPrev', barWidth: each },
+          { id: 'ac', barWidth: each }, { id: 'acPrev', barWidth: each },
+        ];
+        chart.setOption({ series: upd }, { replaceMerge: ['series'], lazyUpdate: true });
       } catch(_) {}
     }
   };
@@ -258,13 +303,18 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
       base.toTs = merged.toTs;
       base.interval = merged.interval || base.interval;
       base.stepMs = Number.isFinite(merged.stepMs) ? Number(merged.stepMs) : getStepMs(base.interval);
+      base.tCallsSeries = Array.isArray(merged.tCallsSeries) ? merged.tCallsSeries : base.tCallsSeries;
+      base.asrSeries = Array.isArray(merged.asrSeries) ? merged.asrSeries : base.asrSeries;
+      base.minutesSeries = Array.isArray(merged.minutesSeries) ? merged.minutesSeries : base.minutesSeries;
       base.acdSeries = Array.isArray(merged.acdSeries) ? merged.acdSeries : base.acdSeries;
     } catch(_) {}
     const next = buildOption(merged, newData);
     chart.setOption({
       xAxis: next.xAxis,
+      yAxis: next.yAxis,
+      grid: next.grid,
       series: next.series
-    }, { replaceMerge: ['series'], lazyUpdate: true });
+    }, { replaceMerge: ['grid','xAxis','yAxis','series'], lazyUpdate: true });
     try { applyDynamicBarWidth(); } catch(_) {}
     try {
       const baseLo = Number(merged.fromTs);

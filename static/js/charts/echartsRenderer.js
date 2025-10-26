@@ -6,6 +6,7 @@
 /* global window */
 import * as echarts from 'echarts';
 import { toast } from '../ui/notify.js';
+import { makeBarLineLikeTooltip } from './tooltip.js';
 import { renderBarChartEcharts as renderBarEcharts } from './echartsBarChart.js';
 
 export async function registerEchartsRenderers() {
@@ -16,55 +17,7 @@ export async function registerEchartsRenderers() {
   registerChart('heatmap', renderHeatmapEcharts);
 }
 
-function findPrevWithin(pairs, ts, maxDelta) {
-  try {
-    if (!Array.isArray(pairs) || pairs.length === 0) return null;
-    // binary search for rightmost index with t <= ts
-    let lo = 0, hi = pairs.length - 1, ans = -1;
-    while (lo <= hi) {
-      const mid = (lo + hi) >> 1;
-      const t = Number(pairs[mid][0]);
-      if (t <= ts) { ans = mid; lo = mid + 1; } else { hi = mid - 1; }
-    }
-    if (ans === -1) return null;
-    const t = Number(pairs[ans][0]);
-    const y = pairs[ans][1];
-    if (y == null || isNaN(y)) return null;
-    if (!Number.isFinite(maxDelta)) return Number(y);
-    return (ts - t) <= maxDelta ? Number(y) : null;
-  } catch(_) { return null; }
-}
-
-function makeGrid(pairs, fromTs, toTs, stepMs) {
-  try {
-    if (!Array.isArray(pairs)) pairs = [];
-    const map = new Map();
-    for (const [t, y] of pairs) { map.set(Number(t), (y == null || isNaN(y)) ? null : Number(y)); }
-    const start = Math.floor(Number(fromTs) / stepMs) * stepMs;
-    const end = Math.ceil(Number(toTs) / stepMs) * stepMs;
-    const out = [];
-    for (let t = start; t <= end; t += stepMs) {
-      const v = map.has(t) ? map.get(t) : null;
-      out.push([t, v]);
-    }
-    return out;
-  } catch(_) { return pairs || []; }
-}
-
-function buildPrevDayPairs(pairs, dayMs) {
-  try {
-    if (!Array.isArray(pairs) || pairs.length === 0) return [];
-    const map = new Map();
-    for (const [t, y] of pairs) { if (y != null && !isNaN(y)) map.set(Number(t), Number(y)); }
-    const out = [];
-    for (const [t, _y] of pairs) {
-      const yPrev = map.get(Number(t) - dayMs);
-      if (yPrev == null || isNaN(yPrev)) continue;
-      out.push([Number(t), yPrev]);
-    }
-    return out;
-  } catch(_) { return []; }
-}
+// Removed old tooltip helpers and unused builders (findPrevWithin, makeGrid, buildPrevDayPairs)
 
 function withGapBreaks(pairs, stepMs) {
   try {
@@ -282,31 +235,7 @@ function buildMultiOption({ data, fromTs, toTs, height, interval, noFiveMinData 
       lineStyle: { color: '#999' },
       snap: true
     },
-    tooltip: {
-      trigger: 'axis',
-      axisPointer: { type: 'cross', snap: true },
-      confine: true,
-      order: 'valueAsc',
-      formatter: (params) => {
-        if (!Array.isArray(params) || params.length === 0) return '';
-        const header = params[0].axisValueLabel || '';
-        const fmt = (v) => (v == null || isNaN(v) ? '-' : (Math.round(Number(v) * 10) / 10).toFixed(1));
-        // compute target timestamp snapped to grid step
-        let ts = Number(params[0].axisValue);
-        if (!Number.isFinite(ts)) {
-          try { ts = Date.parse(params[0].axisValueLabel); } catch(_) {}
-        }
-        if (Number.isFinite(ts)) ts = Math.round(ts / stepMs) * stepMs;
-        const half = Math.floor(stepMs / 2);
-        const lines = [];
-        // fixed order and labels, taking nearest previous value within half-step window
-        lines.push(`TCalls: ${fmt(findPrevWithin(pairsT, ts, half))}`);
-        lines.push(`ASR: ${fmt(findPrevWithin(pairsA, ts, half))}`);
-        lines.push(`Minutes: ${fmt(findPrevWithin(pairsM, ts, half))}`);
-        lines.push(`ACD: ${fmt(findPrevWithin(pairsC, ts, half))}`);
-        return [header, ...lines].join('<br/>' );
-      }
-    },
+    tooltip: { trigger: 'axis', axisPointer: { type: 'cross', snap: true }, confine: true, order: 'valueAsc' },
     dataZoom: [
       {
         type: 'inside',
@@ -373,6 +302,7 @@ export function renderMultiLineChartEcharts(container, data, options = {}) {
     noFiveMinData: !!options.noFiveMinData,
   };
   const option = buildMultiOption({ data, ...base });
+  try { option.tooltip = option.tooltip || {}; option.tooltip.formatter = makeBarLineLikeTooltip({ chart, stepMs: (base.interval === '5m') ? 5 * 60e3 : (base.interval === '1h' ? 3600e3 : 24 * 3600e3) }); } catch(_) {}
   chart.setOption(option, { notMerge: true, lazyUpdate: true });
 
   try {

@@ -137,7 +137,16 @@ export function shapeChartPayload(rows, { type, fromTs, toTs, stepMs, height }) 
     options = { height, fromTs, toTs, xDomain: [fromTs, toTs] };
   } else if (type === 'bar') {
     data = buildBarHybridData(bins, fromTs, toTs, stepMs).bars;
-    options = { height, fromTs, toTs, acdSeries: series.ACD };
+    options = {
+      height,
+      fromTs,
+      toTs,
+      // provide all series for ECharts bar multi-panel rendering
+      tCallsSeries: series.TCalls,
+      asrSeries: series.ASR,
+      minutesSeries: series.Minutes,
+      acdSeries: series.ACD,
+    };
   } else if (type === 'hybrid') {
     const bh = buildBarHybridData(bins, fromTs, toTs, stepMs);
     data = { bars: bh.bars, line: bh.line };

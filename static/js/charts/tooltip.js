@@ -1,0 +1,71 @@
+export function makeBarLineLikeTooltip({ chart, stepMs }) {
+  const names = ['TCalls', 'ASR', 'Minutes', 'ACD'];
+  const half = Math.max(1, Math.floor((Number(stepMs) || 3600e3) / 2));
+  const toPairs = (arr) => {
+    if (!Array.isArray(arr)) return [];
+    const out = [];
+    for (const d of arr) {
+      if (Array.isArray(d)) {
+        const t = Number(d[0]); const y = d[1];
+        if (Number.isFinite(t)) out.push([t, (y == null || isNaN(y)) ? null : Number(y)]);
+      } else if (d && d.value) {
+        const t = Number(d.value[0]); const y = d.value[1];
+        if (Number.isFinite(t)) out.push([t, (y == null || isNaN(y)) ? null : Number(y)]);
+      }
+    }
+    out.sort((a,b) => a[0] - b[0]);
+    return out;
+  };
+  const getPairs = (name) => {
+    try {
+      const opt = chart.getOption();
+      const s = (opt.series || []).find(x => x && x.name === name);
+      return toPairs(s ? s.data : []);
+    } catch(_) { return []; }
+  };
+  const findPrevWithin = (pairs, ts, maxDelta) => {
+    if (!Array.isArray(pairs) || pairs.length === 0) return null;
+    let lo = 0, hi = pairs.length - 1, ans = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      const t = Number(pairs[mid][0]);
+      if (t <= ts) { ans = mid; lo = mid + 1; } else { hi = mid - 1; }
+    }
+    if (ans === -1) return null;
+    const t = Number(pairs[ans][0]);
+    const y = pairs[ans][1];
+    if (y == null || isNaN(y)) return null;
+    return (ts - t) <= maxDelta ? Number(y) : null;
+  };
+  const fmt = (v) => (v == null || isNaN(v) ? '-' : (Math.round(Number(v) * 10) / 10).toFixed(1));
+  return (param) => {
+    if (!param) return '';
+    const arr = Array.isArray(param) ? param : [param];
+    // Hide if only grey (-24h) series are under cursor
+    const hasPrimary = arr.some(p => typeof p?.seriesName === 'string' && !p.seriesName.endsWith(' -24h'));
+    if (!hasPrimary) return '';
+    // Prefer axisValue for timestamp (axis trigger)
+    let ts = Number(arr[0]?.axisValue);
+    if (!Number.isFinite(ts)) {
+      try { ts = Date.parse(arr[0]?.axisValueLabel); } catch(_) {}
+    }
+    if (!Number.isFinite(ts)) {
+      // fallback to first primary item's data value
+      const prim = arr.find(p => typeof p?.seriesName === 'string' && !p.seriesName.endsWith(' -24h'));
+      if (prim) ts = Array.isArray(prim.data) ? Number(prim.data[0]) : Number(prim.value?.[0]);
+    }
+    if (!Number.isFinite(ts)) return '';
+    const step = Number(stepMs) || 3600e3;
+    const tsSnap = Math.round(ts / step) * step;
+    // Build bins per call to reflect latest series state
+    const bins = Object.create(null);
+    for (const n of names) bins[n] = getPairs(n);
+    const lines = [];
+    const header = (arr[0]?.axisValueLabel) || new Date(tsSnap).toISOString().slice(0,16).replace('T',' ');
+    lines.push(`TCalls: ${fmt(findPrevWithin(bins['TCalls'], tsSnap, half))}`);
+    lines.push(`ASR: ${fmt(findPrevWithin(bins['ASR'], tsSnap, half))}`);
+    lines.push(`Minutes: ${fmt(findPrevWithin(bins['Minutes'], tsSnap, half))}`);
+    lines.push(`ACD: ${fmt(findPrevWithin(bins['ACD'], tsSnap, half))}`);
+    return [header, ...lines].join('<br/>' );
+  };
+}
