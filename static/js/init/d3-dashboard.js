@@ -223,11 +223,9 @@ export async function initD3Dashboard() {
       const items = Array.from(typeDd?.querySelectorAll('.charts-dd__item') || []);
       items.forEach(li => li.classList.toggle('is-selected', li.dataset.value === type));
       if (btn) btn.textContent = (items.find(li => li.dataset.value === type)?.textContent) || btn.textContent;
-      // highlight by type
-      if (typeDd) {
-        typeDd.classList.remove('is-line','is-bar','is-heatmap','is-hybrid');
-        typeDd.classList.add(`is-${type}`);
-      }
+      // unify color to main blue and drop per-type color classes
+      if (btn) btn.style.color = '#4f86ff';
+      if (typeDd) typeDd.classList.remove('is-line','is-bar','is-heatmap','is-hybrid');
     } catch(_) {}
     try {
       const stepDd = controls.querySelector('#chart-interval-dropdown');
@@ -235,11 +233,9 @@ export async function initD3Dashboard() {
       const items = Array.from(stepDd?.querySelectorAll('.charts-dd__item') || []);
       items.forEach(li => li.classList.toggle('is-selected', li.dataset.value === currentInterval));
       if (btn) btn.textContent = (items.find(li => li.dataset.value === currentInterval)?.textContent) || btn.textContent;
-      // highlight by step
-      if (stepDd) {
-        stepDd.classList.remove('is-5m','is-1h','is-1d');
-        stepDd.classList.add(`is-${currentInterval}`);
-      }
+      // unify color to main blue and drop per-interval color classes
+      if (btn) btn.style.color = '#4f86ff';
+      if (stepDd) stepDd.classList.remove('is-5m','is-1h','is-1d');
     } catch(_) {}
     try { controls.dataset.type = type; controls.dataset.interval = currentInterval; } catch(_) {}
   };

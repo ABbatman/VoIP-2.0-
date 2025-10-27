@@ -24,34 +24,36 @@ function parseRowTs(raw) {
 
 function detectProviderKey(rows) {
   if (!Array.isArray(rows) || rows.length === 0) return null;
-  const sample = rows[0] || {};
-  // prefer any candidate key present across rows with string-like values
-  for (const key of CANDIDATE_PROVIDER_KEYS) {
-    if (Object.prototype.hasOwnProperty.call(sample, key)) {
-      // ensure there are at least 2 different values to make stacking meaningful
-      const uniq = new Set();
-      for (const r of rows) {
-        const v = r?.[key];
-        if (v == null) continue;
-        const s = String(v).trim();
-        if (s) uniq.add(s);
-        if (uniq.size >= 2) break;
-      }
-      if (uniq.size >= 2) return key;
+  const keyUniqs = new Map(); // key -> Set of unique non-empty values
+  for (const r of rows) {
+    if (!r || typeof r !== 'object') continue;
+    for (const k of Object.keys(r)) {
+      const v = r[k];
+      if (v == null) continue;
+      const s = String(v).trim();
+      if (!s) continue;
+      let set = keyUniqs.get(k);
+      if (!set) { set = new Set(); keyUniqs.set(k, set); }
+      set.add(s);
+      // early exit if many uniques gathered
+      if (set.size > 50) break;
     }
   }
-  // fallback: try to find any string key with >=2 distinct values
-  const keys = Object.keys(sample);
-  for (const k of keys) {
-    const uniq = new Set();
-    for (const r of rows) {
-      const v = r?.[k];
-      if (typeof v === 'string' && v.trim()) uniq.add(v.trim());
-      if (uniq.size >= 2) break;
-    }
-    if (uniq.size >= 2) return k;
+  const eligible = Array.from(keyUniqs.entries()).filter(([, set]) => set && set.size >= 2).map(([k]) => k);
+  if (eligible.length === 0) return null;
+  // prefer known synonyms (case-insensitive)
+  const lowerPref = CANDIDATE_PROVIDER_KEYS.map(k => k.toLowerCase());
+  for (const pref of lowerPref) {
+    const hit = eligible.find(k => String(k).toLowerCase() === pref);
+    if (hit) return hit;
   }
-  return null;
+  // otherwise pick the eligible key with the largest unique set size
+  let best = null; let bestSize = -1;
+  for (const k of eligible) {
+    const sz = (keyUniqs.get(k) || new Set()).size;
+    if (sz > bestSize) { best = k; bestSize = sz; }
+  }
+  return best;
 }
 
 function toNum(v) { const n = Number(v); return Number.isFinite(n) ? n : null; }
@@ -118,7 +120,7 @@ export function buildProviderStacks(rows, { fromTs, toTs, stepMs }) {
       }
     }
     const providers = Array.from(provSet.values());
-    if (providers.length < 2) return null; // no sense stacking single provider
+    if (providers.length < 1) return null;
 
     const colors = Object.create(null);
     providers.forEach((p, i) => { colors[p] = PROVIDER_COLORS[i % PROVIDER_COLORS.length]; });

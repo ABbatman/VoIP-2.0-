@@ -25,11 +25,12 @@ export function renderMultiLineChart(container, seriesMap = {}, opts = {}) {
   const innerH = Math.max(10, height - margin.top - margin.bottom);
 
   const names = ['TCalls', 'ASR', 'Minutes', 'ACD'];
+  const mainBlue = '#4f86ff';
   const colors = Object.assign({
-    TCalls: '#2f6feb',
-    ASR: '#00a37a',
-    Minutes: '#e36209',
-    ACD: '#6f42c1',
+    TCalls: mainBlue,
+    ASR: mainBlue,
+    Minutes: mainBlue,
+    ACD: mainBlue,
   }, opts.colors || {});
 
   // Normalize series
@@ -149,7 +150,7 @@ export function renderMultiLineChart(container, seriesMap = {}, opts = {}) {
       .text(name);
 
     const gradId = `area-grad-${idx}`;
-    const stopColor = colors[name] || '#888';
+    const stopColor = colors[name] || mainBlue;
     const grad = defs.append('linearGradient')
       .attr('id', gradId)
       .attr('x1', '0%').attr('x2', '0%')

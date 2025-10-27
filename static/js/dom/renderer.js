@@ -186,9 +186,7 @@ export class DashboardRenderer {
    * @returns {string} Header HTML
    */
   _renderHeader() {
-    return `
-      <h1 class="page-title">Monitoring by Burcovschi</h1>
-    `;
+    return ``;
   }
 
   /**

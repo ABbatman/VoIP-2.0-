@@ -126,11 +126,12 @@ function buildMultiOption({ data, fromTs, toTs, height, interval, noFiveMinData 
     axisLine: { lineStyle: { color: '#000' } }
   }));
 
+  const mainBlue = '#4f86ff';
   const colors = {
-    TCalls: '#2f6feb',
-    ASR: '#00a37a',
-    Minutes: '#e36209',
-    ACD: '#6f42c1',
+    TCalls: mainBlue,
+    ASR: mainBlue,
+    Minutes: mainBlue,
+    ACD: mainBlue,
   };
 
   // Do not connect across gaps: always keep connectNulls false to prevent bridging disjoint segments
@@ -261,8 +262,8 @@ function buildMultiOption({ data, fromTs, toTs, height, interval, noFiveMinData 
         throttle: 80,
         showDataShadow: true,
         dataBackground: {
-          lineStyle: { color: '#2f6feb', width: 1 },
-          areaStyle: { color: 'rgba(47,111,235,0.18)' }
+          lineStyle: { color: mainBlue, width: 1 },
+          areaStyle: { color: 'rgba(79,134,255,0.18)' }
         }
       }
     ],
