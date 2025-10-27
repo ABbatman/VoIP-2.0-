@@ -3,7 +3,7 @@
 import * as echarts from 'echarts';
 import { toast } from '../ui/notify.js';
 import { makeBarLineLikeTooltip } from './tooltip.js';
-import { buildProviderStacks } from './echartsBarChartHelper.js';
+import { buildProviderStacks, formatProviderLabel, shouldShowProviderLabel } from './echartsBarChartHelper.js';
 
 function ensureContainer(container) {
   if (typeof container === 'string') {
@@ -215,7 +215,7 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
     } catch(_) {}
 
     // Build decorative supplier stripe overlay (silent custom series)
-    const makeStripeOverlay = (id, xAxisIndex, yAxisIndex, totalsPairs, stacksPerProv, stepMs, providerMeta) => {
+    const makeStripeOverlay = (id, xAxisIndex, yAxisIndex, totalsPairs, stacksPerProv, stepMs, providerMeta, metricName) => {
       const byTs = new Map();
       (totalsPairs || []).forEach(([t, v]) => { if (Number.isFinite(t) && Number.isFinite(v) && v > 0) byTs.set(Number(t), Number(v)); });
       const data = [];
@@ -246,8 +246,8 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
         tooltip: { show: false },
         emphasis: { disabled: true },
         blur: { itemStyle: { opacity: 1 } },
-        z: 5,
-        zlevel: 1,
+        z: 20,
+        zlevel: 20,
         renderItem: (params, api) => {
           const x = api.value(0);
           const total = api.value(1);
@@ -259,6 +259,7 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
           const p0 = api.coord([x - half, 0]);
           const p1 = api.coord([x + half, 0]);
           const width = Math.max(1, Math.floor((p1[0] - p0[0]) * 0.68));
+          const fullW = Math.abs(p1[0] - p0[0]);
           const xLeft = Math.round((p0[0] + p1[0]) / 2 - width / 2);
           const base = api.coord([x, 0])[1];
           const topY = api.coord([x, total])[1];
@@ -266,6 +267,26 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
           if (!(height > 1)) return null;
           const stripeH = Math.max(2, Math.round(Math.min(4, height * 0.06)));
           const children = [];
+          let labelsAdded = 0;
+          const pushLabel = (cx, cy, text) => {
+            try {
+              const s = String(text || '');
+              const pad = 3;
+              const wGuess = Math.max(18, Math.round(s.length * 6.5) + pad * 2);
+              const h = 14;
+              children.push({
+                type: 'rect', z2: 6,
+                shape: { x: Math.round(cx - wGuess / 2), y: Math.round(cy - h / 2), width: wGuess, height: h, r: 2 },
+                style: { fill: 'rgba(0,0,0,0.45)', stroke: 'rgba(255,255,255,0.65)', lineWidth: 0.5 },
+                silent: true
+              });
+              children.push({
+                type: 'text', z2: 7,
+                style: { x: Math.round(cx), y: Math.round(cy), text: s, fill: '#ffffff', textAlign: 'center', textVerticalAlign: 'middle', font: '600 11px system-ui, -apple-system, Segoe UI, Roboto, sans-serif' },
+                silent: true
+              });
+            } catch(_) {}
+          };
           let cum = 0;
           if (segs.length === 1) {
             // Single supplier: draw a stripe at the very top of the bar
@@ -274,6 +295,12 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
             const topStripeY = Math.round(yTop + 1 + stripeH / 2);
             if (topStripeY > yTop && topStripeY < yBottom) {
               children.push({ type: 'rect', shape: { x: xLeft, y: topStripeY - Math.round(stripeH / 2), width, height: stripeH }, style: { fill: segs[0].color || 'rgba(0,0,0,0.6)', opacity: 0.95, stroke: '#ffffff', lineWidth: 0.6 }, ignore: false });
+              const show = shouldShowProviderLabel({ barHeightPx: height, stepWidthPx: fullW, segmentShare: 1 });
+              if (show) {
+                const text = formatProviderLabel(metricName, segs[0].prov, segs[0].v);
+                pushLabel(Math.round(xLeft + width / 2), topStripeY, text);
+                labelsAdded++;
+              }
             }
           } else {
             for (const s of segs) {
@@ -289,8 +316,26 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
                 style: { fill: s.color || 'rgba(0,0,0,0.6)', opacity: 0.95, stroke: '#ffffff', lineWidth: 0.6 },
                 ignore: false
               });
+              const share = total > 0 ? (Number(s.v || 0) / Number(total)) : 0;
+              const show = shouldShowProviderLabel({ barHeightPx: height, stepWidthPx: fullW, segmentShare: share });
+              if (show) {
+                const text = formatProviderLabel(metricName, s.prov, s.v);
+                pushLabel(Math.round(xLeft + width / 2), Math.round(y), text);
+                labelsAdded++;
+              }
             }
           }
+          // Fallback: ensure at least one label (largest segment) for sufficiently large bars
+          try {
+            if (labelsAdded === 0 && height >= 8 && fullW >= 8 && segs.length) {
+              let best = segs[0];
+              for (const s of segs) if (Number(s.v || 0) > Number(best.v || 0)) best = s;
+              let acc = 0; for (const s of segs) { if (s === best) break; acc += Number(s.v || 0); }
+              const yBest = api.coord([x, acc + Number(best.v || 0)] )[1];
+              const text = formatProviderLabel(metricName, best.prov, best.v);
+              pushLabel(Math.round(xLeft + width / 2), Math.round(yBest), text);
+            }
+          } catch(_) {}
           return { type: 'group', children };
         },
         data
@@ -338,19 +383,19 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
           // All main bars in blue, with silent decorative stripe overlays per panel
           list.push({ id: 'tc', name: 'TCalls', type: 'bar', xAxisIndex: 0, yAxisIndex: 0, large: true, barWidth: bw, barGap: '4%', barCategoryGap: '20%', emphasis: { focus: 'series', blurScope: 'coordinateSystem' }, blur: { itemStyle: { opacity: 0.12 } }, itemStyle: { color: colors.TCalls }, data: provider.totals.TCalls });
           list.push({ id: 'tcPrev', name: 'TCalls -24h', type: 'bar', xAxisIndex: 0, yAxisIndex: 0, large: true, barWidth: bw, barGap: '4%', barCategoryGap: '20%', itemStyle: { color: 'rgba(140,148,156,0.85)' }, data: setsT.prev, emphasis: { disabled: true }, tooltip: { show: false }, silent: true, blur: { itemStyle: { opacity: 0.4 } } });
-          list.push(makeStripeOverlay('tcOverlay', 0, 0, provider.totals.TCalls, provider.stacks.TCalls.curr, step, provider));
+          list.push(makeStripeOverlay('tcOverlay', 0, 0, provider.totals.TCalls, provider.stacks.TCalls.curr, step, provider, 'TCalls'));
 
           list.push({ id: 'as', name: 'ASR', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, large: true, barWidth: bw, barGap: '4%', barCategoryGap: '20%', emphasis: { focus: 'series', blurScope: 'coordinateSystem' }, blur: { itemStyle: { opacity: 0.12 } }, itemStyle: { color: colors.ASR }, data: provider.totals.ASR });
           list.push({ id: 'asPrev', name: 'ASR -24h', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, large: true, barWidth: bw, barGap: '4%', barCategoryGap: '20%', itemStyle: { color: 'rgba(140,148,156,0.85)' }, data: setsA.prev, emphasis: { disabled: true }, tooltip: { show: false }, silent: true, blur: { itemStyle: { opacity: 0.4 } } });
-          list.push(makeStripeOverlay('asOverlay', 1, 1, provider.totals.ASR, provider.stacks.ASR.curr, step, provider));
+          list.push(makeStripeOverlay('asOverlay', 1, 1, provider.totals.ASR, provider.stacks.ASR.curr, step, provider, 'ASR'));
 
           list.push({ id: 'mn', name: 'Minutes', type: 'bar', xAxisIndex: 2, yAxisIndex: 2, large: true, barWidth: bw, barGap: '4%', barCategoryGap: '20%', emphasis: { focus: 'series', blurScope: 'coordinateSystem' }, blur: { itemStyle: { opacity: 0.12 } }, itemStyle: { color: colors.Minutes }, data: provider.totals.Minutes });
           list.push({ id: 'mnPrev', name: 'Minutes -24h', type: 'bar', xAxisIndex: 2, yAxisIndex: 2, large: true, barWidth: bw, barGap: '4%', barCategoryGap: '20%', itemStyle: { color: 'rgba(140,148,156,0.85)' }, data: setsM.prev, emphasis: { disabled: true }, tooltip: { show: false }, silent: true, blur: { itemStyle: { opacity: 0.4 } } });
-          list.push(makeStripeOverlay('mnOverlay', 2, 2, provider.totals.Minutes, provider.stacks.Minutes.curr, step, provider));
+          list.push(makeStripeOverlay('mnOverlay', 2, 2, provider.totals.Minutes, provider.stacks.Minutes.curr, step, provider, 'Minutes'));
 
           list.push({ id: 'ac', name: 'ACD', type: 'bar', xAxisIndex: 3, yAxisIndex: 3, large: true, barWidth: bw, barGap: '4%', barCategoryGap: '20%', emphasis: { focus: 'series', blurScope: 'coordinateSystem' }, blur: { itemStyle: { opacity: 0.12 } }, itemStyle: { color: colors.ACD }, data: provider.totals.ACD });
           list.push({ id: 'acPrev', name: 'ACD -24h', type: 'bar', xAxisIndex: 3, yAxisIndex: 3, large: true, barWidth: bw, barGap: '4%', barCategoryGap: '20%', itemStyle: { color: 'rgba(140,148,156,0.85)' }, data: setsC.prev, emphasis: { disabled: true }, tooltip: { show: false }, silent: true, blur: { itemStyle: { opacity: 0.4 } } });
-          list.push(makeStripeOverlay('acOverlay', 3, 3, provider.totals.ACD, provider.stacks.ACD.curr, step, provider));
+          list.push(makeStripeOverlay('acOverlay', 3, 3, provider.totals.ACD, provider.stacks.ACD.curr, step, provider, 'ACD'));
         } else {
           // Default: two bars per step (all blue), previous grey
           list.push({ id: 'tc', name: 'TCalls', type: 'bar', xAxisIndex: 0, yAxisIndex: 0, large: true, barWidth: bw, barGap: '4%', barCategoryGap: '20%', emphasis: { focus: 'series', blurScope: 'coordinateSystem' }, blur: { itemStyle: { opacity: 0.12 } }, itemStyle: { color: colors.TCalls }, data: setsT.curr });

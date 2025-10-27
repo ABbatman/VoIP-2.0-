@@ -205,3 +205,26 @@ export function buildProviderStacks(rows, { fromTs, toTs, stepMs }) {
     return { providerKey, providers, colors, stacks, totals, centers };
   } catch(_) { return null; }
 }
+
+export function formatProviderLabel(metric, prov, v) {
+  try {
+    const name = String(prov || '').trim();
+    const num = Number(v);
+    if (!name) return '';
+    if (!Number.isFinite(num)) return name;
+    if (metric === 'ASR' || metric === 'ACD') {
+      return `${name} ${Math.round(num * 10) / 10}`;
+    }
+    return `${name} ${Math.round(num)}`;
+  } catch(_) { return String(prov || ''); }
+}
+
+export function shouldShowProviderLabel({ barHeightPx, stepWidthPx, segmentShare }) {
+  try {
+    if (!Number.isFinite(barHeightPx) || !Number.isFinite(stepWidthPx) || !Number.isFinite(segmentShare)) return false;
+    if (barHeightPx < 16) return false;
+    if (stepWidthPx < 16) return false;
+    if (segmentShare < 0.08) return false;
+    return true;
+  } catch(_) { return false; }
+}
