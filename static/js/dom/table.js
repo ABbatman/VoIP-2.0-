@@ -352,15 +352,27 @@ export function initTableInteractions() {
       return;
     }
 
-    // --- ROW SELECTION LOGIC ---
+    // --- ROW-LEVEL TOGGLE FOR PEER ROWS (click anywhere on peer row) ---
     const clickedRow = event.target.closest("tr");
-    if (!clickedRow || !tableBody.contains(clickedRow)) return;
+    if (clickedRow && clickedRow.classList.contains("peer-row")) {
+      // If the direct target wasn't the toggle button, delegate to the existing button logic
+      const innerToggleBtn = clickedRow.querySelector(".toggle-btn");
+      if (innerToggleBtn && !event.target.closest(".toggle-btn")) {
+        try { innerToggleBtn.click(); } catch (_) {}
+        try { event.preventDefault(); event.stopPropagation(); } catch (_) {}
+        return;
+      }
+    }
+
+    // --- ROW SELECTION LOGIC ---
+    const clickedRow2 = event.target.closest("tr");
+    if (!clickedRow2 || !tableBody.contains(clickedRow2)) return;
     const currentlySelectedRow = tableBody.querySelector("tr.row-selected");
     if (currentlySelectedRow) {
       currentlySelectedRow.classList.remove("row-selected");
     }
-    if (clickedRow !== currentlySelectedRow) {
-      clickedRow.classList.add("row-selected");
+    if (clickedRow2 !== currentlySelectedRow) {
+      clickedRow2.classList.add("row-selected");
     }
   });
 

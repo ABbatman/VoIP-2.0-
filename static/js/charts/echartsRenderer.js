@@ -86,15 +86,15 @@ function toPairs(arr) {
     .filter(p => Number.isFinite(p[0]));
 }
 
-function seriesLine(name, data, xAxisIndex, yAxisIndex, color, { area = false, smooth = false, smoothMonotone = undefined, connectNulls = false, showSymbol = false, sampling = 'lttb' } = {}) {
+function seriesLine(name, data, xAxisIndex, yAxisIndex, color, { area = false, smooth = true, smoothMonotone = undefined, connectNulls = false, sampling = 'lttb' } = {}) {
   return {
     name,
     type: 'line',
     xAxisIndex,
     yAxisIndex,
-    showSymbol: !!showSymbol,
+    showSymbol: false,
     ...(sampling && sampling !== 'none' ? { sampling } : {}),
-    symbolSize: showSymbol ? 4 : 0,
+    symbolSize: 0,
     connectNulls: !!connectNulls,
     smooth: (typeof smooth === 'number' ? smooth : !!smooth),
     ...(smoothMonotone ? { smoothMonotone } : {}),
@@ -135,13 +135,12 @@ function buildMultiOption({ data, fromTs, toTs, height, interval, noFiveMinData 
   };
 
   // Do not connect across gaps: always keep connectNulls false to prevent bridging disjoint segments
-  const conn = !!noFiveMinData;
-  const symb = !!noFiveMinData; // show symbols when data is sparse
+  const conn = false;
   const is5m = interval === '5m';
   // Use LTTB sampling to preserve shape without losing key points
-  const samp = (symb ? 'none' : 'lttb');
-  const smoothVal = is5m ? 0.35 : true;
-  const smoothMono = is5m ? 'x' : undefined;
+  const samp = 'lttb';
+  const smoothVal = true;
+  const smoothMono = undefined;
 
   const stepMs = (interval === '5m') ? 5 * 60e3 : (interval === '1h' ? 3600e3 : 24 * 3600e3);
   // Keep original pairs for rendering (avoid gridding regressions)
@@ -150,10 +149,10 @@ function buildMultiOption({ data, fromTs, toTs, height, interval, noFiveMinData 
   const pairsM = toPairs(data?.Minutes).sort((a,b) => a[0]-b[0]);
   const pairsC = toPairs(data?.ACD).sort((a,b) => a[0]-b[0]);
 
-  const tcalls = seriesLine('TCalls', pairsT, 0, 0, colors.TCalls, { area: true, smooth: smoothVal, smoothMonotone: smoothMono, connectNulls: conn, showSymbol: symb, sampling: samp });
-  const asr = seriesLine('ASR', pairsA, 1, 1, colors.ASR, { area: true, smooth: smoothVal, smoothMonotone: smoothMono, connectNulls: conn, showSymbol: symb, sampling: samp });
-  const minutes = seriesLine('Minutes', pairsM, 2, 2, colors.Minutes, { area: true, smooth: smoothVal, smoothMonotone: smoothMono, connectNulls: conn, showSymbol: symb, sampling: samp });
-  const acd = seriesLine('ACD', pairsC, 3, 3, colors.ACD, { area: true, smooth: smoothVal, smoothMonotone: smoothMono, connectNulls: conn, showSymbol: symb, sampling: samp });
+  const tcalls = seriesLine('TCalls', pairsT, 0, 0, colors.TCalls, { area: true, smooth: smoothVal, smoothMonotone: smoothMono, connectNulls: conn, sampling: samp });
+  const asr = seriesLine('ASR', pairsA, 1, 1, colors.ASR, { area: true, smooth: smoothVal, smoothMonotone: smoothMono, connectNulls: conn, sampling: samp });
+  const minutes = seriesLine('Minutes', pairsM, 2, 2, colors.Minutes, { area: true, smooth: smoothVal, smoothMonotone: smoothMono, connectNulls: conn, sampling: samp });
+  const acd = seriesLine('ACD', pairsC, 3, 3, colors.ACD, { area: true, smooth: smoothVal, smoothMonotone: smoothMono, connectNulls: conn, sampling: samp });
   // ensure colored series are above overlays
   tcalls.z = 3; asr.z = 3; minutes.z = 3; acd.z = 3;
 
@@ -191,21 +190,7 @@ function buildMultiOption({ data, fromTs, toTs, height, interval, noFiveMinData 
       startVal = clamp(zr.fromTs);
       endVal = clamp(zr.toTs);
     } else {
-      const wantPanInit = (typeof window !== 'undefined') && !!window.__chartsPanInit;
-      const total = (Number(toTs) - Number(fromTs));
-      if (wantPanInit && Number.isFinite(total) && total > 0) {
-        let span = 0;
-        if (interval === '5m') {
-          span = Math.min(total, 24 * 3600e3);
-        } else if (interval === '1h') {
-          span = Math.min(total, 7 * 24 * 3600e3);
-        } else {
-          span = Math.min(total, Math.max(Math.floor(total / 4), 7 * 24 * 3600e3));
-        }
-        startVal = Math.max(Number(fromTs), Number(toTs) - span);
-        endVal = Number(toTs);
-        try { window.__chartsPanInit = false; } catch(_) {}
-      }
+      // No initial auto-pan: keep full requested domain on first render
     }
   } catch(_) {}
   // Fallback safety: ensure start < end and both finite; else drop to base domain

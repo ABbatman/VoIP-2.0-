@@ -161,7 +161,8 @@ export async function initD3Dashboard() {
       { value: '1h', label: '1h' },
       { value: '1d', label: '1d' },
     ];
-    const stepDd = makeDd('chart-interval-dropdown', stepItems, (controls.dataset.interval || '5m'));
+    const initialInterval = (typeof window !== 'undefined' && window.__chartsCurrentInterval) ? window.__chartsCurrentInterval : (controls.dataset.interval || '1h');
+    const stepDd = makeDd('chart-interval-dropdown', stepItems, initialInterval);
     controls.appendChild(stepDd);
 
     try { console.debug('[charts] controls populated (dropdowns)'); } catch(_) {}
@@ -213,7 +214,7 @@ export async function initD3Dashboard() {
 
   // State
   let currentType = (controls.dataset.type) || 'line';
-  let currentInterval = '5m'; // default aggregation step
+  let currentInterval = '1h'; // default aggregation step for all charts
   try { if (typeof window !== 'undefined') window.__chartsCurrentInterval = currentInterval; } catch(_) {}
   let cleanup = () => {};
   const setActive = (type) => {
@@ -264,17 +265,9 @@ export async function initD3Dashboard() {
       viewToTs = toDef;
     }
     try {
-      const diffDays = (viewToTs - viewFromTs) / (24 * 3600e3);
-      const diffHours = (viewToTs - viewFromTs) / 3600e3;
+      // Disable auto interval switching on initial render; keep user's selection
       const hasZoom = !!(zr && Number.isFinite(zr.fromTs) && Number.isFinite(zr.toTs) && zr.toTs > zr.fromTs);
-      // Do not auto-switch to 5m when a zoom window is active; respect user's interval selection
-      if (!hasZoom && diffHours <= 6 && currentInterval !== '5m') {
-        currentInterval = '5m';
-        try { if (typeof window !== 'undefined') window.__chartsCurrentInterval = '5m'; } catch(_) {}
-        stepMs = intervalToStep(currentInterval);
-      } else if (currentInterval === '5m' && diffDays > 5.0001 && !hasZoom) {
-        currentInterval = '1h';
-        try { if (typeof window !== 'undefined') window.__chartsCurrentInterval = '1h'; } catch(_) {}
+      if (!hasZoom) {
         stepMs = intervalToStep(currentInterval);
       }
     } catch(_) {}
@@ -307,18 +300,22 @@ export async function initD3Dashboard() {
     if (!m) { try { console.warn('[charts] mount not found at render time'); } catch(_) {} return; }
     if (currentInterval === '5m') {
       if (!useFive) {
-        // Engine будет агрегировать 5m в 1h по бинам, отдельная ручная агрегация не требуется
-        const fiveStep = intervalToStep('5m');
-        const { data: shapedData, options: shapedOptions } = shapeChartPayload(rows || [], {
+        // Нет 5-минутных данных — переключаем на 1h без «подделки» 5m из часовых точек
+        try { toast('5-minute data is not available for the selected range. Using 1 hour.', { type: 'info', duration: 2500 }); } catch(_) {}
+        currentInterval = '1h';
+        try { if (typeof window !== 'undefined') window.__chartsCurrentInterval = currentInterval; } catch(_) {}
+        try { publish('charts:intervalChanged', { interval: currentInterval }); } catch(_) {}
+        const step1h = intervalToStep('1h');
+        const { data: shapedData, options: shapedOptions } = shapeChartPayload(hourRows || [], {
           type,
           fromTs: baseFromTs,
           toTs: baseToTs,
-          stepMs: fiveStep,
+          stepMs: step1h,
           height: fixedH,
         });
-        const mergedOptions = { ...shapedOptions, stepMs: fiveStep, interval: '5m', noFiveMinData: true,
-          perProvider: !!(typeof window !== 'undefined' && window.__chartsBarPerProvider && type === 'bar'),
-          providerRows: rows || [] };
+        const mergedOptions = { ...shapedOptions, stepMs: step1h, interval: '1h',
+          perProvider: !!(typeof window !== 'undefined' && window.__chartsBarPerProvider),
+          providerRows: hourRows || [] };
         renderer(m, shapedData, mergedOptions);
         return;
       }
@@ -519,24 +516,24 @@ export async function initD3Dashboard() {
         return;
       }
       if (dd?.id === 'chart-interval-dropdown') {
-        const requested = value || '5m';
+        const requested = value || '1h';
         if (requested === currentInterval) { closeAllDd(); return; }
         try {
-          const zr = (typeof window !== 'undefined') ? window.__chartsZoomRange : null;
-          let fromTs, toTs;
-          if (zr && Number.isFinite(zr.fromTs) && Number.isFinite(zr.toTs) && zr.toTs > zr.fromTs) {
-            fromTs = zr.fromTs; toTs = zr.toTs;
-          } else {
-            const { from, to } = getFilters();
-            fromTs = parseUtc(from); toTs = parseUtc(to);
-          }
-          const diffDays = (toTs - fromTs) / (24 * 3600e3);
-          if (requested === '5m' && diffDays > 5.0001) {
-            try { toast('5-minute interval is available only for ranges up to 5 days. Switching to 1 hour.', { type: 'warning', duration: 3500 }); } catch(_) {}
-            currentInterval = '1h';
-          } else {
-            currentInterval = requested;
-          }
+            const zr = (typeof window !== 'undefined') ? window.__chartsZoomRange : null;
+            let fromTs, toTs;
+            if (zr && Number.isFinite(zr.fromTs) && Number.isFinite(zr.toTs) && zr.toTs > zr.fromTs) {
+              fromTs = zr.fromTs; toTs = zr.toTs;
+            } else {
+              const { from, to } = getFilters();
+              fromTs = parseUtc(from); toTs = parseUtc(to);
+            }
+            const diffDays = (toTs - fromTs) / (24 * 3600e3);
+            if (requested === '5m' && diffDays > 5.0001) {
+              try { toast('5-minute interval is available only for ranges up to 5 days. Switching to 1 hour.', { type: 'warning', duration: 3500 }); } catch(_) {}
+              currentInterval = '1h';
+            } else {
+              currentInterval = requested;
+            }
         } catch(_) { currentInterval = requested; }
         try { if (typeof window !== 'undefined') window.__chartsCurrentInterval = currentInterval; } catch(_) {}
         closeAllDd();

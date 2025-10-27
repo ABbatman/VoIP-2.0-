@@ -24,36 +24,50 @@ function parseRowTs(raw) {
 
 function detectProviderKey(rows) {
   if (!Array.isArray(rows) || rows.length === 0) return null;
-  const keyUniqs = new Map(); // key -> Set of unique non-empty values
+  const timeKeys = new Set(['time','Time','timestamp','Timestamp','slot','Slot','hour','Hour','date','Date']);
+  const metricKeys = new Set(['TCall','TCalls','total_calls','Min','Minutes','ASR','ACD']);
+  const lowerPref = CANDIDATE_PROVIDER_KEYS.map(k => k.toLowerCase());
+
+  // 1) Prefer known provider/supplier synonyms (string or number)
+  const candUniqs = new Map();
   for (const r of rows) {
     if (!r || typeof r !== 'object') continue;
     for (const k of Object.keys(r)) {
+      const kl = String(k).toLowerCase();
+      if (!lowerPref.includes(kl)) continue;
       const v = r[k];
       if (v == null) continue;
-      const s = String(v).trim();
+      const s = (typeof v === 'string') ? v.trim() : (typeof v === 'number' ? String(v) : '');
+      if (!s) continue;
+      let set = candUniqs.get(k);
+      if (!set) { set = new Set(); candUniqs.set(k, set); }
+      set.add(s);
+      if (set.size > 200) break;
+    }
+  }
+  const eligibleCand = Array.from(candUniqs.entries()).filter(([, set]) => (set?.size || 0) >= 2).sort((a,b) => b[1].size - a[1].size);
+  if (eligibleCand.length) return eligibleCand[0][0];
+
+  // 2) Fallback: scan generic keys but only strings, ignore time/metric columns
+  const keyUniqs = new Map();
+  for (const r of rows) {
+    if (!r || typeof r !== 'object') continue;
+    for (const k of Object.keys(r)) {
+      if (timeKeys.has(k) || metricKeys.has(k)) continue;
+      const v = r[k];
+      if (typeof v !== 'string') continue;
+      const s = v.trim();
       if (!s) continue;
       let set = keyUniqs.get(k);
       if (!set) { set = new Set(); keyUniqs.set(k, set); }
       set.add(s);
-      // early exit if many uniques gathered
-      if (set.size > 50) break;
+      if (set.size > 200) break;
     }
   }
-  const eligible = Array.from(keyUniqs.entries()).filter(([, set]) => set && set.size >= 2).map(([k]) => k);
+  const eligible = Array.from(keyUniqs.entries()).filter(([, set]) => set && set.size >= 2);
   if (eligible.length === 0) return null;
-  // prefer known synonyms (case-insensitive)
-  const lowerPref = CANDIDATE_PROVIDER_KEYS.map(k => k.toLowerCase());
-  for (const pref of lowerPref) {
-    const hit = eligible.find(k => String(k).toLowerCase() === pref);
-    if (hit) return hit;
-  }
-  // otherwise pick the eligible key with the largest unique set size
-  let best = null; let bestSize = -1;
-  for (const k of eligible) {
-    const sz = (keyUniqs.get(k) || new Set()).size;
-    if (sz > bestSize) { best = k; bestSize = sz; }
-  }
-  return best;
+  eligible.sort((a,b) => b[1].size - a[1].size);
+  return eligible[0][0];
 }
 
 function toNum(v) { const n = Number(v); return Number.isFinite(n) ? n : null; }
@@ -68,10 +82,10 @@ function metricExtractors() {
 }
 
 const PROVIDER_COLORS = [
-  '#1f77b4','#ff7f0e','#2ca02c','#d62728','#9467bd',
-  '#8c564b','#e377c2','#7f7f7f','#bcbd22','#17becf',
-  '#4e79a7','#f28e2b','#59a14f','#e15759','#76b7b2',
-  '#edc949','#af7aa1','#ff9da7','#9c755f','#bab0ab'
+  '#ff7f0e','#2ca02c','#d62728','#9467bd','#8c564b',
+  '#e377c2','#7f7f7f','#bcbd22','#17becf','#4e79a7',
+  '#f28e2b','#59a14f','#e15759','#76b7b2','#edc949',
+  '#af7aa1','#ff9da7','#9c755f','#bab0ab','#1f77b4'
 ];
 
 export function buildProviderStacks(rows, { fromTs, toTs, stepMs }) {
@@ -96,7 +110,11 @@ export function buildProviderStacks(rows, { fromTs, toTs, stepMs }) {
       if (p == null) continue;
       const prov = String(p).trim();
       if (!prov) continue;
-      const t = parseRowTs(r.time || r.slot || r.hour || r.timestamp || r.Time);
+      const t = parseRowTs(
+        r.time || r.Time || r.timestamp || r.Timestamp || r.slot || r.Slot || r.hour || r.Hour ||
+        r.datetime || r.DateTime || r.ts || r.TS || r.period || r.Period || r.start || r.Start ||
+        r.start_time || r.StartTime
+      );
       if (!Number.isFinite(t)) continue;
       const bucket = Math.floor(t / stepMs) * stepMs + Math.floor(stepMs / 2);
       if (bucket < centers[0] - stepMs || bucket > centers[centers.length - 1] + stepMs) continue;

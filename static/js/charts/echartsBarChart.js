@@ -152,15 +152,21 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
     const usable = Math.max(160, (opts.height || el.clientHeight || 600) - topPad - bottomPad - gap * 3);
     const h = Math.floor(usable / 4);
     const grids = Array.from({ length: 4 }, (_, i) => ({ left: 40, right: 16, top: topPad + i * (h + gap), height: h }));
+    // A thin preview grid positioned inside the slider track area (drawn underneath the slider)
+    const sliderBottom = 8;
+    const sliderHeight = 32;
+    const previewInset = 4;
+    const previewGrid = { left: 40, right: 16, bottom: sliderBottom + previewInset, height: sliderHeight - 2 * previewInset };
+    grids.push(previewGrid);
     const xAxes = grids.map((g, i) => ({
       type: 'time', gridIndex: i, min: Number.isFinite(fromTs) ? fromTs : null, max: Number.isFinite(toTs) ? toTs : null,
-      axisLabel: { color: '#6e7781' },
-      axisLine: { lineStyle: { color: '#888' } },
-      axisTick: { alignWithLabel: true, length: 6 },
-      splitLine: { show: true, lineStyle: { color: '#eaeef2' } },
-      axisPointer: { show: true, snap: true, triggerTooltip: true }
+      axisLabel: (i === 4 ? { show: false } : { color: '#6e7781' }),
+      axisLine: (i === 4 ? { show: false } : { lineStyle: { color: '#888' } }),
+      axisTick: (i === 4 ? { show: false } : { alignWithLabel: true, length: 6 }),
+      splitLine: (i === 4 ? { show: false } : { show: true, lineStyle: { color: '#eaeef2' } }),
+      axisPointer: (i === 4 ? { show: false } : { show: true, snap: true, triggerTooltip: true })
     }));
-    const yAxes = grids.map((g, i) => ({ type: 'value', gridIndex: i, axisLabel: { show: false }, splitLine: { show: false }, axisLine: { lineStyle: { color: '#000' } } }));
+    const yAxes = grids.map((g, i) => ({ type: 'value', gridIndex: i, axisLabel: { show: false }, splitLine: { show: false }, axisLine: (i === 4 ? { show: false } : { lineStyle: { color: '#000' } }) }));
 
     const colorMain = '#4f86ff';
     const colors = { TCalls: colorMain, ASR: colorMain, Minutes: colorMain, ACD: colorMain };
@@ -257,17 +263,17 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
           const base = api.coord([x, 0])[1];
           const topY = api.coord([x, total])[1];
           const height = Math.abs(base - topY);
-          if (!(height > 2)) return null;
+          if (!(height > 1)) return null;
           const stripeH = Math.max(2, Math.round(Math.min(4, height * 0.06)));
           const children = [];
           let cum = 0;
           if (segs.length === 1) {
-            // With a single supplier there is no boundary; draw a mid-height stripe
-            const midY = api.coord([x, total * 0.5])[1];
+            // Single supplier: draw a stripe at the very top of the bar
             const yTop = Math.min(base, topY);
             const yBottom = Math.max(base, topY);
-            if (midY > yTop + 1 && midY < yBottom - 1) {
-              children.push({ type: 'rect', shape: { x: xLeft, y: Math.round(midY - stripeH / 2), width, height: stripeH }, style: { fill: segs[0].color || 'rgba(0,0,0,0.4)', opacity: 0.9 }, ignore: false });
+            const topStripeY = Math.round(yTop + 1 + stripeH / 2);
+            if (topStripeY > yTop && topStripeY < yBottom) {
+              children.push({ type: 'rect', shape: { x: xLeft, y: topStripeY - Math.round(stripeH / 2), width, height: stripeH }, style: { fill: segs[0].color || 'rgba(0,0,0,0.6)', opacity: 0.95, stroke: '#ffffff', lineWidth: 0.6 }, ignore: false });
             }
           } else {
             for (const s of segs) {
@@ -280,7 +286,7 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
               children.push({
                 type: 'rect',
                 shape: { x: xLeft, y: Math.round(y - stripeH / 2), width, height: stripeH },
-                style: { fill: s.color || 'rgba(0,0,0,0.4)', opacity: 0.9 },
+                style: { fill: s.color || 'rgba(0,0,0,0.6)', opacity: 0.95, stroke: '#ffffff', lineWidth: 0.6 },
                 ignore: false
               });
             }
@@ -303,7 +309,7 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
       dataZoom: [
         {
           type: 'inside',
-          xAxisIndex: [0,1,2,3],
+          xAxisIndex: [0,1,2,3,4],
           startValue: startVal,
           endValue: endVal,
           throttle: 80,
@@ -313,17 +319,17 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
         },
         {
           type: 'slider',
-          xAxisIndex: 0,
+          xAxisIndex: [0,4],
           startValue: startVal,
           endValue: endVal,
           height: 32,
           bottom: 8,
           throttle: 80,
-          showDataShadow: true,
-          dataBackground: {
-            lineStyle: { color: '#4f86ff', width: 1 },
-            areaStyle: { color: 'rgba(79,134,255,0.18)' }
-          }
+          // Keep the slider visuals translucent to reveal preview bars underneath
+          backgroundColor: 'rgba(0,0,0,0)',
+          fillerColor: 'rgba(79,134,255,0.12)',
+          showDataShadow: false,
+          dataBackground: { lineStyle: { color: 'rgba(0,0,0,0)' }, areaStyle: { color: 'rgba(0,0,0,0)' } }
         }
       ],
       series: (() => {
@@ -356,6 +362,9 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
           list.push({ id: 'ac', name: 'ACD', type: 'bar', xAxisIndex: 3, yAxisIndex: 3, large: true, barWidth: bw, barGap: '4%', barCategoryGap: '20%', emphasis: { focus: 'series', blurScope: 'coordinateSystem' }, blur: { itemStyle: { opacity: 0.12 } }, itemStyle: { color: colors.ACD }, data: setsC.curr });
           list.push({ id: 'acPrev', name: 'ACD -24h', type: 'bar', xAxisIndex: 3, yAxisIndex: 3, large: true, barWidth: bw, barGap: '4%', barCategoryGap: '20%', itemStyle: { color: 'rgba(140,148,156,0.85)' }, data: setsC.prev, emphasis: { disabled: true }, tooltip: { show: false }, silent: true, blur: { itemStyle: { opacity: 0.4 } } });
         }
+        // Preview bars under the slider track (grid/xAxis/yAxis index 4)
+        const previewData = provider ? provider.totals.TCalls : setsT.curr;
+        list.push({ id: 'preview', name: 'Preview', type: 'bar', xAxisIndex: 4, yAxisIndex: 4, large: true, silent: true, barWidth: Math.max(1, Math.floor(bw * 0.66)), itemStyle: { color: '#4f86ff', opacity: 0.45 }, emphasis: { disabled: true }, tooltip: { show: false }, data: previewData });
         return list;
       })(),
       graphic: graphicLabels
