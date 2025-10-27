@@ -19,8 +19,23 @@ export function makeBarLineLikeTooltip({ chart, stepMs }) {
   const getPairs = (name) => {
     try {
       const opt = chart.getOption();
-      const s = (opt.series || []).find(x => x && x.name === name);
-      return toPairs(s ? s.data : []);
+      const ser = (opt.series || []);
+      // First try by name (line charts, non-stacked bars)
+      const sByName = ser.find(x => x && x.name === name);
+      if (sByName) return toPairs(sByName.data || []);
+      // If not found, try summing provider stack series (stacked bars)
+      const stackMap = { TCalls: 'TCallsStack', ASR: 'ASRStack', Minutes: 'MinutesStack', ACD: 'ACDStack' };
+      const targetStack = stackMap[name];
+      if (!targetStack) return [];
+      const stacks = ser.filter(x => x && x.type === 'bar' && x.stack === targetStack && typeof x.name === 'string' && !x.name.endsWith(' -24h'));
+      if (!stacks.length) return [];
+      const acc = new Map(); // t -> sum
+      for (const s of stacks) {
+        const pairs = toPairs(s.data || []);
+        for (const [t, y] of pairs) acc.set(t, (acc.get(t) || 0) + (y || 0));
+      }
+      const out = Array.from(acc.entries()).sort((a,b) => a[0] - b[0]);
+      return out;
     } catch(_) { return []; }
   };
   const findPrevWithin = (pairs, ts, maxDelta) => {

@@ -5,6 +5,7 @@ import { ensureDefaults, getRenderer, listTypes, registerChart } from '../charts
 import { subscribe, publish } from '../state/eventBus.js';
 import { getFilters, getMetricsData, getAppStatus, setUI } from '../state/appState.js';
 import { attachChartZoom } from '../charts/zoom/brushZoom.js';
+import { initProviderStackControl } from '../charts/controls/providerStackControl.js';
 import { shapeChartPayload, intervalToStep } from '../charts/engine/timeSeriesEngine.js';
 import { parseUtc } from '../utils/date.js';
 import { toast } from '../ui/notify.js';
@@ -164,6 +165,7 @@ export async function initD3Dashboard() {
     controls.appendChild(stepDd);
 
     try { console.debug('[charts] controls populated (dropdowns)'); } catch(_) {}
+    try { initProviderStackControl(); } catch(_) {}
   };
 
   // Compute chart area height on every render; robust against small container on first open
@@ -309,7 +311,7 @@ export async function initD3Dashboard() {
     if (!m) { try { console.warn('[charts] mount not found at render time'); } catch(_) {} return; }
     if (currentInterval === '5m') {
       if (!useFive) {
-        // Fallback: no 5m rows available -> use engine shaping with 5m bins from hourly rows
+        // Engine будет агрегировать 5m в 1h по бинам, отдельная ручная агрегация не требуется
         const fiveStep = intervalToStep('5m');
         const { data: shapedData, options: shapedOptions } = shapeChartPayload(rows || [], {
           type,
@@ -318,7 +320,9 @@ export async function initD3Dashboard() {
           stepMs: fiveStep,
           height: fixedH,
         });
-        const mergedOptions = { ...shapedOptions, stepMs: fiveStep, interval: '5m', noFiveMinData: true };
+        const mergedOptions = { ...shapedOptions, stepMs: fiveStep, interval: '5m', noFiveMinData: true,
+          perProvider: !!(typeof window !== 'undefined' && window.__chartsBarPerProvider && type === 'bar'),
+          providerRows: rows || [] };
         renderer(m, shapedData, mergedOptions);
         return;
       }
@@ -379,7 +383,9 @@ export async function initD3Dashboard() {
         Minutes: fillLinear(pts.map(p => ({ x: p.t, y: p.minutes }))),
         ACD: fillLinear(pts.map(p => ({ x: p.t, y: p.acdCnt ? (p.acdSum / p.acdCnt) : 0 }))),
       };
-      const rawOptions = { height: fixedH, fromTs: baseFromTs, toTs: baseToTs, noDefined: true, stepMs, interval: currentInterval, noFiveMinData: false };
+      const rawOptions = { height: fixedH, fromTs: baseFromTs, toTs: baseToTs, noDefined: true, stepMs, interval: currentInterval, noFiveMinData: false,
+        perProvider: !!(typeof window !== 'undefined' && window.__chartsBarPerProvider),
+        providerRows: rows || [] };
       renderer(m, rawData, rawOptions);
     } else {
       // Thin-facade: delegate shaping to the engine (binning)
@@ -390,7 +396,9 @@ export async function initD3Dashboard() {
         stepMs,
         height: fixedH,
       });
-      const mergedOptions = { ...shapedOptions, stepMs, interval: currentInterval };
+      const mergedOptions = { ...shapedOptions, stepMs, interval: currentInterval,
+        perProvider: !!(typeof window !== 'undefined' && window.__chartsBarPerProvider),
+        providerRows: rows || [] };
       renderer(m, shapedData, mergedOptions);
     }
     // Post-render: once visible, reflow and adjust height if it changed, then re-render once
@@ -509,6 +517,7 @@ export async function initD3Dashboard() {
         currentType = value || 'line';
         closeAllDd();
         setActive(currentType);
+        try { initProviderStackControl(); } catch(_) {}
         cleanup();
         renderWhenMountReady(currentType);
         return;
@@ -563,6 +572,7 @@ export async function initD3Dashboard() {
     populateButtons(controls);
     controls.removeEventListener('click', onControlsClick);
     controls.addEventListener('click', onControlsClick);
+    try { initProviderStackControl(); } catch(_) {}
     // Reflect the current active type/interval immediately
     setActive(currentType);
     cleanup();
@@ -575,6 +585,7 @@ export async function initD3Dashboard() {
     try { if (typeof window !== 'undefined' && window.__summaryFetchInProgress) return; } catch(_) {}
     if (status === 'success') {
       setActive(currentType);
+      try { initProviderStackControl(); } catch(_) {}
       try { cleanup(); } catch(_) {}
       renderWhenMountReady(currentType);
     }
@@ -584,6 +595,7 @@ export async function initD3Dashboard() {
   subscribe('appState:uiChanged', (ui) => {
     if (ui && ui.showCharts) {
       setActive(currentType);
+      try { initProviderStackControl(); } catch(_) {}
       try { cleanup(); } catch(_) {}
       renderWhenMountReady(currentType);
     }
@@ -606,6 +618,16 @@ export async function initD3Dashboard() {
   subscribe('charts:renderRequest', () => {
     try { cleanup(); } catch(_) {}
     renderWhenMountReady(currentType);
+  });
+
+  // Re-render current chart when per-provider toggle changes
+  subscribe('charts:bar:perProviderChanged', (payload) => {
+    try {
+      if (controls?.dataset?.type === 'bar') {
+        cleanup();
+        renderWhenMountReady('bar');
+      }
+    } catch(_) {}
   });
 
   // If data was loaded before dashboard init completed, render immediately
