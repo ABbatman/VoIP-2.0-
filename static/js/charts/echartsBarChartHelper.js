@@ -97,10 +97,12 @@ export function buildProviderStacks(rows, { fromTs, toTs, stepMs }) {
     const ex = metricExtractors();
 
     // build centers
-    const centers = [];
-    const start = Math.floor(Number(fromTs) / stepMs) * stepMs;
-    const end = Math.ceil(Number(toTs) / stepMs) * stepMs;
-    for (let t = start; t <= end; t += stepMs) centers.push(t + Math.floor(stepMs / 2));
+    let centers = [];
+    try {
+      const start = Math.floor(Number(fromTs) / stepMs) * stepMs;
+      const end = Math.ceil(Number(toTs) / stepMs) * stepMs;
+      for (let t = start; t <= end; t += stepMs) centers.push(t + Math.floor(stepMs / 2));
+    } catch(_) { centers = []; }
 
     // accumulators: provider -> metric -> { sumMap(center), cntMap(center) }
     const provSet = new Set();
@@ -138,6 +140,18 @@ export function buildProviderStacks(rows, { fromTs, toTs, stepMs }) {
       }
     }
     const providers = Array.from(provSet.values());
+    // Fallback: if centers are empty, derive them from observed buckets in accumulators
+    if (centers.length === 0) {
+      const set = new Set();
+      for (const prov of providers) {
+        const a = acc.get(prov) || {};
+        try { for (const k of (a.TCalls?.keys?.() || [])) set.add(Number(k)); } catch(_){}
+        try { for (const k of (a.Minutes?.keys?.() || [])) set.add(Number(k)); } catch(_){}
+        try { for (const k of (a.ASR?.sum?.keys?.() || [])) set.add(Number(k)); } catch(_){}
+        try { for (const k of (a.ACD?.sum?.keys?.() || [])) set.add(Number(k)); } catch(_){}
+      }
+      centers = Array.from(set.values()).filter(Number.isFinite).sort((a,b) => a - b);
+    }
     if (providers.length < 1) return null;
 
     const colors = Object.create(null);
@@ -146,6 +160,7 @@ export function buildProviderStacks(rows, { fromTs, toTs, stepMs }) {
     // build pair sets per provider and metric
     const stacks = { TCalls: { curr: {}, prev: {} }, Minutes: { curr: {}, prev: {} }, ASR: { curr: {}, prev: {} }, ACD: { curr: {}, prev: {} } };
     const totals = { TCalls: [], Minutes: [], ASR: [], ACD: [] };
+    const markers = { TCalls: [], Minutes: [], ASR: [], ACD: [] };
 
     // Build totals and per-provider series ensuring ASR/ACD segments sum to overall metric
     for (const c of centers) {
@@ -170,6 +185,7 @@ export function buildProviderStacks(rows, { fromTs, toTs, stepMs }) {
       totals.Minutes.push([c, sumM]);
       totals.ASR.push([c, asrTotal]);
       totals.ACD.push([c, acdTotal]);
+      const markerBuckets = { TCalls: [], Minutes: [], ASR: [], ACD: [] };
       for (const prov of providers) {
         const a = acc.get(prov) || {};
         const tcall = Number(a.TCalls?.get?.(c) || 0);
@@ -177,15 +193,27 @@ export function buildProviderStacks(rows, { fromTs, toTs, stepMs }) {
         // direct stacking for TCalls/Minutes
         const listT = (stacks.TCalls.curr[prov] = stacks.TCalls.curr[prov] || []);
         const listM = (stacks.Minutes.curr[prov] = stacks.Minutes.curr[prov] || []);
-        if (tcall) listT.push([c, tcall]);
-        if (minutes) listM.push([c, minutes]);
+        if (tcall) {
+          listT.push([c, tcall]);
+          markerBuckets.TCalls.push({ provider: prov, value: tcall });
+        }
+        if (minutes) {
+          listM.push([c, minutes]);
+          markerBuckets.Minutes.push({ provider: prov, value: minutes });
+        }
         // proportional segments for ASR (by calls share) and ACD (by minutes share)
         const asrSeg = (sumT > 0) ? (tcall / sumT) * asrTotal : 0;
         const acdSeg = (sumM > 0) ? (minutes / sumM) * acdTotal : 0;
         const listA = (stacks.ASR.curr[prov] = stacks.ASR.curr[prov] || []);
         const listC = (stacks.ACD.curr[prov] = stacks.ACD.curr[prov] || []);
-        if (asrSeg) listA.push([c, asrSeg]);
-        if (acdSeg) listC.push([c, acdSeg]);
+        if (asrSeg) {
+          listA.push([c, asrSeg]);
+          markerBuckets.ASR.push({ provider: prov, value: asrSeg });
+        }
+        if (acdSeg) {
+          listC.push([c, acdSeg]);
+          markerBuckets.ACD.push({ provider: prov, value: acdSeg });
+        }
         // prev day segments (no normalization; used only if present in rows at c - 24h)
         const prevC = c - dayMs;
         const tcallP = Number(a.TCalls?.get?.(prevC) || 0);
@@ -200,9 +228,36 @@ export function buildProviderStacks(rows, { fromTs, toTs, stepMs }) {
         }
         // For ASR/ACD prev day, skip provider breakdown (keep total grey bar only in renderer)
       }
+      const totalsByMetric = { TCalls: sumT, Minutes: sumM, ASR: asrTotal, ACD: acdTotal };
+      for (const metric of Object.keys(markerBuckets)) {
+        const bucket = markerBuckets[metric]
+          .filter(seg => seg && Number(seg.value) > 0)
+          .map(seg => ({
+            provider: seg.provider,
+            value: Number(seg.value),
+            color: colors[seg.provider] || PROVIDER_COLORS[0]
+          }))
+          .sort((a, b) => a.value - b.value);
+        const totalVal = Number(totalsByMetric[metric]);
+        if (!bucket.length || !(totalVal > 0)) continue;
+        markers[metric].push({
+          ts: c,
+          total: totalVal,
+          segments: bucket
+        });
+      }
     }
 
-    return { providerKey, providers, colors, stacks, totals, centers };
+    // DEBUG
+    console.log('[buildProviderStacks] providers:', providers);
+    console.log('[buildProviderStacks] markers:', { 
+      TCalls: markers.TCalls.length, 
+      ASR: markers.ASR.length, 
+      Minutes: markers.Minutes.length, 
+      ACD: markers.ACD.length 
+    });
+
+    return { providerKey, providers, colors, stacks, totals, centers, markers };
   } catch(_) { return null; }
 }
 
@@ -227,4 +282,148 @@ export function shouldShowProviderLabel({ barHeightPx, stepWidthPx, segmentShare
     if (segmentShare < 0.08) return false;
     return true;
   } catch(_) { return false; }
+}
+
+// Build decorative supplier stripe overlay (silent custom series)
+export function makeStripeOverlay(id, xAxisIndex, yAxisIndex, totalsPairs, stacksPerProv, stepMs, providerMeta, metricName, active) {
+  const normalizeSegments = (segments) => (Array.isArray(segments) ? segments : [])
+    .map(seg => {
+      const prov = String(seg?.provider ?? seg?.prov ?? seg?.name ?? '').trim();
+      const value = Number(seg?.value ?? seg?.v ?? 0);
+      if (!prov || !(value > 0)) return null;
+      const color = seg?.color || providerMeta?.colors?.[prov] || '#ff7f0e';
+      return { prov, v: value, color };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.v - b.v);
+
+  const buildMarkerData = () => {
+    const markerList = Array.isArray(providerMeta?.markers?.[metricName]) ? providerMeta.markers[metricName] : [];
+    return markerList
+      .map(item => {
+        const ts = Number(item?.ts ?? item?.time ?? (Array.isArray(item?.value) ? item.value[0] : null));
+        const total = Number(item?.total ?? (Array.isArray(item?.value) ? item.value[1] : null));
+        const segments = normalizeSegments(item?.segments);
+        if (!(Number.isFinite(ts) && Number.isFinite(total) && total > 0) || !segments.length) return null;
+        return { value: [ts, total], segments };
+      })
+      .filter(Boolean);
+  };
+
+  const buildFallbackData = () => {
+    const result = [];
+    const totalsArr = Array.isArray(totalsPairs) ? totalsPairs : [];
+    const providerNames = Object.keys(stacksPerProv || {});
+    if (!providerNames.length) return result;
+    const cache = new Map();
+    for (const [ts, total] of totalsArr) {
+      const t = Number(ts);
+      const tot = Number(total);
+      if (!(Number.isFinite(t) && Number.isFinite(tot) && tot > 0)) continue;
+      const segs = [];
+      for (const name of providerNames) {
+        let map = cache.get(name);
+        if (!map) {
+          const src = Array.isArray(stacksPerProv?.[name]) ? stacksPerProv[name] : [];
+          map = new Map(src.map(([tt, vv]) => [Number(tt), Number(vv)]));
+          cache.set(name, map);
+        }
+        const val = Number(map.get(t) || 0);
+        if (val > 0) {
+          segs.push({ prov: name, v: val, color: providerMeta?.colors?.[name] || '#ff7f0e' });
+        }
+      }
+      if (segs.length) {
+        result.push({ value: [t, tot], segments: segs.sort((a, b) => a.v - b.v) });
+      }
+    }
+    return result;
+  };
+
+  let data = buildMarkerData();
+  if (!data.length) data = buildFallbackData();
+  
+  // DEBUG
+  console.log(`[makeStripeOverlay] ${id} metric=${metricName} active=${active} data.length=${data.length}`);
+  if (data.length > 0) {
+    console.log(`[makeStripeOverlay] ${id} sample:`, data[0]);
+  }
+
+  // Сохраняем segments в замыкании, т.к. ECharts может не передать их через params.data
+  const segmentsMap = new Map();
+  data.forEach((item, idx) => {
+    if (item && Array.isArray(item.segments)) {
+      segmentsMap.set(idx, item.segments);
+    }
+  });
+
+  return {
+    id,
+    name: `${id}-overlay`,
+    type: 'custom',
+    coordinateSystem: 'cartesian2d',
+    xAxisIndex,
+    yAxisIndex,
+    silent: true,
+    tooltip: { show: false },
+    emphasis: { disabled: true },
+    blur: { itemStyle: { opacity: 1 } },
+    z: 20,
+    zlevel: 20,
+    renderItem: (params, api) => {
+      if (!active) return null;
+      const x = api.value(0);
+      const total = api.value(1);
+      if (!(Number.isFinite(x) && Number.isFinite(total) && total > 0)) return null;
+      
+      // Берем segments из замыкания по dataIndex
+      const segs = segmentsMap.get(params.dataIndex) || [];
+      if (!segs.length) return null;
+      console.log(`[renderItem] ${id} OK: drawing ${segs.length} stripes at x=${x}`);
+      const half = Math.floor(stepMs / 2);
+      const p0 = api.coord([x - half, 0]);
+      const p1 = api.coord([x + half, 0]);
+      const width = Math.max(1, Math.floor((p1[0] - p0[0]) * 0.68));
+      const fullW = Math.abs(p1[0] - p0[0]);
+      const base = api.coord([x, 0])[1];
+      const topY = api.coord([x, total])[1];
+      const height = Math.abs(base - topY);
+      let stripeH = Math.round(Math.min(10, height * 0.12));
+      if (!Number.isFinite(stripeH) || stripeH < 2) stripeH = 2;
+      if (Number.isFinite(height) && height > 0) {
+        const maxStripe = Math.max(1, Math.round(height));
+        stripeH = Math.min(stripeH, maxStripe);
+      }
+      const children = [];
+      const stripeWidth = Math.max(2, Math.min(width, Math.round(fullW * 0.88)));
+      const xStripe = Math.round((p0[0] + p1[0]) / 2 - stripeWidth / 2);
+      const minY = Math.min(base, topY);
+      const maxY = Math.max(base, topY);
+      let cum = 0;
+      for (const s of segs) {
+        const part = Number(s?.v || 0);
+        if (!(part > 0)) continue;
+        const prev = cum;
+        cum += part;
+        const y1 = api.coord([x, prev])[1];
+        const y2 = api.coord([x, cum])[1];
+        const yCenter = Math.round((y1 + y2) / 2);
+        const rawTop = yCenter - Math.round(stripeH / 2);
+        let yStripe = Number.isFinite(rawTop) ? rawTop : minY;
+        if (Number.isFinite(minY) && yStripe < minY) yStripe = minY;
+        if (Number.isFinite(maxY) && (yStripe + stripeH) > maxY) {
+          yStripe = Math.max(minY, maxY - stripeH);
+        }
+        const fillColor = (providerMeta?.colors?.[s.prov]) || s.color || 'rgba(0,0,0,0.6)';
+        children.push({
+          type: 'rect',
+          shape: { x: xStripe, y: yStripe, width: stripeWidth, height: stripeH },
+          style: { fill: fillColor, opacity: 0.95, stroke: '#ffffff', lineWidth: 0.6 },
+          ignore: false
+        });
+      }
+      return { type: 'group', children };
+    },
+    data
+  };
 }
