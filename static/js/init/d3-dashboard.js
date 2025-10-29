@@ -88,7 +88,7 @@ export async function initD3Dashboard() {
   const populateButtons = (controls) => {
     let available = listTypes();
     if (!available || available.length === 0) {
-      available = ['line', 'bar', 'heatmap', 'hybrid'];
+      available = ['line', 'bar', 'stream'];
     }
     controls.innerHTML = '';
 
@@ -220,6 +220,22 @@ export async function initD3Dashboard() {
     try { controls.dataset.type = type; controls.dataset.interval = currentInterval; } catch(_) {
       // Ignore dataset update errors
     }
+    // Hide interval dropdown for stream type; show otherwise
+    try {
+      const stepDd = controls.querySelector('#chart-interval-dropdown');
+      if (stepDd) stepDd.style.display = (type === 'stream') ? 'none' : '';
+    } catch(_) {
+      // Ignore step dropdown toggle errors
+    }
+    // Remove stream-specific controls when not in stream mode
+    try {
+      if (type !== 'stream') {
+        const sc = controls.querySelector('#stream-controls');
+        if (sc) sc.remove();
+      }
+    } catch(_) {
+      // Ignore removal errors
+    }
   };
 
   const renderSelected = (type) => {
@@ -271,6 +287,19 @@ export async function initD3Dashboard() {
     // For 5m: use raw points (no binning). Otherwise: use engine shaping (binning).
     const m = getMount();
     if (!m) { console.warn('[charts] mount not found at render time'); return; }
+    // Stream: render as a single full-area chart with internal dropdowns; no interval control
+    if (type === 'stream') {
+      const { data: shapedData, options: shapedOptions } = shapeChartPayload(hourRows && hourRows.length ? hourRows : fiveRows, {
+        type,
+        fromTs: baseFromTs,
+        toTs: baseToTs,
+        stepMs,
+        height: fixedH,
+      });
+      const mergedOptions = { ...shapedOptions };
+      renderer(m, shapedData, mergedOptions);
+      return;
+    }
     if (currentInterval === '5m') {
       if (!useFive) {
         // Нет 5-минутных данных — переключаем на 1h без «подделки» 5m из часовых точек

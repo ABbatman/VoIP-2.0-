@@ -7,13 +7,13 @@ import * as echarts from 'echarts';
 import { toast } from '../ui/notify.js';
 import { makeBarLineLikeTooltip } from './tooltip.js';
 import { renderBarChartEcharts as renderBarEcharts } from './echartsBarChart.js';
+import { renderStreamGraphEcharts as renderStreamEcharts } from './echartsStreamGraph.js';
 
 export async function registerEchartsRenderers() {
   const { registerChart } = await import('./registry.js');
   registerChart('line', renderMultiLineChartEcharts);
   registerChart('bar', renderBarEcharts);
-  registerChart('hybrid', renderHybridChartEcharts);
-  registerChart('heatmap', renderHeatmapEcharts);
+  registerChart('stream', renderStreamEcharts);
 }
 
 // Removed old tooltip helpers and unused builders (findPrevWithin, makeGrid, buildPrevDayPairs)

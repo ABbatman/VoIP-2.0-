@@ -19,14 +19,10 @@ export function listTypes() {
 // Bootstrap default registrations lazily to avoid circular deps
 export async function ensureDefaults() {
   if (_registry.size > 0) return;
-  const [{ renderMultiLineChart }, { renderBarChart }, { renderHeatmap }, { renderHybridChart }] = await Promise.all([
+  const [{ renderMultiLineChart }, { renderBarChart }] = await Promise.all([
     import('./multiLineChart.js'),
     import('./barChart.js'),
-    import('./heatmap.js'),
-    import('./hybridChart.js'),
   ]);
   registerChart('line', renderMultiLineChart);
   registerChart('bar', renderBarChart);
-  registerChart('heatmap', renderHeatmap);
-  registerChart('hybrid', renderHybridChart);
 }
