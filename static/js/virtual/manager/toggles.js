@@ -24,22 +24,31 @@ export function attachToggles(vm) {
         vm.openHourlyGroups.clear();
         const visible = vm.selectors ? vm.selectors.getLazyVisibleData() : vm.getLazyVisibleData();
         vm.adapter.setData(visible);
-        try { vm.forceImmediateRender && vm.forceImmediateRender(); } catch (_) {}
+        try { vm.forceImmediateRender && vm.forceImmediateRender(); } catch (e) {
+          console.error('Error forcing immediate render:', e);
+        }
         if (btn) { btn.textContent = 'Hide All'; btn.dataset.state = 'shown'; }
       } else if (queued === 'collapse') {
         vm.openMainGroups.clear();
         vm.openHourlyGroups.clear();
         const visible = vm.selectors ? vm.selectors.getLazyVisibleData() : vm.getLazyVisibleData();
         vm.adapter.setData(visible);
-        try { vm.forceImmediateRender && vm.forceImmediateRender(); } catch (_) {}
+        try { vm.forceImmediateRender && vm.forceImmediateRender(); } catch (e) {
+          console.error('Error forcing immediate render:', e);
+        }
         if (btn) { btn.textContent = 'Show All'; btn.dataset.state = 'hidden'; }
       }
-      try { vm.updateAllToggleButtons && vm.updateAllToggleButtons(); } catch (_) {}
-      try { vm.syncExpandCollapseAllButtonLabel && vm.syncExpandCollapseAllButtonLabel(); } catch (_) { /* no-op */ }
+      try { vm.updateAllToggleButtons && vm.updateAllToggleButtons(); } catch (e) {
+        console.error('Error updating toggle buttons:', e);
+      }
+      try { vm.syncExpandCollapseAllButtonLabel && vm.syncExpandCollapseAllButtonLabel(); } catch (e) {
+        console.error('Error syncing expand/collapse all button label:', e);
+      }
     } catch (e) {
       console.warn('processQueuedExpandCollapseAll failed', e);
     }
   }
+
   function handleVirtualToggle(event) {
     try {
       // Skip Y-column toggles
@@ -53,8 +62,12 @@ export function attachToggles(vm) {
       const prevCX = container ? container.scrollLeft : null;
       const prevCY = container ? container.scrollTop : null;
       // Disable scroll anchoring during structural change
-      try { if (container) container.style.overflowAnchor = 'none'; } catch(_) {}
-      try { if (typeof toggleBtn.blur === 'function') toggleBtn.blur(); } catch(_) {}
+      try { if (container) container.style.overflowAnchor = 'none'; } catch (e) {
+        console.error('Error disabling scroll anchoring:', e);
+      }
+      try { if (typeof toggleBtn.blur === 'function') toggleBtn.blur(); } catch (e) {
+        console.error('Error blurring toggle button:', e);
+      }
       event.preventDefault();
       event.stopPropagation();
 
@@ -92,22 +105,32 @@ export function attachToggles(vm) {
 
       vm.refreshVirtualTable();
       setTimeout(() => {
-        try { vm.forceImmediateRender(); } catch (_) {}
-        try { vm.updateAllToggleButtons(); } catch (_) {}
+        try { vm.forceImmediateRender(); } catch (e) {
+          console.error('Error forcing immediate render:', e);
+        }
+        try { vm.updateAllToggleButtons(); } catch (e) {
+          console.error('Error updating toggle buttons:', e);
+        }
         // Restore scroll (container first, then window) on next frames; also clear overflow-anchor
         requestAnimationFrame(() => {
           try {
             if (container && prevCY != null) container.scrollTop = prevCY;
             if (container && prevCX != null) container.scrollLeft = prevCX;
-          } catch(_) {}
-          requestAnimationFrame(() => { try { window.scrollTo(prevX, prevY); } catch (_) {} });
+          } catch (e) {
+            console.error('Error restoring container scroll:', e);
+          }
+          requestAnimationFrame(() => { try { window.scrollTo(prevX, prevY); } catch (e) {
+            console.error('Error restoring window scroll:', e);
+          } });
           // Microtask + delayed fallback
           Promise.resolve().then(() => {
             try {
               if (container && prevCY != null) container.scrollTop = prevCY;
               if (container && prevCX != null) container.scrollLeft = prevCX;
               window.scrollTo(prevX, prevY);
-            } catch(_) {}
+            } catch (e) {
+              console.error('Error restoring scroll (microtask):', e);
+            }
           });
           setTimeout(() => {
             try {
@@ -115,11 +138,15 @@ export function attachToggles(vm) {
               if (container && prevCX != null) container.scrollLeft = prevCX;
               window.scrollTo(prevX, prevY);
               if (container) container.style.overflowAnchor = '';
-            } catch(_) {}
+            } catch (e) {
+              console.error('Error restoring scroll (timeout):', e);
+            }
           }, 50);
         });
       }, 10);
-    } catch (_) {}
+    } catch (e) {
+      console.error('Error handling virtual toggle:', e);
+    }
   }
 
   function updateAllToggleButtons() {
@@ -145,7 +172,9 @@ export function attachToggles(vm) {
     });
     if (window.DEBUG) console.log(`🔄 Updated toggle buttons: ${mainUpdated} main, ${peerUpdated} peer`);
     // Reset structural change flag after syncing buttons
-    try { vm._lastStructuralChange = false; } catch (_) {}
+    try { vm._lastStructuralChange = false; } catch (e) {
+      console.error('Error resetting structural change flag:', e);
+    }
   }
 
   function showAllRows() {
@@ -155,18 +184,28 @@ export function attachToggles(vm) {
     vm.openHourlyGroups.clear();
     const visible = vm.selectors ? vm.selectors.getLazyVisibleData() : vm.getLazyVisibleData();
     // Mark structural change so button sync won't early-return
-    try { vm._lastStructuralChange = true; } catch (_) {}
+    try { vm._lastStructuralChange = true; } catch (e) {
+      console.error('Error marking structural change:', e);
+    }
     vm.adapter.setData(visible);
     // Force paint to avoid flicker before syncing button icons
-    try { vm.forceImmediateRender(); } catch (_) {}
+    try { vm.forceImmediateRender(); } catch (e) {
+      console.error('Error forcing immediate render:', e);
+    }
     // Ensure toggle buttons reflect the new expanded state
-    try { vm.updateAllToggleButtons && vm.updateAllToggleButtons(); } catch (_) {}
-    try { vm.syncButtonStatesAfterRender && vm.syncButtonStatesAfterRender(); } catch (_) {}
+    try { vm.updateAllToggleButtons && vm.updateAllToggleButtons(); } catch (e) {
+      console.error('Error updating toggle buttons:', e);
+    }
+    try { vm.syncButtonStatesAfterRender && vm.syncButtonStatesAfterRender(); } catch (e) {
+      console.error('Error syncing button states:', e);
+    }
     try {
       const btn = getExpandAllButton();
       if (btn) { btn.textContent = 'Hide All'; btn.dataset.state = 'shown'; }
       vm.syncExpandCollapseAllButtonLabel();
-    } catch (_) {}
+    } catch (e) {
+      console.error('Error syncing expand/collapse all button label:', e);
+    }
   }
 
   function hideAllRows() {
@@ -175,17 +214,27 @@ export function attachToggles(vm) {
     vm.openHourlyGroups.clear();
     const visible = vm.selectors ? vm.selectors.getLazyVisibleData() : vm.getLazyVisibleData();
     // Mark structural change so button sync won't early-return
-    try { vm._lastStructuralChange = true; } catch (_) {}
+    try { vm._lastStructuralChange = true; } catch (e) {
+      console.error('Error marking structural change:', e);
+    }
     vm.adapter.setData(visible);
-    try { vm.forceImmediateRender(); } catch (_) {}
+    try { vm.forceImmediateRender(); } catch (e) {
+      console.error('Error forcing immediate render:', e);
+    }
     // Ensure toggle buttons reflect the new collapsed state
-    try { vm.updateAllToggleButtons && vm.updateAllToggleButtons(); } catch (_) {}
-    try { vm.syncButtonStatesAfterRender && vm.syncButtonStatesAfterRender(); } catch (_) {}
+    try { vm.updateAllToggleButtons && vm.updateAllToggleButtons(); } catch (e) {
+      console.error('Error updating toggle buttons:', e);
+    }
+    try { vm.syncButtonStatesAfterRender && vm.syncButtonStatesAfterRender(); } catch (e) {
+      console.error('Error syncing button states:', e);
+    }
     try {
       const btn = getExpandAllButton();
       if (btn) { btn.textContent = 'Show All'; btn.dataset.state = 'hidden'; }
       vm.syncExpandCollapseAllButtonLabel();
-    } catch (_) {}
+    } catch (e) {
+      console.error('Error syncing expand/collapse all button label:', e);
+    }
   }
 
   return { handleVirtualToggle, updateAllToggleButtons, showAllRows, hideAllRows, closeHourlyGroupsUnderMain, processQueuedExpandCollapseAll };

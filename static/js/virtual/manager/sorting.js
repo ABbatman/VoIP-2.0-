@@ -56,7 +56,9 @@ export function attachSorting() {
         // eslint-disable-next-line no-console
         console.warn('⚠️ Sorting >10ms', { ms: Math.round(dt), count: rows?.length || 0, order });
       }
-    } catch (_) {}
+    } catch (_) {
+      // Ignore sorting errors
+    }
     return result;
   }
 
@@ -70,9 +72,13 @@ export function attachSorting() {
       if (cached && cached.key === orderKey && Array.isArray(cached.out)) {
         return cached.out;
       }
-    } catch (_) {}
+    } catch (_) {
+      // Ignore sorting errors
+    }
     const out = applyOrderSort(mainRows, order);
-    try { _mainSortCache.set(mainRows, { key: orderKey, out }); } catch (_) {}
+    try { _mainSortCache.set(mainRows, { key: orderKey, out }); } catch (_) {
+      // Ignore sorting errors
+    }
     return out;
   }
 

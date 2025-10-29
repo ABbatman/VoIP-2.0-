@@ -22,8 +22,12 @@ function bindFloatingYToggle(vm) {
   if (!yBtn) return;
   if (yBtn._vm_bound) return;
   yBtn.addEventListener('click', (e) => {
-    try { e.preventDefault(); e.stopPropagation(); } catch (_) {}
-    try { toggleYColumnsVisible(); } catch (_) {}
+    try { e.preventDefault(); e.stopPropagation(); } catch(_) {
+      // Ignore UI sync errors
+    }
+    try { toggleYColumnsVisible(); } catch(_) {
+      // Ignore UI sync errors
+    }
   });
   yBtn._vm_bound = true;
 }
@@ -65,7 +69,9 @@ export function bindFloatingHeader(vm) {
   try {
     // Already created
     if (vm._floatingHeader) {
-      try { syncFloatingHeader(vm); } catch (_) {}
+      try { syncFloatingHeader(vm); } catch(_) {
+        // Ignore UI sync errors
+      }
       return;
     }
 
@@ -96,7 +102,9 @@ export function bindFloatingHeader(vm) {
     vm._floatingHeader = wrapper;
     vm._floatingTable = shadowTable;
     vm._floatingThead = clonedThead;
-    try { bindFloatingYToggle(vm); } catch (_) {}
+    try { bindFloatingYToggle(vm); } catch(_) {
+      // Ignore UI sync errors
+    }
 
     // rAF-throttle sticky header sync to 1 call per frame
     vm._rafStickyScheduled = false;
@@ -105,14 +113,22 @@ export function bindFloatingHeader(vm) {
       vm._rafStickyScheduled = true;
       requestAnimationFrame(() => {
         vm._rafStickyScheduled = false;
-        try { syncFloatingHeader(vm); } catch (_) {}
+        try { syncFloatingHeader(vm); } catch(_) {
+          // Ignore UI sync errors
+        }
       });
     };
-    try { window.addEventListener('resize', vm._onFloatingSync); } catch (_) {}
-    try { window.addEventListener('scroll', vm._onFloatingSync, { passive: true }); } catch (_) {}
+    try { window.addEventListener('resize', vm._onFloatingSync); } catch(_) {
+      // Ignore UI sync errors
+    }
+    try { window.addEventListener('scroll', vm._onFloatingSync, { passive: true }); } catch(_) {
+      // Ignore UI sync errors
+    }
     const container = getContainer();
     if (container) {
-      try { container.addEventListener('scroll', vm._onFloatingSync, { passive: true }); } catch (_) {}
+      try { container.addEventListener('scroll', vm._onFloatingSync, { passive: true }); } catch(_) {
+        // Ignore UI sync errors
+      }
     }
 
     // Initial sync
@@ -137,7 +153,9 @@ export function syncFloatingHeader(vm) {
         }
         vm._floatingThead = newClone;
         vm._floatingHeaderSig = origSig;
-        try { bindFloatingYToggle(vm); } catch (_) {}
+        try { bindFloatingYToggle(vm); } catch(_) {
+          // Ignore UI sync errors
+        }
       }
     } catch (_) { /* no-op */ }
 
@@ -179,16 +197,24 @@ export function syncFloatingHeader(vm) {
 export function unbindFloatingHeader(vm) {
   try {
     if (vm._onFloatingSync) {
-      try { window.removeEventListener('resize', vm._onFloatingSync); } catch (_) {}
+      try { window.removeEventListener('resize', vm._onFloatingSync); } catch(_) {
+        // Ignore UI sync errors
+      }
       try {
         const container = getContainer();
         container && container.removeEventListener('scroll', vm._onFloatingSync);
-      } catch (_) {}
+      } catch(_) {
+        // Ignore UI sync errors
+      }
     }
     if (vm._floatingHeader && vm._floatingHeader.parentNode) {
-      try { vm._floatingHeader.parentNode.removeChild(vm._floatingHeader); } catch (_) {}
+      try { vm._floatingHeader.parentNode.removeChild(vm._floatingHeader); } catch(_) {
+        // Ignore UI sync errors
+      }
     }
-  } catch (_) {}
+  } catch(_) {
+    // Ignore UI sync errors
+  }
   vm._floatingHeader = null;
   vm._floatingTable = null;
   vm._floatingThead = null;

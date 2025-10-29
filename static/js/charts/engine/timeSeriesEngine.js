@@ -15,9 +15,13 @@ function parseRowTs(raw) {
       const hasTZ = /[zZ]$/.test(s) || /[+-]\d{2}:\d{2}$/.test(s);
       if (!hasTZ) s = s + 'Z';
       t = Date.parse(s);
-    } catch(_) {}
+    } catch(_) {
+      // Ignore date parsing errors
+    }
     if (!isFinite(t)) {
-      try { t = parseUtc(String(raw)); } catch(_) {}
+      try { t = parseUtc(String(raw)); } catch(_) {
+        // Ignore fallback parsing errors
+      }
     }
   }
   return Number.isFinite(t) ? t : NaN;

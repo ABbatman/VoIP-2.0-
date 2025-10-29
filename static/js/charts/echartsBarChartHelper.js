@@ -102,7 +102,10 @@ export function buildProviderStacks(rows, { fromTs, toTs, stepMs }) {
       const start = Math.floor(Number(fromTs) / stepMs) * stepMs;
       const end = Math.ceil(Number(toTs) / stepMs) * stepMs;
       for (let t = start; t <= end; t += stepMs) centers.push(t + Math.floor(stepMs / 2));
-    } catch(_) { centers = []; }
+    } catch(_) {
+      // Fallback to empty centers on error
+      centers = [];
+    }
 
     // accumulators: provider -> metric -> { sumMap(center), cntMap(center) }
     const provSet = new Set();
@@ -145,10 +148,18 @@ export function buildProviderStacks(rows, { fromTs, toTs, stepMs }) {
       const set = new Set();
       for (const prov of providers) {
         const a = acc.get(prov) || {};
-        try { for (const k of (a.TCalls?.keys?.() || [])) set.add(Number(k)); } catch(_){}
-        try { for (const k of (a.Minutes?.keys?.() || [])) set.add(Number(k)); } catch(_){}
-        try { for (const k of (a.ASR?.sum?.keys?.() || [])) set.add(Number(k)); } catch(_){}
-        try { for (const k of (a.ACD?.sum?.keys?.() || [])) set.add(Number(k)); } catch(_){}
+        try { for (const k of (a.TCalls?.keys?.() || [])) set.add(Number(k)); } catch(_) {
+          // Ignore iterator errors
+        }
+        try { for (const k of (a.Minutes?.keys?.() || [])) set.add(Number(k)); } catch(_) {
+          // Ignore iterator errors
+        }
+        try { for (const k of (a.ASR?.sum?.keys?.() || [])) set.add(Number(k)); } catch(_) {
+          // Ignore iterator errors
+        }
+        try { for (const k of (a.ACD?.sum?.keys?.() || [])) set.add(Number(k)); } catch(_) {
+          // Ignore iterator errors  
+        }
       }
       centers = Array.from(set.values()).filter(Number.isFinite).sort((a,b) => a - b);
     }
@@ -248,40 +259,11 @@ export function buildProviderStacks(rows, { fromTs, toTs, stepMs }) {
       }
     }
 
-    // DEBUG
-    console.log('[buildProviderStacks] providers:', providers);
-    console.log('[buildProviderStacks] markers:', { 
-      TCalls: markers.TCalls.length, 
-      ASR: markers.ASR.length, 
-      Minutes: markers.Minutes.length, 
-      ACD: markers.ACD.length 
-    });
-
     return { providerKey, providers, colors, stacks, totals, centers, markers };
-  } catch(_) { return null; }
-}
-
-export function formatProviderLabel(metric, prov, v) {
-  try {
-    const name = String(prov || '').trim();
-    const num = Number(v);
-    if (!name) return '';
-    if (!Number.isFinite(num)) return name;
-    if (metric === 'ASR' || metric === 'ACD') {
-      return `${name} ${Math.round(num * 10) / 10}`;
-    }
-    return `${name} ${Math.round(num)}`;
-  } catch(_) { return String(prov || ''); }
-}
-
-export function shouldShowProviderLabel({ barHeightPx, stepWidthPx, segmentShare }) {
-  try {
-    if (!Number.isFinite(barHeightPx) || !Number.isFinite(stepWidthPx) || !Number.isFinite(segmentShare)) return false;
-    if (barHeightPx < 16) return false;
-    if (stepWidthPx < 16) return false;
-    if (segmentShare < 0.08) return false;
-    return true;
-  } catch(_) { return false; }
+  } catch(_) {
+    // Return null if provider stack building fails
+    return null;
+  }
 }
 
 // Build decorative supplier stripe overlay (silent custom series)
@@ -342,12 +324,6 @@ export function makeStripeOverlay(id, xAxisIndex, yAxisIndex, totalsPairs, stack
 
   let data = buildMarkerData();
   if (!data.length) data = buildFallbackData();
-  
-  // DEBUG
-  console.log(`[makeStripeOverlay] ${id} metric=${metricName} active=${active} data.length=${data.length}`);
-  if (data.length > 0) {
-    console.log(`[makeStripeOverlay] ${id} sample:`, data[0]);
-  }
 
   // Сохраняем segments в замыкании, т.к. ECharts может не передать их через params.data
   const segmentsMap = new Map();
@@ -379,7 +355,6 @@ export function makeStripeOverlay(id, xAxisIndex, yAxisIndex, totalsPairs, stack
       // Берем segments из замыкания по dataIndex
       const segs = segmentsMap.get(params.dataIndex) || [];
       if (!segs.length) return null;
-      console.log(`[renderItem] ${id} OK: drawing ${segs.length} stripes at x=${x}`);
       const half = Math.floor(stepMs / 2);
       const p0 = api.coord([x - half, 0]);
       const p1 = api.coord([x + half, 0]);

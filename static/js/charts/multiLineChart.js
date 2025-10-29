@@ -49,7 +49,9 @@ export function renderMultiLineChart(container, seriesMap = {}, opts = {}) {
     try {
       const total = names.reduce((acc, n) => acc + ((normalized[n] && normalized[n].length) || 0), 0);
       console.log('5m render points:', total);
-    } catch(_) {}
+    } catch(_) {
+      // Ignore debug logging errors
+    }
   }
 
   // Even segmentation: split innerH equally into 4 segments
@@ -94,7 +96,9 @@ export function renderMultiLineChart(container, seriesMap = {}, opts = {}) {
       if (end > rightData) end = rightData;
       if (end > start) globalX = [start, end];
     }
-  } catch(_) {}
+  } catch(_) {
+    // Ignore zoom range initialization errors
+  }
   const panels = [];
   const bisect = d3.bisector(d => d.x).left;
 
@@ -232,14 +236,14 @@ export function renderMultiLineChart(container, seriesMap = {}, opts = {}) {
     .attr('fill', 'transparent')
     .style('cursor', 'crosshair')
     .on('mousemove', function (event) {
-      const [mx, my] = d3.pointer(event, this);
+      const [mx] = d3.pointer(event, this);
       // Use first panel x-scale (all share same domain/range)
       const px = panels[0]?.x || d3.scaleUtc().domain(globalX).range([0, innerW]);
       const xDate = px.invert(mx);
       let anyShown = false;
 
       panels.forEach(p => {
-        const { data, x, y, focus, titlePad, name } = p;
+        const { data, x, y, focus, name } = p;
         if (!data || data.length === 0) { focus.style('display', 'none'); return; }
         const i = Math.max(0, Math.min(bisect(data, xDate), data.length - 1));
         const d0 = data[Math.max(0, i - 1)];
@@ -258,7 +262,9 @@ export function renderMultiLineChart(container, seriesMap = {}, opts = {}) {
             .attr('y1', 0)
             .attr('x2', innerW - tx)
             .attr('y2', 0);
-        } catch(_) {}
+        } catch(_) {
+          // Ignore crosshair drawing errors
+        }
         anyShown = true;
       });
 

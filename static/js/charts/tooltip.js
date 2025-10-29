@@ -62,7 +62,9 @@ export function makeBarLineLikeTooltip({ chart, stepMs }) {
     // Prefer axisValue for timestamp (axis trigger)
     let ts = Number(arr[0]?.axisValue);
     if (!Number.isFinite(ts)) {
-      try { ts = Date.parse(arr[0]?.axisValueLabel); } catch(_) {}
+      try { ts = Date.parse(arr[0]?.axisValueLabel); } catch(_) {
+        // Ignore date parsing errors
+      }
     }
     if (!Number.isFinite(ts)) {
       // fallback to first primary item's data value

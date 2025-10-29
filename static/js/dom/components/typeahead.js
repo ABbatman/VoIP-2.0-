@@ -166,13 +166,17 @@ export function attachTypeahead(input, options = {}) {
     try {
       items = await fetchItems(q);
       // Debug: show count
-      try { console.debug('[typeahead] results:', items.length); } catch(_) {}
+      try { console.debug('[typeahead] results:', items.length); } catch(_) {
+        // Ignore debug logging errors
+      }
       // Always show the dropdown; render "No results" when empty
       renderItems(listEl, items, activeIndex, renderItem);
       openList();
     } catch (e) {
       // Silently ignore fetch errors
-      try { console.debug('[typeahead] fetch error'); } catch(_) {}
+      try { console.debug('[typeahead] fetch error'); } catch(_) {
+        // Ignore debug logging errors
+      }
       closeList();
     }
   };
@@ -190,7 +194,9 @@ export function attachTypeahead(input, options = {}) {
     input.value = chosen.label;
     closeList();
     if (typeof onSelect === 'function') {
-      try { onSelect(chosen); } catch(_) {}
+      try { onSelect(chosen); } catch(_) {
+        // Ignore callback errors
+      }
     }
   };
 
@@ -238,13 +244,27 @@ export function attachTypeahead(input, options = {}) {
 
   // Public destroy
   const destroy = () => {
-    try { input.removeEventListener('input', onInput); } catch(_) {}
-    try { input.removeEventListener('keydown', onKeydown); } catch(_) {}
-    try { listEl.removeEventListener('click', onClickItem); } catch(_) {}
-    try { document.removeEventListener('click', onDocumentClick); } catch(_) {}
-    try { window.removeEventListener('resize', () => positionContainer(input, listEl)); } catch(_) {}
-    try { window.removeEventListener('scroll', () => positionContainer(input, listEl), true); } catch(_) {}
-    try { listEl.remove(); } catch(_) {}
+    try { input.removeEventListener('input', onInput); } catch(_) {
+      // Ignore cleanup errors
+    }
+    try { input.removeEventListener('keydown', onKeydown); } catch(_) {
+      // Ignore cleanup errors
+    }
+    try { listEl.removeEventListener('click', onClickItem); } catch(_) {
+      // Ignore cleanup errors
+    }
+    try { document.removeEventListener('click', onDocumentClick); } catch(_) {
+      // Ignore cleanup errors
+    }
+    try { window.removeEventListener('resize', () => positionContainer(input, listEl)); } catch(_) {
+      // Ignore cleanup errors
+    }
+    try { window.removeEventListener('scroll', () => positionContainer(input, listEl), true); } catch(_) {
+      // Ignore cleanup errors
+    }
+    try { listEl.remove(); } catch(_) {
+      // Ignore cleanup errors
+    }
   };
 
   return { destroy };

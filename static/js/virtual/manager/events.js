@@ -17,7 +17,9 @@ export function bindToggleHandlers(vm) {
     return; // already bound to same element
   }
   if (vm._toggleBound && vm._toggleBoundElement && vm.boundToggleHandler && vm._toggleBoundElement !== tbody) {
-    try { vm._toggleBoundElement.removeEventListener('click', vm.boundToggleHandler); } catch (_) {}
+    try { vm._toggleBoundElement.removeEventListener('click', vm.boundToggleHandler); } catch (_) {
+      // Ignore event removal errors
+    }
   }
   if (!vm.boundToggleHandler) {
     vm.boundToggleHandler = (event) => {
@@ -25,7 +27,9 @@ export function bindToggleHandlers(vm) {
         if (vm.toggles && typeof vm.toggles.handleVirtualToggle === 'function') {
           return vm.toggles.handleVirtualToggle(event);
         }
-      } catch (_) {}
+      } catch (_) {
+        // Ignore toggle handler errors
+      }
     };
   }
   tbody.addEventListener('click', vm.boundToggleHandler);
@@ -35,7 +39,9 @@ export function bindToggleHandlers(vm) {
 
 export function unbindToggleHandlers(vm) {
   if (vm._toggleBound && vm._toggleBoundElement && vm.boundToggleHandler) {
-    try { vm._toggleBoundElement.removeEventListener('click', vm.boundToggleHandler); } catch (_) {}
+    try { vm._toggleBoundElement.removeEventListener('click', vm.boundToggleHandler); } catch (_) {
+      // Ignore event removal errors
+    }
   }
   vm._toggleBound = false;
   vm._toggleBoundElement = null;
@@ -52,7 +58,9 @@ export function bindDblClickHandlers(vm) {
     return; // already bound to same element
   }
   if (vm._dblFilterBound && vm._dblFilterElement && vm.boundDblFilterHandler && vm._dblFilterElement !== tbody) {
-    try { vm._dblFilterElement.removeEventListener('dblclick', vm.boundDblFilterHandler); } catch (_) {}
+    try { vm._dblFilterElement.removeEventListener('dblclick', vm.boundDblFilterHandler); } catch (_) {
+      // Ignore event removal errors
+    }
   }
   if (!vm.boundDblFilterHandler) {
     vm.boundDblFilterHandler = (event) => {
@@ -96,7 +104,9 @@ export function bindDblClickHandlers(vm) {
 
 export function unbindDblClickHandlers(vm) {
   if (vm._dblFilterBound && vm._dblFilterElement && vm.boundDblFilterHandler) {
-    try { vm._dblFilterElement.removeEventListener('dblclick', vm.boundDblFilterHandler); } catch (_) {}
+    try { vm._dblFilterElement.removeEventListener('dblclick', vm.boundDblFilterHandler); } catch (_) {
+      // Ignore event removal errors
+    }
   }
   vm._dblFilterBound = false;
   vm._dblFilterElement = null;
@@ -111,7 +121,9 @@ export function bindExpandCollapseAll(vm) {
     return;
   }
   if (vm._expandAllBound && vm._expandAllElement && vm.boundExpandAllHandler && vm._expandAllElement !== btn) {
-    try { vm._expandAllElement.removeEventListener('click', vm.boundExpandAllHandler); } catch (_) {}
+    try { vm._expandAllElement.removeEventListener('click', vm.boundExpandAllHandler); } catch (_) {
+      // Ignore event removal errors
+    }
   }
   if (!vm.boundExpandAllHandler) {
     vm.boundExpandAllHandler = async () => {
@@ -123,14 +135,22 @@ export function bindExpandCollapseAll(vm) {
         const prevCX = container ? container.scrollLeft : null;
         const prevCY = container ? container.scrollTop : null;
         const root = document.documentElement;
-        try { if (root) root.style.overflowAnchor = 'none'; } catch(_) {}
-        try { if (document.body) document.body.style.overflowAnchor = 'none'; } catch(_) {}
-        try { if (container) container.style.overflowAnchor = 'none'; } catch(_) {}
+        try { if (root) root.style.overflowAnchor = 'none'; } catch(_) {
+      // Ignore event errors
+    }
+        try { if (document.body) document.body.style.overflowAnchor = 'none'; } catch(_) {
+      // Ignore event errors
+    }
+        try { if (container) container.style.overflowAnchor = 'none'; } catch(_) {
+      // Ignore event errors
+    }
         const state = btn.dataset.state || 'hidden'; // hidden -> collapsed; shown -> expanded
         // If data not ready yet (early click after page load), retry shortly without disabling button
         if (!vm.lazyData || !vm.adapter) {
-          try { console.log('⚠️ Expand/Collapse All: data not ready, retrying shortly...'); } catch (_) {}
-          setTimeout(() => { try { vm.boundExpandAllHandler && vm.boundExpandAllHandler(); } catch (_) {} }, 50);
+          console.log('⚠️ Expand/Collapse All: data not ready, retrying shortly...');
+          setTimeout(() => { try { vm.boundExpandAllHandler && vm.boundExpandAllHandler(); } catch (_) {
+            // Ignore retry errors
+          } }, 50);
           return;
         }
         btn.disabled = true;
@@ -141,14 +161,18 @@ export function bindExpandCollapseAll(vm) {
           // Ensure hourly groups remain collapsed
           vm.openHourlyGroups.clear();
           // Compute visible slice and set directly on adapter
-          try { console.log('🔼 Show All: main to open =', vm.openMainGroups.size); } catch (_) {}
+          console.log('🔼 Show All: main to open =', vm.openMainGroups.size);
           // Force peers for this render regardless of openMainGroups race
           vm._forceShowPeers = true;
           const visible = vm.getLazyVisibleData();
           vm.adapter.setData(visible);
-          try { vm.forceImmediateRender && vm.forceImmediateRender(); } catch (_) {}
+          try { vm.forceImmediateRender && vm.forceImmediateRender(); } catch (_) {
+            // Ignore render errors
+          }
           // Reset force flag on next tick so normal toggles work
-          Promise.resolve().then(() => { try { vm._forceShowPeers = false; } catch (_) {} });
+          Promise.resolve().then(() => { try { vm._forceShowPeers = false; } catch (_) {
+            // Ignore flag reset errors
+          } });
           btn.textContent = 'Hide All';
           btn.dataset.state = 'shown';
           // Verify after render that groups remain open; if not, reapply once
@@ -160,9 +184,13 @@ export function bindExpandCollapseAll(vm) {
                 vm.openHourlyGroups.clear();
                 const vis2 = vm.getLazyVisibleData();
                 vm.adapter.setData(vis2);
-                try { vm.forceImmediateRender && vm.forceImmediateRender(); } catch (_) {}
+                try { vm.forceImmediateRender && vm.forceImmediateRender(); } catch (_) {
+                  // Ignore render errors
+                }
               }
-            } catch (_) {}
+            } catch (_) {
+              // Ignore reapply errors
+            }
           }, 0);
         } else {
           // Collapse all
@@ -170,26 +198,46 @@ export function bindExpandCollapseAll(vm) {
           vm.openHourlyGroups.clear();
           const visible = vm.getLazyVisibleData();
           vm.adapter.setData(visible);
-          try { vm.forceImmediateRender && vm.forceImmediateRender(); } catch (_) {}
+          try { vm.forceImmediateRender && vm.forceImmediateRender(); } catch (_) {
+            // Ignore render errors
+          }
           btn.textContent = 'Show All';
           btn.dataset.state = 'hidden';
         }
         // Sync toggle icons after state change if manager provides it
-        try { vm.updateAllToggleButtons && vm.updateAllToggleButtons(); } catch (_) {}
-        try { vm.syncExpandCollapseAllButton && vm.syncExpandCollapseAllButton(vm); } catch (_) {}
+        try { vm.updateAllToggleButtons && vm.updateAllToggleButtons(); } catch (_) {
+          // Ignore toggle update errors
+        }
+        try { vm.syncExpandCollapseAllButton && vm.syncExpandCollapseAllButton(vm); } catch (_) {
+          // Ignore button sync errors
+        }
         // Restore scroll positions on next frames
         requestAnimationFrame(() => {
-          try { if (container && prevCY != null) container.scrollTop = prevCY; if (container && prevCX != null) container.scrollLeft = prevCX; } catch(_) {}
+          try { if (container && prevCY != null) container.scrollTop = prevCY; if (container && prevCX != null) container.scrollLeft = prevCX; } catch(_) {
+      // Ignore event errors
+    }
           requestAnimationFrame(() => {
-            try { window.scrollTo(prevWX, prevWY); } catch(_) {}
-            try { if (root) root.style.overflowAnchor = ''; } catch(_) {}
-            try { if (document.body) document.body.style.overflowAnchor = ''; } catch(_) {}
-            try { if (container) container.style.overflowAnchor = ''; } catch(_) {}
+            try { window.scrollTo(prevWX, prevWY); } catch(_) {
+      // Ignore event errors
+    }
+            try { if (root) root.style.overflowAnchor = ''; } catch(_) {
+      // Ignore event errors
+    }
+            try { if (document.body) document.body.style.overflowAnchor = ''; } catch(_) {
+      // Ignore event errors
+    }
+            try { if (container) container.style.overflowAnchor = ''; } catch(_) {
+      // Ignore event errors
+    }
           });
         });
         // Fallbacks
-        Promise.resolve().then(() => { try { if (container && prevCY != null) container.scrollTop = prevCY; if (container && prevCX != null) container.scrollLeft = prevCX; window.scrollTo(prevWX, prevWY); if (root) root.style.overflowAnchor = ''; if (document.body) document.body.style.overflowAnchor = ''; if (container) container.style.overflowAnchor = ''; } catch(_) {} });
-        setTimeout(() => { try { if (container && prevCY != null) container.scrollTop = prevCY; if (container && prevCX != null) container.scrollLeft = prevCX; window.scrollTo(prevWX, prevWY); if (root) root.style.overflowAnchor = ''; if (document.body) document.body.style.overflowAnchor = ''; if (container) container.style.overflowAnchor = ''; } catch(_) {} }, 50);
+        Promise.resolve().then(() => { try { if (container && prevCY != null) container.scrollTop = prevCY; if (container && prevCX != null) container.scrollLeft = prevCX; window.scrollTo(prevWX, prevWY); if (root) root.style.overflowAnchor = ''; if (document.body) document.body.style.overflowAnchor = ''; if (container) container.style.overflowAnchor = ''; } catch(_) {
+      // Ignore event errors
+    } });
+        setTimeout(() => { try { if (container && prevCY != null) container.scrollTop = prevCY; if (container && prevCX != null) container.scrollLeft = prevCX; window.scrollTo(prevWX, prevWY); if (root) root.style.overflowAnchor = ''; if (document.body) document.body.style.overflowAnchor = ''; if (container) container.style.overflowAnchor = ''; } catch(_) {
+      // Ignore event errors
+    } }, 50);
       } finally {
         btn.disabled = false;
       }
@@ -203,7 +251,9 @@ export function bindExpandCollapseAll(vm) {
 export function unbindExpandCollapseAll(vm) {
   const btn = vm._expandAllElement;
   if (vm._expandAllBound && btn && vm.boundExpandAllHandler) {
-    try { btn.removeEventListener('click', vm.boundExpandAllHandler); } catch (_) {}
+    try { btn.removeEventListener('click', vm.boundExpandAllHandler); } catch (_) {
+      // Ignore event removal errors
+    }
   }
   vm._expandAllBound = false;
   vm._expandAllElement = null;

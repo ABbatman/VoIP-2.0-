@@ -30,7 +30,9 @@ function hydrateOpenGroupsFromGlobal() {
     if (g && Array.isArray(g.hourly)) {
       openHourlyGroups.clear(); g.hourly.forEach(id => openHourlyGroups.add(id));
     }
-  } catch(_) {}
+  } catch(_) {
+    // Ignore table rendering errors
+  }
 }
 
 function persistOpenGroupsToGlobal() {
@@ -38,7 +40,9 @@ function persistOpenGroupsToGlobal() {
     const main = Array.from(openMainGroups);
     const hourly = Array.from(openHourlyGroups);
     window.__openGroups = { main, hourly };
-  } catch(_) {}
+  } catch(_) {
+    // Ignore table rendering errors
+  }
 }
 
 subscribe("appState:dataChanged", () => {
@@ -49,8 +53,12 @@ subscribe("appState:dataChanged", () => {
 
 // Allow external flows (e.g., Reverse -> Summary) to reset expansion state explicitly
 export function resetRowOpenState() {
-  try { openMainGroups.clear(); } catch(_) {}
-  try { openHourlyGroups.clear(); } catch(_) {}
+  try { openMainGroups.clear(); } catch(_) {
+    // Ignore table rendering errors
+  }
+  try { openHourlyGroups.clear(); } catch(_) {
+    // Ignore table rendering errors
+  }
 }
 
 /**
@@ -240,8 +248,12 @@ export function initTableInteractions() {
       const prevCY = container ? container.scrollTop : null;
       // Temporarily disable scroll anchoring on the main scroller (window)
       const root = document.documentElement;
-      try { if (root) root.style.overflowAnchor = 'none'; } catch(_) {}
-      try { if (document.body) document.body.style.overflowAnchor = 'none'; } catch(_) {}
+      try { if (root) root.style.overflowAnchor = 'none'; } catch(_) {
+    // Ignore table rendering errors
+  }
+      try { if (document.body) document.body.style.overflowAnchor = 'none'; } catch(_) {
+    // Ignore table rendering errors
+  }
       const parentRow = targetButton.closest("tr");
       if (!parentRow) return;
       const groupId = targetButton.dataset.targetGroup;
@@ -257,7 +269,10 @@ export function initTableInteractions() {
           childPeerRows.forEach((peerRow) => {
             peerRow.classList.add("is-hidden");
             // Ensure inline styles do not conflict with class-based visibility
-            try { peerRow.style.removeProperty('display'); } catch (_) {}
+            try { peerRow.style.removeProperty('display'); } catch (e) {
+              // Ignore style removal errors
+              console.error('Error removing display property:', e);
+            }
             const peerBtn = peerRow.querySelector(
               "td:nth-child(2) .toggle-btn"
             );
@@ -267,7 +282,10 @@ export function initTableInteractions() {
               peerBtn.textContent = "+";
               tableBody
                 .querySelectorAll(`tr.hour-row[data-group="${hourGroupId}"]`)
-                .forEach((hr) => { hr.classList.add("is-hidden"); try { hr.style.removeProperty('display'); } catch (_) {} });
+                .forEach((hr) => { hr.classList.add("is-hidden"); try { hr.style.removeProperty('display'); } catch (e) {
+                  // Ignore style removal errors
+                  console.error('Error removing display property:', e);
+                } });
             }
           });
         } else {
@@ -276,7 +294,10 @@ export function initTableInteractions() {
           childPeerRows.forEach((peerRow) => {
             peerRow.classList.remove("is-hidden");
             // Clear any inline display:none that may remain from previous renders
-            try { peerRow.style.removeProperty('display'); } catch (_) {}
+            try { peerRow.style.removeProperty('display'); } catch (e) {
+              // Ignore style removal errors
+              console.error('Error removing display property:', e);
+            }
           });
           // If peers were not rendered due to active filters, schedule a coordinated re-render
           try {
@@ -297,10 +318,14 @@ export function initTableInteractions() {
                     const { pagedData } = app.getProcessedData();
                     mod.renderGroupedTable(pagedData || [], data?.peer_rows || [], data?.hourly_rows || []);
                   }
-                } catch (_) {}
+                } catch (e) {
+                  console.error('Error re-rendering table:', e);
+                }
               }, { debounceMs: 0, cooldownMs: 0 });
             }
-          } catch (_) {}
+          } catch (e) {
+            console.error('Error scheduling re-render:', e);
+          }
         }
       } else if (parentRow.classList.contains("peer-row")) {
         const childHourRows = tableBody.querySelectorAll(
@@ -309,25 +334,46 @@ export function initTableInteractions() {
         if (isCurrentlyExpanded) {
           openHourlyGroups.delete(groupId);
           targetButton.textContent = "+";
-          childHourRows.forEach((hr) => { hr.classList.add("is-hidden"); try { hr.style.removeProperty('display'); } catch (_) {} });
+          childHourRows.forEach((hr) => { hr.classList.add("is-hidden"); try { hr.style.removeProperty('display'); } catch (e) {
+            // Ignore style removal errors
+            console.error('Error removing display property:', e);
+          } });
         } else {
           openHourlyGroups.add(groupId);
           targetButton.textContent = "−";
-          childHourRows.forEach((hr) => { hr.classList.remove("is-hidden"); try { hr.style.removeProperty('display'); } catch (_) {} });
+          childHourRows.forEach((hr) => { hr.classList.remove("is-hidden"); try { hr.style.removeProperty('display'); } catch (e) {
+            // Ignore style removal errors
+            console.error('Error removing display property:', e);
+          } });
         }
       }
       setTimeout(updateTopScrollbar, 50);
       persistOpenGroupsToGlobal();
       // Prevent default behavior and blur the toggle to avoid focus-driven scroll changes
-      try { event.preventDefault(); event.stopPropagation(); if (typeof targetButton.blur === 'function') targetButton.blur(); } catch (_) {}
+      try { event.preventDefault(); event.stopPropagation(); if (typeof targetButton.blur === 'function') targetButton.blur(); } catch (e) {
+        // Ignore event handling errors
+        console.error('Error handling event:', e);
+      }
       // Restore previous scroll positions on next frames (container first, then window)
       requestAnimationFrame(() => {
-        try { if (container && prevCY != null) container.scrollTop = prevCY; if (container && prevCX != null) container.scrollLeft = prevCX; } catch (_) {}
+        try { if (container && prevCY != null) container.scrollTop = prevCY; if (container && prevCX != null) container.scrollLeft = prevCX; } catch (e) {
+          // Ignore scroll restore errors
+          console.error('Error restoring scroll position:', e);
+        }
         requestAnimationFrame(() => {
-          try { window.scrollTo(prevX, prevY); } catch (_) {}
+          try { window.scrollTo(prevX, prevY); } catch (e) {
+            // Ignore scroll errors
+            console.error('Error scrolling to position:', e);
+          }
           // Re-enable scroll anchoring
-          try { if (root) root.style.overflowAnchor = ''; } catch(_) {}
-          try { if (document.body) document.body.style.overflowAnchor = ''; } catch(_) {}
+          try { if (root) root.style.overflowAnchor = ''; } catch(e) {
+            // Ignore anchor reset errors
+            console.error('Error resetting overflow anchor:', e);
+          }
+          try { if (document.body) document.body.style.overflowAnchor = ''; } catch(e) {
+            // Ignore anchor reset errors
+            console.error('Error resetting overflow anchor:', e);
+          }
         });
       });
       // Microtask + delayed fallback
@@ -338,7 +384,9 @@ export function initTableInteractions() {
           window.scrollTo(prevX, prevY);
           if (root) root.style.overflowAnchor = '';
           if (document.body) document.body.style.overflowAnchor = '';
-        } catch (_) {}
+        } catch (_) {
+          // Ignore scroll restore errors
+        }
       });
       setTimeout(() => {
         try {
@@ -347,7 +395,9 @@ export function initTableInteractions() {
           window.scrollTo(prevX, prevY);
           if (root) root.style.overflowAnchor = '';
           if (document.body) document.body.style.overflowAnchor = '';
-        } catch (_) {}
+        } catch (_) {
+          // Ignore scroll restore errors
+        }
       }, 50);
       return;
     }
@@ -358,8 +408,12 @@ export function initTableInteractions() {
       // If the direct target wasn't the toggle button, delegate to the existing button logic
       const innerToggleBtn = clickedRow.querySelector(".toggle-btn");
       if (innerToggleBtn && !event.target.closest(".toggle-btn")) {
-        try { innerToggleBtn.click(); } catch (_) {}
-        try { event.preventDefault(); event.stopPropagation(); } catch (_) {}
+        try { innerToggleBtn.click(); } catch (_) {
+          // Ignore click errors
+        }
+        try { event.preventDefault(); event.stopPropagation(); } catch (_) {
+          // Ignore event handling errors
+        }
         return;
       }
     }

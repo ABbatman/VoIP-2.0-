@@ -75,7 +75,9 @@ export function populateFiltersFromState(state) {
           return;
         }
       }
-    } catch (_) {}
+    } catch (_) {
+      // Ignore guard check errors
+    }
 
     // Add call stack logging to understand why this is called multiple times
     console.log("🔍 populateFiltersFromState: Called with stack:", new Error().stack);

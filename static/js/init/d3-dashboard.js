@@ -3,7 +3,7 @@
 
 import { ensureDefaults, getRenderer, listTypes, registerChart } from '../charts/registry.js';
 import { subscribe, publish } from '../state/eventBus.js';
-import { getFilters, getMetricsData, getAppStatus, setUI } from '../state/appState.js';
+import { getFilters, getMetricsData, getAppStatus } from '../state/appState.js';
 import { attachChartZoom } from '../charts/zoom/brushZoom.js';
 import { initProviderStackControl } from '../charts/controls/providerStackControl.js';
 import { shapeChartPayload, intervalToStep } from '../charts/engine/timeSeriesEngine.js';
@@ -28,18 +28,26 @@ export async function initD3Dashboard() {
   try {
     if (typeof window !== 'undefined') {
       if (window.__chartsInitDone) {
-        try { console.debug('[charts] init skipped (already initialized)'); } catch(_) {}
+        try { console.debug('[charts] init skipped (already initialized)'); } catch(_) {
+          // Ignore debug logging errors
+        }
         return;
       }
       window.__chartsInitDone = true;
     }
-  } catch(_) {}
-  try { console.debug('[charts] initD3Dashboard: start'); } catch(_) {}
+  } catch(_) {
+    // Ignore init guard errors
+  }
+  try { console.debug('[charts] initD3Dashboard: start'); } catch(_) {
+    // Ignore debug logging errors
+  }
   await ensureDefaults();
   const { host, mount } = await whenReadyForCharts();
   // Always re-query mount to avoid stale references after DOM patching
   const getMount = () => document.getElementById('chart-area-1');
-  try { console.debug('[charts] initD3Dashboard: dom ready', { host: !!host, mount: !!mount }); } catch(_) {}
+  try { console.debug('[charts] initD3Dashboard: dom ready', { host: !!host, mount: !!mount }); } catch(_) {
+    // Ignore debug logging errors
+  }
 
   // Do not force charts visibility on init; wait for explicit Find or URL state
 
@@ -60,51 +68,6 @@ export async function initD3Dashboard() {
   } catch (e) {
     console.warn('[charts] failed to register renderers', e);
   }
-
-  const icons = {
-    // Minimal: line with smaller stroke and tiny markers
-    line: `
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M3 19.5H21" opacity="0.3"/>
-        <polyline points="3,15 8,10.6 12,13 16,9.2 21,11.3"/>
-        <circle cx="8" cy="10.6" r="0.7" fill="currentColor" stroke="none"/>
-        <circle cx="12" cy="13" r="0.7" fill="currentColor" stroke="none"/>
-        <circle cx="16" cy="9.2" r="0.7" fill="currentColor" stroke="none"/>
-      </svg>
-    `,
-    // Minimal: bars as thin round-capped lines
-    bar: `
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
-        <path d="M3 19.5H21" opacity="0.3"/>
-        <line x1="7" y1="18" x2="7" y2="11"/>
-        <line x1="12" y1="18" x2="12" y2="6"/>
-        <line x1="17" y1="18" x2="17" y2="13"/>
-      </svg>
-    `,
-    // Minimal: 3x3 dot grid heatmap (unchanged size, minimalist)
-    heatmap: `
-      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-        <g opacity="0.35"><circle cx="6" cy="6" r="1.6"/><circle cx="12" cy="6" r="1.6"/><circle cx="18" cy="6" r="1.6"/></g>
-        <g opacity="0.65"><circle cx="6" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/></g>
-        <g opacity="0.9"><circle cx="18" cy="12" r="1.6"/></g>
-        <g opacity="0.4"><circle cx="6" cy="18" r="1.6"/></g>
-        <g opacity="0.7"><circle cx="12" cy="18" r="1.6"/></g>
-        <g opacity="0.55"><circle cx="18" cy="18" r="1.6"/></g>
-      </svg>
-    `,
-    // Minimal hybrid: thinner overlay line
-    hybrid: `
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M3 19.5H21" opacity="0.28" stroke-width="1.4"/>
-        <g stroke-width="2.2">
-          <line x1="7" y1="18" x2="7" y2="12"/>
-          <line x1="12" y1="18" x2="12" y2="8"/>
-          <line x1="17" y1="18" x2="17" y2="14"/>
-        </g>
-        <polyline points="4,15 9,10.5 13,12 18,9.6 20,11" stroke-width="1.4"/>
-      </svg>
-    `
-  };
 
   const ensureControls = () => {
     let controls = document.getElementById('charts-controls');
@@ -165,8 +128,12 @@ export async function initD3Dashboard() {
     const stepDd = makeDd('chart-interval-dropdown', stepItems, initialInterval);
     controls.appendChild(stepDd);
 
-    try { console.debug('[charts] controls populated (dropdowns)'); } catch(_) {}
-    try { initProviderStackControl(); } catch(_) {}
+    try { console.debug('[charts] controls populated (dropdowns)'); } catch(_) {
+      // Ignore debug logging errors
+    }
+    try { initProviderStackControl(); } catch(_) {
+      // Ignore provider control init errors
+    }
   };
 
   // Compute chart area height on every render; robust against small container on first open
@@ -201,21 +168,29 @@ export async function initD3Dashboard() {
         m.style.minHeight = `${fixed}px`;
         m.dataset.fixedHeight = String(fixed);
       }
-    } catch(_) {}
+    } catch(_) {
+      // Ignore height calculation errors
+    }
     return fixed;
   };
 
   // Build or get controls container and populate it immediately
   let controls = ensureControls();
-  try { populateButtons(controls); } catch (e) { try { console.error('[charts] populateButtons error', e); } catch(_) {} }
+  try { populateButtons(controls); } catch (e) { try { console.error('[charts] populateButtons error', e); } catch(_) {
+      // Ignore error logging errors
+    } }
 
   // Do not force visibility here; renderer manages via appState.ui
-  try { console.debug('[charts] controls ready'); } catch(_) {}
+  try { console.debug('[charts] controls ready'); } catch(_) {
+    // Ignore debug logging errors
+  }
 
   // State
   let currentType = (controls.dataset.type) || 'line';
   let currentInterval = '1h'; // default aggregation step for all charts
-  try { if (typeof window !== 'undefined') window.__chartsCurrentInterval = currentInterval; } catch(_) {}
+  try { if (typeof window !== 'undefined') window.__chartsCurrentInterval = currentInterval; } catch(_) {
+    // Ignore global variable update errors
+  }
   let cleanup = () => {};
   const setActive = (type) => {
     try {
@@ -227,7 +202,9 @@ export async function initD3Dashboard() {
       // unify color to main blue and drop per-type color classes
       if (btn) btn.style.color = '#4f86ff';
       if (typeDd) typeDd.classList.remove('is-line','is-bar','is-heatmap','is-hybrid');
-    } catch(_) {}
+    } catch(_) {
+      // Ignore UI update errors
+    }
     try {
       const stepDd = controls.querySelector('#chart-interval-dropdown');
       const btn = stepDd?.querySelector('.charts-dd__button');
@@ -237,14 +214,18 @@ export async function initD3Dashboard() {
       // unify color to main blue and drop per-interval color classes
       if (btn) btn.style.color = '#4f86ff';
       if (stepDd) stepDd.classList.remove('is-5m','is-1h','is-1d');
-    } catch(_) {}
-    try { controls.dataset.type = type; controls.dataset.interval = currentInterval; } catch(_) {}
+    } catch(_) {
+      // Ignore UI update errors
+    }
+    try { controls.dataset.type = type; controls.dataset.interval = currentInterval; } catch(_) {
+      // Ignore dataset update errors
+    }
   };
 
   const renderSelected = (type) => {
     // Fallback to line renderer to guarantee rendering even if specific type pipeline not provided
     const renderer = getRenderer(type) || getRenderer('line');
-    if (!renderer) { try { console.error('[charts] renderer not found for type', type); } catch(_) {} return; }
+    if (!renderer) { console.error('[charts] renderer not found for type', type); return; }
     let stepMs = intervalToStep(currentInterval);
 
     // Read base filters for full data range
@@ -253,39 +234,31 @@ export async function initD3Dashboard() {
     const baseToTs = parseUtc(to);
     // If a zoom exists, use it only for initial visible window, not for data shaping
     const zr = (typeof window !== 'undefined' && window.__chartsZoomRange) ? window.__chartsZoomRange : null;
-    let viewFromTs = zr && Number.isFinite(zr.fromTs) ? zr.fromTs : baseFromTs;
-    let viewToTs = zr && Number.isFinite(zr.toTs) ? zr.toTs : baseToTs;
-    const now = Date.now();
-    // Fallbacks: last 24h if range not set
-    if (isNaN(baseFromTs) || isNaN(baseToTs) || baseFromTs >= baseToTs) {
-      // fallback base range
-      const toDef = now;
-      const fromDef = toDef - 24 * 3600e3;
-      viewFromTs = fromDef;
-      viewToTs = toDef;
-    }
     try {
       // Disable auto interval switching on initial render; keep user's selection
       const hasZoom = !!(zr && Number.isFinite(zr.fromTs) && Number.isFinite(zr.toTs) && zr.toTs > zr.fromTs);
       if (!hasZoom) {
         stepMs = intervalToStep(currentInterval);
       }
-    } catch(_) {}
-    try { console.debug('[charts] renderSelected', { type, interval: currentInterval, from, to, stepMs }); } catch(_) {}
+    } catch(_) {
+      // Ignore auto interval switching errors
+    }
+    try { console.debug('[charts] renderSelected', { type, interval: currentInterval, from, to, stepMs }); } catch(_) {
+      // Ignore debug logging errors
+    }
     // Diagnostic: if 'to' is exactly at 00:00:00, API typically treats it as exclusive
     try {
       const toDateObj = new Date(parseUtc(to));
       if (toDateObj.getUTCHours() === 0 && toDateObj.getUTCMinutes() === 0 && toDateObj.getUTCSeconds() === 0) {
         console.warn('[charts] Note: "to" is 00:00:00 (exclusive end). The selected last day may be excluded by API.');
       }
-    } catch(_) {}
+    } catch(_) {
+      // Ignore diagnostic check errors
+    }
 
     // Make sure chart area height is fixed and reused across renders
     const fixedH = ensureFixedChartHeight();
-    let data;
-    let options;
-
-    const status = (typeof getAppStatus === 'function') ? getAppStatus() : 'idle';
+    
     const md = getMetricsData() || {};
     const fiveRows = Array.isArray(md.five_min_rows) ? md.five_min_rows : [];
     const hourRows = Array.isArray(md.hourly_rows) ? md.hourly_rows : [];
@@ -297,14 +270,18 @@ export async function initD3Dashboard() {
     }
     // For 5m: use raw points (no binning). Otherwise: use engine shaping (binning).
     const m = getMount();
-    if (!m) { try { console.warn('[charts] mount not found at render time'); } catch(_) {} return; }
+    if (!m) { console.warn('[charts] mount not found at render time'); return; }
     if (currentInterval === '5m') {
       if (!useFive) {
         // Нет 5-минутных данных — переключаем на 1h без «подделки» 5m из часовых точек
-        try { toast('5-minute data is not available for the selected range. Using 1 hour.', { type: 'info', duration: 2500 }); } catch(_) {}
+        toast('5-minute data is not available for the selected range. Using 1 hour.', { type: 'info', duration: 2500 });
         currentInterval = '1h';
-        try { if (typeof window !== 'undefined') window.__chartsCurrentInterval = currentInterval; } catch(_) {}
-        try { publish('charts:intervalChanged', { interval: currentInterval }); } catch(_) {}
+        try { if (typeof window !== 'undefined') window.__chartsCurrentInterval = currentInterval; } catch(_) {
+          // Ignore global variable update
+        }
+        try { publish('charts:intervalChanged', { interval: currentInterval }); } catch(_) {
+          // Ignore event publishing errors
+        }
         const step1h = intervalToStep('1h');
         const { data: shapedData, options: shapedOptions } = shapeChartPayload(hourRows || [], {
           type,
@@ -403,15 +380,23 @@ export async function initD3Dashboard() {
           const after = ensureFixedChartHeight();
           if (after && before && Math.abs(after - before) >= 20) {
             m.dataset.heightAdjustTries = String(tries + 1);
-            try { cleanup(); } catch(_) {}
+            try { cleanup(); } catch(_) {
+              // Ignore cleanup errors
+            }
             renderSelected(type);
           }
         });
       }
-    } catch(_) {}
+    } catch(_) {
+      // Ignore height adjustment errors
+    }
     // Hide loading overlay and apply fade-in without changing global visibility flags
-    try { const overlayEl = document.getElementById('loading-overlay'); if (overlayEl) overlayEl.classList.add('is-hidden'); } catch(_) {}
-    try { m.classList.remove('chart-fade--out'); m.classList.add('chart-fade--in'); m.style.opacity = ''; } catch(_) {}
+    try { const overlayEl = document.getElementById('loading-overlay'); if (overlayEl) overlayEl.classList.add('is-hidden'); } catch(_) {
+      // Ignore overlay hide errors
+    }
+    try { m.classList.remove('chart-fade--out'); m.classList.add('chart-fade--in'); m.style.opacity = ''; } catch(_) {
+      // Ignore fade animation errors
+    }
 
     // Attach zoom overlay only for D3 charts; for ECharts we rely on built-in dataZoom
     try {
@@ -431,11 +416,15 @@ export async function initD3Dashboard() {
               void el.offsetWidth;
               el.classList.remove('chart-fade--in');
               el.classList.add('chart-fade--out');
-            } catch(_) {}
+            } catch(_) {
+              // Ignore fade animation errors
+            }
 
             // after short fade-out, cleanup and render, then fade-in
             setTimeout(() => {
-              try { cleanup(); } catch(_) {}
+              try { cleanup(); } catch(_) {
+                // Ignore cleanup errors
+              }
               renderSelected(currentType);
               requestAnimationFrame(() => {
                 try {
@@ -443,17 +432,25 @@ export async function initD3Dashboard() {
                   el.classList.add('chart-fade--in');
                   // remove helper classes after transition ends
                   setTimeout(() => {
-                    try { el.classList.remove('chart-fade'); } catch(_) {}
+                    try { el.classList.remove('chart-fade'); } catch(error) {
+                      console.error('Error removing helper classes:', error);
+                    }
                   }, 200);
-                } catch(_) {}
+                } catch(error) {
+                  console.error('Error removing helper classes:', error);
+                }
               });
             }, 120);
           },
         });
         const prevCleanup = cleanup;
         cleanup = () => {
-          try { zoomCleanup && zoomCleanup(); } catch(_) {}
-          try { prevCleanup && prevCleanup(); } catch(_) {}
+          try { zoomCleanup && zoomCleanup(); } catch(_) {
+            // Ignore zoom cleanup errors
+          }
+          try { prevCleanup && prevCleanup(); } catch(_) {
+            // Ignore cleanup errors
+          }
           // Do not blank the chart mount here; next render will overwrite content
         };
       }
@@ -468,7 +465,7 @@ export async function initD3Dashboard() {
       if (tries < 60) {
         return setTimeout(() => renderWhenMountReady(type, tries + 1), 100);
       }
-      try { console.warn('[charts] mount not ready after retries, skipping render'); } catch(_) {}
+      console.warn('[charts] mount not ready after retries, skipping render');
       return;
     }
     renderSelected(type);
@@ -480,17 +477,25 @@ export async function initD3Dashboard() {
     const st = (typeof getAppStatus === 'function') ? getAppStatus() : 'idle';
     const hasUrlState = (typeof window !== 'undefined') && window.location && String(window.location.hash || '').startsWith('#state=');
     if (st === 'loading' || st === 'success' || hasUrlState) {
-      try { cleanup(); } catch(_) {}
+      try { cleanup(); } catch(_) {
+        // Ignore cleanup errors
+      }
       renderWhenMountReady(currentType);
     }
     // Also honor an explicit request set by Find before subscription
     if (typeof window !== 'undefined' && window.__chartsRenderRequested) {
-      try { cleanup(); } catch(_) {}
+      try { cleanup(); } catch(_) {
+        // Ignore cleanup errors
+      }
       renderWhenMountReady(currentType);
     }
-  } catch(_) {}
+  } catch(_) {
+    // Ignore initial render errors
+  }
   const closeAllDd = () => {
-    try { controls.querySelectorAll('.charts-dd').forEach(dd => dd.classList.remove('is-open')); } catch(_) {}
+    try { controls.querySelectorAll('.charts-dd').forEach(dd => dd.classList.remove('is-open')); } catch(_) {
+      // Ignore dropdown close errors
+    }
   };
   const onControlsClick = (e) => {
     const btn = e.target.closest('.charts-dd__button');
@@ -510,7 +515,9 @@ export async function initD3Dashboard() {
         currentType = value || 'line';
         closeAllDd();
         setActive(currentType);
-        try { initProviderStackControl(); } catch(_) {}
+        try { initProviderStackControl(); } catch(_) {
+          // Ignore provider control init errors
+        }
         cleanup();
         renderWhenMountReady(currentType);
         return;
@@ -529,16 +536,20 @@ export async function initD3Dashboard() {
             }
             const diffDays = (toTs - fromTs) / (24 * 3600e3);
             if (requested === '5m' && diffDays > 5.0001) {
-              try { toast('5-minute interval is available only for ranges up to 5 days. Switching to 1 hour.', { type: 'warning', duration: 3500 }); } catch(_) {}
+              toast('5-minute interval is available only for ranges up to 5 days. Switching to 1 hour.', { type: 'warning', duration: 3500 });
               currentInterval = '1h';
             } else {
               currentInterval = requested;
             }
         } catch(_) { currentInterval = requested; }
-        try { if (typeof window !== 'undefined') window.__chartsCurrentInterval = currentInterval; } catch(_) {}
+        try { if (typeof window !== 'undefined') window.__chartsCurrentInterval = currentInterval; } catch(_) {
+          // Ignore global variable update errors
+        }
         closeAllDd();
         setActive(currentType);
-        try { publish('charts:intervalChanged', { interval: currentInterval }); } catch(_) {}
+        try { publish('charts:intervalChanged', { interval: currentInterval }); } catch(_) {
+          // Ignore event publishing errors
+        }
         return;
       }
     }
@@ -551,9 +562,13 @@ export async function initD3Dashboard() {
       const interval = payload && payload.interval ? String(payload.interval) : '';
       if (!interval) return;
       currentInterval = interval;
-      try { if (typeof window !== 'undefined') window.__chartsCurrentInterval = currentInterval; } catch(_) {}
+      try { if (typeof window !== 'undefined') window.__chartsCurrentInterval = currentInterval; } catch(_) {
+        // Ignore global variable update errors
+      }
       setActive(currentType);
-    } catch(_) {}
+    } catch(_) {
+      // Ignore interval change handler errors
+    }
   });
 
   // Re-render when data changes (after Find)
@@ -565,7 +580,9 @@ export async function initD3Dashboard() {
     populateButtons(controls);
     controls.removeEventListener('click', onControlsClick);
     controls.addEventListener('click', onControlsClick);
-    try { initProviderStackControl(); } catch(_) {}
+    try { initProviderStackControl(); } catch(_) {
+      // Ignore provider control init errors
+    }
     // Reflect the current active type/interval immediately
     setActive(currentType);
     cleanup();
@@ -575,11 +592,17 @@ export async function initD3Dashboard() {
 
   // Render on 'success' only
   subscribe('appState:statusChanged', (status) => {
-    try { if (typeof window !== 'undefined' && window.__summaryFetchInProgress) return; } catch(_) {}
+    try { if (typeof window !== 'undefined' && window.__summaryFetchInProgress) return; } catch(_) {
+      // Ignore summary fetch check errors
+    }
     if (status === 'success') {
       setActive(currentType);
-      try { initProviderStackControl(); } catch(_) {}
-      try { cleanup(); } catch(_) {}
+      try { initProviderStackControl(); } catch(_) {
+        // Ignore provider control init errors
+      }
+      try { cleanup(); } catch(_) {
+        // Ignore cleanup errors
+      }
       renderWhenMountReady(currentType);
     }
   });
@@ -588,19 +611,27 @@ export async function initD3Dashboard() {
   subscribe('appState:uiChanged', (ui) => {
     if (ui && ui.showCharts) {
       setActive(currentType);
-      try { initProviderStackControl(); } catch(_) {}
-      try { cleanup(); } catch(_) {}
+      try { initProviderStackControl(); } catch(_) {
+        // Ignore provider control init errors
+      }
+      try { cleanup(); } catch(_) {
+        // Ignore cleanup errors
+      }
       renderWhenMountReady(currentType);
     }
   });
 
   // Do NOT re-render on filters typing; wait for dataChanged after Find
   subscribe('appState:filtersChanged', () => {
-    try { console.debug('[charts] filtersChanged: no re-render (await Find -> dataChanged)'); } catch(_) {}
+    try { console.debug('[charts] filtersChanged: no re-render (await Find -> dataChanged)'); } catch(_) {
+      // Ignore debug logging errors
+    }
     // In case charts-controls was replaced externally, re-bind handler and re-assert active state
     const cc = document.getElementById('charts-controls');
     if (cc && cc !== controls) {
-      try { controls.removeEventListener('click', onControlsClick); } catch(_) {}
+      try { controls.removeEventListener('click', onControlsClick); } catch(_) {
+        // Ignore event removal errors
+      }
       controls = cc;
       controls.addEventListener('click', onControlsClick);
     }
@@ -609,18 +640,22 @@ export async function initD3Dashboard() {
 
   // Explicit hook: allow Find handler to request charts render directly
   subscribe('charts:renderRequest', () => {
-    try { cleanup(); } catch(_) {}
+    try { cleanup(); } catch(_) {
+      // Ignore cleanup errors
+    }
     renderWhenMountReady(currentType);
   });
 
   // Re-render current chart when per-provider toggle changes
-  subscribe('charts:bar:perProviderChanged', (payload) => {
+  subscribe('charts:bar:perProviderChanged', (_payload) => {
     try {
       if (controls?.dataset?.type === 'bar') {
         cleanup();
         renderWhenMountReady('bar');
       }
-    } catch(_) {}
+    } catch(_) {
+      // Ignore provider change handler errors
+    }
   });
 
   // If data was loaded before dashboard init completed, render immediately

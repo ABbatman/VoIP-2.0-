@@ -472,19 +472,35 @@ function handleGlobalFilterChange(event) {
   const prevCX = container ? container.scrollLeft : null;
   const prevCY = container ? container.scrollTop : null;
   const root = document.documentElement;
-  try { if (root) root.style.overflowAnchor = 'none'; } catch(_) {}
-  try { if (document.body) document.body.style.overflowAnchor = 'none'; } catch(_) {}
-  try { if (container) container.style.overflowAnchor = 'none'; } catch(_) {}
+  try { if (root) root.style.overflowAnchor = 'none'; } catch(_) {
+      // Ignore table UI errors
+    }
+  try { if (document.body) document.body.style.overflowAnchor = 'none'; } catch(_) {
+      // Ignore table UI errors
+    }
+  try { if (container) container.style.overflowAnchor = 'none'; } catch(_) {
+      // Ignore table UI errors
+    }
   const restoreScroll = () => {
     // Restore previous scroll positions on next frames (container first, then window)
     requestAnimationFrame(() => {
-      try { if (container && prevCY != null) container.scrollTop = prevCY; if (container && prevCX != null) container.scrollLeft = prevCX; } catch (_) {}
+      try { if (container && prevCY != null) container.scrollTop = prevCY; if (container && prevCX != null) container.scrollLeft = prevCX; } catch (_) {
+        // Ignore scroll restore errors
+      }
       requestAnimationFrame(() => {
-        try { window.scrollTo(prevX, prevY); } catch (_) {}
+        try { window.scrollTo(prevX, prevY); } catch (_) {
+          // Ignore scroll errors
+        }
         // Re-enable scroll anchoring
-        try { if (root) root.style.overflowAnchor = ''; } catch(_) {}
-        try { if (document.body) document.body.style.overflowAnchor = ''; } catch(_) {}
-        try { if (container) container.style.overflowAnchor = ''; } catch(_) {}
+        try { if (root) root.style.overflowAnchor = ''; } catch(_) {
+      // Ignore table UI errors
+    }
+        try { if (document.body) document.body.style.overflowAnchor = ''; } catch(_) {
+      // Ignore table UI errors
+    }
+        try { if (container) container.style.overflowAnchor = ''; } catch(_) {
+      // Ignore table UI errors
+    }
       });
     });
     // Fallbacks
@@ -496,7 +512,9 @@ function handleGlobalFilterChange(event) {
         if (root) root.style.overflowAnchor = '';
         if (document.body) document.body.style.overflowAnchor = '';
         if (container) container.style.overflowAnchor = '';
-      } catch (_) {}
+      } catch (_) {
+        // Ignore scroll restore errors
+      }
     });
     setTimeout(() => {
       try {
@@ -506,7 +524,9 @@ function handleGlobalFilterChange(event) {
         if (root) root.style.overflowAnchor = '';
         if (document.body) document.body.style.overflowAnchor = '';
         if (container) container.style.overflowAnchor = '';
-      } catch (_) {}
+      } catch (_) {
+        // Ignore scroll restore errors
+      }
     }, 50);
   };
 
@@ -563,17 +583,33 @@ function handleColumnFilterChange(event) {
   const prevCX = container ? container.scrollLeft : null;
   const prevCY = container ? container.scrollTop : null;
   const root = document.documentElement;
-  try { if (root) root.style.overflowAnchor = 'none'; } catch(_) {}
-  try { if (document.body) document.body.style.overflowAnchor = 'none'; } catch(_) {}
-  try { if (container) container.style.overflowAnchor = 'none'; } catch(_) {}
+  try { if (root) root.style.overflowAnchor = 'none'; } catch(_) {
+      // Ignore table UI errors
+    }
+  try { if (document.body) document.body.style.overflowAnchor = 'none'; } catch(_) {
+      // Ignore table UI errors
+    }
+  try { if (container) container.style.overflowAnchor = 'none'; } catch(_) {
+      // Ignore table UI errors
+    }
   const restoreScroll = () => {
     requestAnimationFrame(() => {
-      try { if (container && prevCY != null) container.scrollTop = prevCY; if (container && prevCX != null) container.scrollLeft = prevCX; } catch (_) {}
+      try { if (container && prevCY != null) container.scrollTop = prevCY; if (container && prevCX != null) container.scrollLeft = prevCX; } catch (_) {
+        // Ignore scroll restore errors
+      }
       requestAnimationFrame(() => {
-        try { window.scrollTo(prevX, prevY); } catch (_) {}
-        try { if (root) root.style.overflowAnchor = ''; } catch(_) {}
-        try { if (document.body) document.body.style.overflowAnchor = ''; } catch(_) {}
-        try { if (container) container.style.overflowAnchor = ''; } catch(_) {}
+        try { window.scrollTo(prevX, prevY); } catch (_) {
+          // Ignore scroll errors
+        }
+        try { if (root) root.style.overflowAnchor = ''; } catch(_) {
+      // Ignore table UI errors
+    }
+        try { if (document.body) document.body.style.overflowAnchor = ''; } catch(_) {
+      // Ignore table UI errors
+    }
+        try { if (container) container.style.overflowAnchor = ''; } catch(_) {
+      // Ignore table UI errors
+    }
       });
     });
     Promise.resolve().then(() => {
@@ -584,7 +620,9 @@ function handleColumnFilterChange(event) {
         if (root) root.style.overflowAnchor = '';
         if (document.body) document.body.style.overflowAnchor = '';
         if (container) container.style.overflowAnchor = '';
-      } catch (_) {}
+      } catch (_) {
+        // Ignore scroll restore errors
+      }
     });
     setTimeout(() => {
       try {
@@ -594,7 +632,9 @@ function handleColumnFilterChange(event) {
         if (root) root.style.overflowAnchor = '';
         if (document.body) document.body.style.overflowAnchor = '';
         if (container) container.style.overflowAnchor = '';
-      } catch (_) {}
+      } catch (_) {
+        // Ignore scroll restore errors
+      }
     }, 50);
   };
 
@@ -654,6 +694,7 @@ function handleColumnFilterChange(event) {
         // Double-check restore on next macrotask to beat races
         setTimeout(() => {
           if (!document.activeElement || document.activeElement.dataset?.filterKey !== key) {
+            const selector = `input[data-filter-key="${key}"]`;
             const cont = fromFloating
               ? document.querySelector('.floating-table-footer tfoot')
               : document.querySelector('#summaryTable tfoot');

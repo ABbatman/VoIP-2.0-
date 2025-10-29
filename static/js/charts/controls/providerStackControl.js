@@ -18,7 +18,9 @@ function buildCheckboxEl() {
   input.type = 'checkbox';
   input.id = 'charts-bar-per-provider';
   input.className = 'charts-toggle__input';
-  try { input.style.accentColor = '#4f86ff'; } catch(_) {}
+  try { input.style.accentColor = '#4f86ff'; } catch(_) {
+    // Ignore style setting errors
+  }
   const span = document.createElement('span');
   span.textContent = 'Suppliers';
   span.className = 'charts-toggle__label';
@@ -48,22 +50,32 @@ export function initProviderStackControl() {
       const { wrap, input } = buildCheckboxEl();
       controls.appendChild(wrap);
       // restore state
-      try { input.checked = !!window.__chartsBarPerProvider; } catch(_) {}
+      try { input.checked = !!window.__chartsBarPerProvider; } catch(_) {
+        // Ignore state restoration errors
+      }
       input.addEventListener('change', () => {
         const checked = !!input.checked;
-        try { window.__chartsBarPerProvider = checked; } catch(_) {}
-        try { publish('charts:bar:perProviderChanged', { perProvider: checked }); } catch(_) {}
+        try { window.__chartsBarPerProvider = checked; } catch(_) {
+          // Ignore global state update errors
+        }
+        try { publish('charts:bar:perProviderChanged', { perProvider: checked }); } catch(_) {
+          // Ignore event publishing errors
+        }
       });
     } else {
       const input = existing.querySelector('input');
       if (input) {
-        try { input.checked = !!window.__chartsBarPerProvider; } catch(_) {}
+        try { input.checked = !!window.__chartsBarPerProvider; } catch(_) {
+        // Ignore state restoration errors
+      }
       }
     }
     // Show only for Bar
     const el = controls.querySelector('.charts-toggle--suppliers');
     if (el) el.style.display = isBarType() ? 'inline-flex' : 'none';
-  } catch(_) {}
+  } catch(_) {
+    // Ignore control initialization errors
+  }
 }
 
 // Keep visibility in sync on events
@@ -72,4 +84,6 @@ subscribe('appState:dataChanged', () => initProviderStackControl());
 subscribe('appState:statusChanged', () => initProviderStackControl());
 subscribe('appState:uiChanged', () => initProviderStackControl());
 // Expose re-init for external calls
-try { if (typeof window !== 'undefined') window.__initProviderStackControl = initProviderStackControl; } catch(_) {}
+try { if (typeof window !== 'undefined') window.__initProviderStackControl = initProviderStackControl; } catch(_) {
+  // Ignore global function exposure errors
+}

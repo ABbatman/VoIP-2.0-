@@ -1,9 +1,8 @@
 // static/js/charts/echartsBarChart.js
-/* global window */
 import * as echarts from 'echarts';
 import { toast } from '../ui/notify.js';
 import { makeBarLineLikeTooltip } from './tooltip.js';
-import { buildProviderStacks, formatProviderLabel, shouldShowProviderLabel, makeStripeOverlay } from './echartsBarChartHelper.js';
+import { buildProviderStacks, makeStripeOverlay } from './echartsBarChartHelper.js';
 
 function ensureContainer(container) {
   if (typeof container === 'string') {
@@ -48,7 +47,9 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
   try {
     const existing = echarts.getInstanceByDom(el);
     if (existing) existing.dispose();
-  } catch (_) {}
+  } catch (_) {
+    // Ignore error if chart instance doesn't exist
+  }
   const chart = echarts.init(el);
 
   const base = {
@@ -137,13 +138,17 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
         startVal = clamp(zr.fromTs);
         endVal = clamp(zr.toTs);
       }
-    } catch (_) {}
+    } catch (_) {
+      // Ignore zoom range errors
+    }
     try {
       if (!(Number.isFinite(startVal) && Number.isFinite(endVal) && endVal > startVal)) {
         startVal = Number.isFinite(fromTs) ? fromTs : null;
         endVal = Number.isFinite(toTs) ? toTs : null;
       }
-    } catch (_) {}
+    } catch (_) {
+      // Ignore zoom range init errors
+    }
 
     // compute 4 grids
     const topPad = 8;
@@ -183,7 +188,10 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
           style: { text: name, fill: '#6e7781', font: '600 12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif' }
         };
       });
-    } catch(_) { graphicLabels = []; }
+    } catch (_) {
+      // Ignore graphic label creation errors
+      graphicLabels = [];
+    }
 
     // Provider metadata (for overlays and optional supplier toggle)
     let provider = null;
@@ -192,7 +200,10 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
       if (hasProviderRows) {
         provider = buildProviderStacks(opts.providerRows, { fromTs, toTs, stepMs: step });
       }
-    } catch(_) { provider = null; }
+    } catch (_) {
+      // Ignore provider stack creation errors
+      provider = null;
+    }
     // Synthetic single-supplier fallback when rows available but detection failed
     try {
       if (!provider && hasProviderRows) {
@@ -230,8 +241,9 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
           }
         };
       }
-    } catch(_) {}
-
+    } catch (_) {
+      // Ignore provider fallback creation errors
+    }
 
     return {
       animation: true,
@@ -348,7 +360,10 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
       const w = Math.abs(Number(p1) - Number(p0));
       if (!Number.isFinite(w) || w <= 0) return null;
       return Math.max(2, Math.round(w));
-    } catch(_) { return null; }
+    } catch (_) {
+      // Ignore step width computation errors
+      return null;
+    }
   };
 
   const applyDynamicBarWidth = () => {
@@ -362,11 +377,15 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
         const cur = chart.getOption();
         const upd = (cur.series || []).filter(s => s && s.type === 'bar').map(s => ({ id: s.id, barWidth: each }));
         if (upd.length) chart.setOption({ series: upd }, { lazyUpdate: true });
-      } catch(_) {}
+      } catch (_) {
+        // Ignore bar width update errors
+      }
     }
   };
   // apply once after initial render
-  try { requestAnimationFrame(() => setTimeout(applyDynamicBarWidth, 0)); } catch(_) {}
+  try { requestAnimationFrame(() => setTimeout(applyDynamicBarWidth, 0)); } catch (_) {
+    // Ignore animation frame errors
+  }
 
   const getZoomRange = () => {
     try {
@@ -379,7 +398,9 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
         const toTs = Math.ceil(ext[1]);
         if (Number.isFinite(fromTs) && Number.isFinite(toTs) && toTs > fromTs) return { fromTs, toTs };
       }
-    } catch (_) {}
+    } catch (_) {
+      // Ignore zoom range extraction errors
+    }
     return null;
   };
 
@@ -389,7 +410,9 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
       if (zr) {
         window.__chartsZoomRange = zr;
         // adjust bar width to current zoom scale
-        try { applyDynamicBarWidth(); } catch(_) {}
+        try { applyDynamicBarWidth(); } catch (_) {
+          // Ignore bar width adjustment errors
+        }
         try {
           const diffDays = (zr.toTs - zr.fromTs) / (24 * 3600e3);
           const curInt = (typeof window !== 'undefined' && window.__chartsCurrentInterval) ? String(window.__chartsCurrentInterval) : '5m';
@@ -398,22 +421,36 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
             const last = window.__zoomPolicyLastSwitchTs || 0;
             if (now - last > 600) {
               window.__zoomPolicyLastSwitchTs = now;
-              try { toast('5-minute interval is available only for ranges up to 5 days. Switching to 1 hour.', { type: 'warning', duration: 3500 }); } catch(_) {}
-              try { window.__chartsCurrentInterval = '1h'; } catch(_) {}
+              try { toast('5-minute interval is available only for ranges up to 5 days. Switching to 1 hour.', { type: 'warning', duration: 3500 }); } catch (_) {
+                // Toast notification might fail if UI not ready
+              }
+              try { window.__chartsCurrentInterval = '1h'; } catch (_) {
+                // Ignore global variable update errors
+              }
               try {
                 import('../state/eventBus.js').then(({ publish }) => {
-                  try { publish('charts:intervalChanged', { interval: '1h' }); } catch(_) {}
+                  try { publish('charts:intervalChanged', { interval: '1h' }); } catch (_) {
+                    // Event bus might not be ready
+                  }
                 }).catch(() => {});
-              } catch(_) {}
+              } catch (_) {
+                // Module import might fail
+              }
             }
           }
-        } catch (_) {}
+        } catch (_) {
+          // Ignore zoom policy errors
+        }
       }
-    } catch (_) {}
+    } catch (_) {
+      // Ignore dataZoom errors
+    }
   });
 
   // Re-apply bar width after any setOption finishes (resize, update, etc.)
-  try { chart.on('finished', applyDynamicBarWidth); } catch(_) {}
+  try { chart.on('finished', applyDynamicBarWidth); } catch (_) {
+    // Event handler registration might fail
+  }
 
   function update(newData = data, newOptions = {}) {
     const merged = { ...base, ...newOptions };
@@ -429,7 +466,9 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
       base.acdSeries = Array.isArray(merged.acdSeries) ? merged.acdSeries : base.acdSeries;
       base.perProvider = !!merged.perProvider;
       base.providerRows = Array.isArray(merged.providerRows) ? merged.providerRows : base.providerRows;
-    } catch(_) {}
+    } catch (_) {
+      // Ignore base update errors
+    }
     const next = buildOption(merged, newData);
     chart.setOption({
       xAxis: next.xAxis,
@@ -438,7 +477,9 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
       series: next.series,
       graphic: next.graphic || []
     }, { replaceMerge: ['grid','xAxis','yAxis','series','graphic'], lazyUpdate: true });
-    try { applyDynamicBarWidth(); } catch(_) {}
+    try { applyDynamicBarWidth(); } catch (_) {
+      // Ignore bar width update errors
+    }
     try {
       const baseLo = Number(merged.fromTs);
       const baseHi = Number(merged.toTs);
@@ -453,12 +494,18 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
           dz.forEach((_, idx) => {
             chart.dispatchAction({ type: 'dataZoom', dataZoomIndex: idx, startValue: sv, endValue: ev });
           });
-        } catch (_) {}
+        } catch (_) {
+          // Ignore dispatch action errors
+        }
       }
-    } catch (_) {}
+    } catch (_) {
+      // Ignore zoom update errors
+    }
   }
 
-  function dispose() { try { chart.dispose(); } catch (_) {} }
+  function dispose() { try { chart.dispose(); } catch (_) {
+    // Chart might already be disposed
+  } }
   function getInstance() { return chart; }
 
   return { update, dispose, getInstance };

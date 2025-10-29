@@ -3,7 +3,6 @@
 // This file does not alter existing dashboard wiring. Consumers can opt-in
 // by importing and registering these renderers behind a feature flag.
 
-/* global window */
 import * as echarts from 'echarts';
 import { toast } from '../ui/notify.js';
 import { makeBarLineLikeTooltip } from './tooltip.js';
@@ -38,14 +37,20 @@ function withGapBreaks(pairs, stepMs) {
       prevT = t;
     }
     return out;
-  } catch(_) { return pairs || []; }
+  } catch(_) {
+    // Return original pairs on error
+    return pairs || [];
+  }
 }
 
 function shiftForwardPairs(pairs, deltaMs) {
   try {
     if (!Array.isArray(pairs) || pairs.length === 0 || !Number.isFinite(deltaMs)) return [];
     return pairs.map(([t, y]) => [Number(t) + deltaMs, y]);
-  } catch(_) { return []; }
+  } catch(_) {
+    // Return empty array on error
+    return [];
+  }
 }
 
 function ensureContainer(container) {
@@ -105,7 +110,7 @@ function seriesLine(name, data, xAxisIndex, yAxisIndex, color, { area = false, s
   };
 }
 
-function buildMultiOption({ data, fromTs, toTs, height, interval, noFiveMinData }) {
+function buildMultiOption({ data, fromTs, toTs, height, interval, noFiveMinData: _noFiveMinData }) {
   const grids = computeGrids(height);
   const dayMs = 24 * 3600e3;
   const minX = Number.isFinite(fromTs) ? Number(fromTs) : null;
@@ -192,21 +197,27 @@ function buildMultiOption({ data, fromTs, toTs, height, interval, noFiveMinData 
     } else {
       // No initial auto-pan: keep full requested domain on first render
     }
-  } catch(_) {}
+  } catch(_) {
+    // Ignore auto-pan errors
+  }
   // Fallback safety: ensure start < end and both finite; else drop to base domain
   try {
     if (!(Number.isFinite(startVal) && Number.isFinite(endVal) && endVal > startVal)) {
       startVal = Number.isFinite(fromTs) ? Number(fromTs) : null;
       endVal = Number.isFinite(toTs) ? Number(toTs) : null;
     }
-  } catch(_) {}
+  } catch(_) {
+    // Ignore domain validation errors
+  }
   // Extend view window by +24h to display the shifted gray overlays' tail
   try {
     if (Number.isFinite(endVal)) {
       const cap = (typeof maxX === 'number' && Number.isFinite(maxX)) ? Number(maxX) : (Number(endVal) + dayMs);
       endVal = Math.min(Number(endVal) + dayMs, cap);
     }
-  } catch(_) {}
+  } catch(_) {
+    // Ignore view extension errors
+  }
 
   const option = {
     animation: true,
@@ -268,7 +279,9 @@ function buildMultiOption({ data, fromTs, toTs, height, interval, noFiveMinData 
       };
     });
     option.graphic = (option.graphic || []).concat(labels);
-  } catch(_) {}
+  } catch(_) {
+    // Ignore graphic label errors
+  }
   return option;
 }
 
@@ -277,7 +290,9 @@ export function renderMultiLineChartEcharts(container, data, options = {}) {
   try {
     const existing = echarts.getInstanceByDom(el);
     if (existing) existing.dispose();
-  } catch(_) {}
+  } catch(_) {
+    // Ignore existing chart disposal errors
+  }
   const chart = echarts.init(el);
 
   const base = {
@@ -288,7 +303,9 @@ export function renderMultiLineChartEcharts(container, data, options = {}) {
     noFiveMinData: !!options.noFiveMinData,
   };
   const option = buildMultiOption({ data, ...base });
-  try { option.tooltip = option.tooltip || {}; option.tooltip.formatter = makeBarLineLikeTooltip({ chart, stepMs: (base.interval === '5m') ? 5 * 60e3 : (base.interval === '1h' ? 3600e3 : 24 * 3600e3) }); } catch(_) {}
+  try { option.tooltip = option.tooltip || {}; option.tooltip.formatter = makeBarLineLikeTooltip({ chart, stepMs: (base.interval === '5m') ? 5 * 60e3 : (base.interval === '1h' ? 3600e3 : 24 * 3600e3) }); } catch(_) {
+    // Ignore tooltip formatter errors
+  }
   chart.setOption(option, { notMerge: true, lazyUpdate: true });
 
   try {
@@ -299,7 +316,9 @@ export function renderMultiLineChartEcharts(container, data, options = {}) {
       const clamp = (v) => (Number.isFinite(baseLo) && Number.isFinite(baseHi)) ? Math.max(baseLo, Math.min(baseHi, v)) : v;
       let sv = Number.isFinite(zr?.fromTs) ? clamp(Number(zr.fromTs)) : baseLo;
       let ev = Number.isFinite(zr?.toTs) ? clamp(Number(zr.toTs)) : baseHi;
-      try { if (Number.isFinite(ev)) ev = Number(ev) + 24 * 3600e3; } catch(_) {}
+      try { if (Number.isFinite(ev)) ev = Number(ev) + 24 * 3600e3; } catch(e) {
+        console.error('Error extending end value:', e);
+      }
       if (base.interval === '5m' && base.noFiveMinData) {
         const minSpan = 2 * 3600e3; // 2h
         if (Number.isFinite(sv) && Number.isFinite(ev) && (ev - sv) < minSpan) {
@@ -315,12 +334,16 @@ export function renderMultiLineChartEcharts(container, data, options = {}) {
           dz.forEach((_, idx) => {
             chart.dispatchAction({ type: 'dataZoom', dataZoomIndex: idx, startValue: sv, endValue: ev });
           });
-        } catch(_) {}
+        } catch(_) {
+          // Ignore dispatch action errors
+        }
       }
     };
     // Delay to ensure option applied
     requestAnimationFrame(() => setTimeout(applyZoom, 0));
-  } catch(_) {}
+  } catch(_) {
+    // Ignore zoom initialization errors
+  }
 
   const getZoomRange = () => {
     try {
@@ -333,7 +356,9 @@ export function renderMultiLineChartEcharts(container, data, options = {}) {
         const toTs = Math.ceil(ext[1]);
         if (Number.isFinite(fromTs) && Number.isFinite(toTs) && toTs > fromTs) return { fromTs, toTs };
       }
-    } catch(_) {}
+    } catch(_) {
+      // Ignore zoom range extraction errors
+    }
     return null;
   };
 
@@ -351,18 +376,30 @@ export function renderMultiLineChartEcharts(container, data, options = {}) {
             const last = window.__zoomPolicyLastSwitchTs || 0;
             if (now - last > 600) {
               window.__zoomPolicyLastSwitchTs = now;
-              try { toast('5-minute interval is available only for ranges up to 5 days. Switching to 1 hour.', { type: 'warning', duration: 3500 }); } catch(_) {}
-              try { window.__chartsCurrentInterval = '1h'; } catch(_) {}
+              try { toast('5-minute interval is available only for ranges up to 5 days. Switching to 1 hour.', { type: 'warning', duration: 3500 }); } catch(_) {
+                // Toast might fail if UI not ready
+              }
+              try { window.__chartsCurrentInterval = '1h'; } catch(_) {
+                // Ignore global variable update errors
+              }
               try {
                 import('../state/eventBus.js').then(({ publish }) => {
-                  try { publish('charts:intervalChanged', { interval: '1h' }); } catch(_) {}
+                  try { publish('charts:intervalChanged', { interval: '1h' }); } catch(_) {
+                    // Event bus might not be available
+                  }
                 }).catch(() => {});
-              } catch(_) {}
+              } catch(_) {
+                // Module import might fail
+              }
             }
           }
-        } catch(_) {}
+        } catch(_) {
+          // Ignore zoom policy check errors
+        }
       }
-    } catch(_) {}
+    } catch(_) {
+      // Ignore dataZoom errors
+    }
   });
 
   function update(newData = data, newOptions = {}) {
@@ -381,7 +418,9 @@ export function renderMultiLineChartEcharts(container, data, options = {}) {
       const clamp = (v) => (Number.isFinite(baseLo) && Number.isFinite(baseHi)) ? Math.max(baseLo, Math.min(baseHi, v)) : v;
       let sv = Number.isFinite(zr?.fromTs) ? clamp(Number(zr.fromTs)) : baseLo;
       let ev = Number.isFinite(zr?.toTs) ? clamp(Number(zr.toTs)) : baseHi;
-      try { if (Number.isFinite(ev)) ev = Number(ev) + 24 * 3600e3; } catch(_) {}
+      try { if (Number.isFinite(ev)) ev = Number(ev) + 24 * 3600e3; } catch(_) {
+        // Ignore end value extension errors
+      }
       if (Number.isFinite(sv) && Number.isFinite(ev) && ev > sv) {
         chart.setOption({ dataZoom: [ { startValue: sv, endValue: ev }, { startValue: sv, endValue: ev } ] }, { lazyUpdate: true });
         try {
@@ -389,12 +428,18 @@ export function renderMultiLineChartEcharts(container, data, options = {}) {
           dz.forEach((_, idx) => {
             chart.dispatchAction({ type: 'dataZoom', dataZoomIndex: idx, startValue: sv, endValue: ev });
           });
-        } catch(_) {}
+        } catch(_) {
+          // Ignore dispatch action errors
+        }
       }
-    } catch(_) {}
+    } catch(_) {
+      // Ignore zoom update errors
+    }
   }
 
-  function dispose() { try { chart.dispose(); } catch (_) {} }
+  function dispose() { try { chart.dispose(); } catch (_) {
+    // Chart might already be disposed
+  } }
   function getInstance() { return chart; }
 
   return { update, dispose, getInstance };
@@ -404,7 +449,7 @@ export function renderMultiLineChartEcharts(container, data, options = {}) {
 
 // Bar renderer moved to './echartsBarChart.js'
 
-export function renderHybridChartEcharts(container, data = { bars: [], line: [] }, options = {}) {
+export function renderHybridChartEcharts(container, data = { bars: [], line: [] }, _options = {}) {
   const el = ensureContainer(container);
   const chart = echarts.init(el);
   const bars = Array.isArray(data?.bars) ? data.bars.map(d => [d.x, d.y]) : [];
@@ -423,7 +468,7 @@ export function renderHybridChartEcharts(container, data = { bars: [], line: [] 
   return { update: (d) => chart.setOption({ series: [ { data: (d?.bars||[]).map(x => [x.x, x.y]) }, { data: (d?.line||[]).map(x => [x.x instanceof Date ? x.x.getTime() : x.x, x.y]) } ] }, { replaceMerge: ['series'] }), dispose: () => chart.dispose(), getInstance: () => chart };
 }
 
-export function renderHeatmapEcharts(container, data = [], options = {}) {
+export function renderHeatmapEcharts(container, data = [], _options = {}) {
   const el = ensureContainer(container);
   const chart = echarts.init(el);
   // Expect data: [{ x: 'HH:MM', y: 'YYYY-MM-DD', v: number }]

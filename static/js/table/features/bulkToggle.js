@@ -17,7 +17,9 @@ export function expandAllPeersStandard() {
     const g = (window.__openGroups || { main: [], hourly: [] });
     const uniq = Array.from(new Set([...(g.main || []), ...mainIds]));
     window.__openGroups = { main: uniq, hourly: Array.from(new Set(g.hourly || [])) };
-  } catch (_) {}
+  } catch(_) {
+    // Ignore bulk toggle errors
+  }
   // Single coordinated render to materialize peers under all mains
   renderCoordinator.requestRender('table', async () => {
     try {
@@ -28,7 +30,9 @@ export function expandAllPeersStandard() {
       const data = getMetricsData();
       const { pagedData } = app.getProcessedData();
       mod.renderGroupedTable(pagedData || [], data?.peer_rows || [], data?.hourly_rows || []);
-    } catch (_) {}
+    } catch(_) {
+    // Ignore bulk toggle errors
+  }
   }, { debounceMs: 0, cooldownMs: 0 });
   const btn = getExpandAllButton();
   if (btn) { btn.textContent = 'Hide All'; btn.dataset.state = 'shown'; }
@@ -39,7 +43,9 @@ export function collapseAllPeersStandard() {
   const tbody = getTableBody();
   if (!tbody) return false;
   // Reset global openGroups and request a single coordinated render
-  try { window.__openGroups = { main: [], hourly: [] }; } catch (_) {}
+  try { window.__openGroups = { main: [], hourly: [] }; } catch(_) {
+    // Ignore bulk toggle errors
+  }
   renderCoordinator.requestRender('table', async () => {
     try {
       // Render standard table directly to avoid nested coordinator in TableController
@@ -49,7 +55,9 @@ export function collapseAllPeersStandard() {
       const data = getMetricsData();
       const { pagedData } = app.getProcessedData();
       mod.renderGroupedTable(pagedData || [], data?.peer_rows || [], data?.hourly_rows || []);
-    } catch (_) {}
+    } catch(_) {
+    // Ignore bulk toggle errors
+  }
   }, { debounceMs: 0, cooldownMs: 0 });
   const btn = getExpandAllButton();
   if (btn) { btn.textContent = 'Show All'; btn.dataset.state = 'hidden'; }

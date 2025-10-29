@@ -107,13 +107,17 @@ function updateFeedbackUI(status) {
       try {
         const loadingOverlay2 = document.getElementById("loading-overlay");
         if (loadingOverlay2) loadingOverlay2.classList.add("is-hidden");
-      } catch(_) {}
+      } catch(_) {
+        // Ignore overlay hide errors
+      }
       try {
         if (typeof window !== 'undefined' && window.__hideTableUntilSummary) {
           const resultsContainer2 = document.querySelector('.results-display');
           if (resultsContainer2) resultsContainer2.classList.add('is-hidden');
         }
-      } catch(_) {}
+      } catch(_) {
+        // Ignore table hide errors
+      }
       break;
 
     case "error": {

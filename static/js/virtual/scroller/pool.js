@@ -30,7 +30,9 @@ export function trimPool(rowPool, maxPool, needCount, tbody) {
   for (let i = rowPool.length - 1; i >= targetSize; i--) {
     const tr = rowPool[i];
     if (tr && tr.parentNode === tbody) {
-      try { tbody.removeChild(tr); } catch (_) {}
+      try { tbody.removeChild(tr); } catch(_) {
+      // Ignore pool cleanup errors
+    }
     }
     rowPool.pop();
   }

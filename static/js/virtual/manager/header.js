@@ -8,7 +8,9 @@ import { bindFloatingHeader } from './ui-sync.js';
 import { getYToggleButtons, getResultsTables } from '../selectors/dom-selectors.js';
 
 function logDebug(...args) {
-  try { if (typeof window !== 'undefined' && window.DEBUG) console.log(...args); } catch (_) {}
+  try { if (typeof window !== 'undefined' && window.DEBUG) console.log(...args); } catch(_) {
+    // Ignore header sync errors
+  }
 }
 
 export function attachHeader(vm) {
@@ -19,7 +21,9 @@ export function attachHeader(vm) {
       renderTableFooter();
       updateSortArrows();
       syncYToggleIcons();
-      try { bindFloatingHeader(vm); } catch (_) {}
+      try { bindFloatingHeader(vm); } catch(_) {
+    // Ignore header sync errors
+  }
       logDebug('✅ Header: ready');
     } catch (error) {
       console.error('❌ Header: render failed', error);

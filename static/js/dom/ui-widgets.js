@@ -1,4 +1,5 @@
 // static/js/dom/ui-widgets.js
+/* global flatpickr */
 /**
  * Initializes the Flatpickr library for date inputs if it's available.
  */
@@ -69,7 +70,9 @@ export function initFlatpickr() {
         input._flatpickr = fp;
         // Ensure calendar opens on click/focus of both original and alt input
         try {
-          const openOnClick = () => { try { fp.open(); } catch(_){} };
+          const openOnClick = () => { try { fp.open(); } catch(_){
+            // Ignore calendar open errors
+          } };
           // Open only on click to avoid overriding manual typing on focus/blur
           input.addEventListener('click', openOnClick);
           if (fp.altInput) {
@@ -84,7 +87,9 @@ export function initFlatpickr() {
             if (!v) {
               fp.clear();
               window._dateManuallyCommittedAt = Date.now();
-              try { input.dataset.userCommittedTs = String(window._dateManuallyCommittedAt); } catch(_) {}
+              try { input.dataset.userCommittedTs = String(window._dateManuallyCommittedAt); } catch(_) {
+                // Ignore dataset update errors
+              }
               return { parsed: false, cleared: true };
             }
             fp.setDate(v, true, fp.config.dateFormat);
@@ -96,7 +101,9 @@ export function initFlatpickr() {
               input.value = ymd;
               if (fp.altInput) fp.altInput.value = altStr;
               window._dateManuallyCommittedAt = Date.now();
-              try { input.dataset.userCommittedTs = String(window._dateManuallyCommittedAt); } catch(_) {}
+              try { input.dataset.userCommittedTs = String(window._dateManuallyCommittedAt); } catch(_) {
+                // Ignore dataset update errors
+              }
               return { parsed: true, cleared: false };
             }
             return { parsed: false, cleared: false };

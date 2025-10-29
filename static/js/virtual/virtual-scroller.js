@@ -101,13 +101,17 @@ export class VirtualScroller {
     this.spacer.style.height = `${totalHeight}px`;
 
     // Hard clear tbody to remove any legacy/non-pooled rows from previous render modes
-    try { if (this.tbody) this.tbody.innerHTML = ''; } catch (_) {}
+    try { if (this.tbody) this.tbody.innerHTML = ''; } catch (_) {
+      // Ignore tbody clear errors
+    }
 
     // If no data, immediately clear tbody so old rows don't remain visible
     if (!this.data.length) {
       if (this.tbody) this.tbody.innerHTML = '';
       this.spacer.style.height = '0px';
-      try { maybeNotifyDomUpdate(this, { forceRender: true, structuralChange: true }); } catch(_) {}
+      try { maybeNotifyDomUpdate(this, { forceRender: true, structuralChange: true }); } catch(_) {
+      // Ignore virtual scroller errors
+    }
       return true;
     }
     
@@ -117,7 +121,9 @@ export class VirtualScroller {
     this.render(true);
 
     // After first render, measure real row height (accounts for borders) and correct spacer
-    try { recomputeRowHeight(this); } catch(_) {}
+    try { recomputeRowHeight(this); } catch(_) {
+      // Ignore virtual scroller errors
+    }
   }
 
   /**
@@ -129,7 +135,9 @@ export class VirtualScroller {
     if (!this.data.length) {
       if (this.tbody) this.tbody.innerHTML = '';
       this.spacer.style.height = '0px';
-      try { maybeNotifyDomUpdate(this, { forceRender: true, structuralChange: true }); } catch(_) {}
+      try { maybeNotifyDomUpdate(this, { forceRender: true, structuralChange: true }); } catch(_) {
+      // Ignore virtual scroller errors
+    }
       return;
     }
 
@@ -232,7 +240,9 @@ export class VirtualScroller {
     }
     
     // Notify that DOM has been updated (for event handler setup) with soft throttling
-    try { maybeNotifyDomUpdate(this, { forceRender, structuralChange: (_attachCount > 0 || _detachCount > 0) }); } catch(_) {}
+    try { maybeNotifyDomUpdate(this, { forceRender, structuralChange: (_attachCount > 0 || _detachCount > 0) }); } catch(_) {
+      // Ignore virtual scroller errors
+    }
     
     // Update spacer height every render to avoid growing bottom gap when data changes
     const visibleCount = endIndex - startIndex;
@@ -273,13 +283,17 @@ export class VirtualScroller {
           dataLen: this.data.length,
         });
       }
-    } catch (_) {}
+    } catch (_) {
+      // Ignore debug logging errors
+    }
   }
 
   /**
    * Recompute actual row height from DOM and adjust spacer to remove trailing gap
    */
-  recomputeRowHeight() { try { recomputeRowHeight(this); } catch(_) {} }
+  recomputeRowHeight() { try { recomputeRowHeight(this); } catch(_) {
+      // Ignore virtual scroller errors
+    } }
 
   /**
    * Default row renderer if none provided

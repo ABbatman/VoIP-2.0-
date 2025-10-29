@@ -19,9 +19,15 @@ export function attachSubscriptions(vm) {
   // Y columns visibility changes
   const onYVisibility = () => {
     if (typeof window !== 'undefined' && window.__renderingInProgress) return;
-    try { vm.syncYToggleIcons && vm.syncYToggleIcons(); } catch (_) {}
-    try { vm.syncFloatingHeader && vm.syncFloatingHeader(); } catch (_) {}
-    try { if (window.initStickyFooter) window.initStickyFooter(); } catch (_) {}
+    try { vm.syncYToggleIcons && vm.syncYToggleIcons(); } catch(_) {
+      // Ignore subscription errors
+    }
+    try { vm.syncFloatingHeader && vm.syncFloatingHeader(); } catch(_) {
+      // Ignore subscription errors
+    }
+    try { if (window.initStickyFooter) window.initStickyFooter(); } catch(_) {
+      // Ignore subscription errors
+    }
   };
   const unsubY = subscribe('tableState:yVisibilityChanged', debounce(onYVisibility, 16));
   unsubs.push(unsubY);
@@ -29,18 +35,28 @@ export function attachSubscriptions(vm) {
   // Table state changes (e.g. sorting) — keep groups as-is, rebuild indices and refresh
   const onChanged = () => {
     if (typeof window !== 'undefined' && window.__renderingInProgress) return;
-    try { vm.updateSortArrowsAfterRefresh && vm.updateSortArrowsAfterRefresh(); } catch (_) {}
+    try { vm.updateSortArrowsAfterRefresh && vm.updateSortArrowsAfterRefresh(); } catch(_) {
+      // Ignore subscription errors
+    }
     try {
       if (vm.rawData && Array.isArray(vm.rawData.mainRows)) {
         const sortedMainRows = vm.applySortingToMainRows(vm.rawData.mainRows);
         vm.rawData.mainRows = sortedMainRows;
         vm.initializeLazyData();
         vm.refreshVirtualTable();
-        try { vm.processQueuedExpandCollapseAll && vm.processQueuedExpandCollapseAll(); } catch (_) {}
-        try { vm.syncExpandCollapseAllButtonLabel && vm.syncExpandCollapseAllButtonLabel(); } catch (_) {}
+        try { vm.processQueuedExpandCollapseAll && vm.processQueuedExpandCollapseAll(); } catch(_) {
+      // Ignore subscription errors
+    }
+        try { vm.syncExpandCollapseAllButtonLabel && vm.syncExpandCollapseAllButtonLabel(); } catch(_) {
+      // Ignore subscription errors
+    }
       }
-    } catch (_) {}
-    try { vm.syncFloatingHeader && vm.syncFloatingHeader(); } catch (_) {}
+    } catch(_) {
+      // Ignore subscription errors
+    }
+    try { vm.syncFloatingHeader && vm.syncFloatingHeader(); } catch(_) {
+      // Ignore subscription errors
+    }
   };
   const debouncedChanged = debounce(onChanged, 24);
   const unsubChanged = subscribe('tableState:changed', debouncedChanged);
@@ -49,15 +65,25 @@ export function attachSubscriptions(vm) {
   // Reverse mode change — collapse all and reset button
   const onReverse = () => {
     if (typeof window !== 'undefined' && window.__renderingInProgress) return;
-    try { vm.openMainGroups && vm.openMainGroups.clear(); } catch (_) {}
-    try { vm.openHourlyGroups && vm.openHourlyGroups.clear(); } catch (_) {}
+    try { vm.openMainGroups && vm.openMainGroups.clear(); } catch(_) {
+      // Ignore subscription errors
+    }
+    try { vm.openHourlyGroups && vm.openHourlyGroups.clear(); } catch(_) {
+      // Ignore subscription errors
+    }
     try {
       const btn = getExpandAllButton();
       if (btn) { btn.textContent = 'Show All'; btn.dataset.state = 'hidden'; }
       vm.syncExpandCollapseAllButtonLabel && vm.syncExpandCollapseAllButtonLabel();
-    } catch (_) {}
-    try { vm.initializeLazyData && vm.initializeLazyData(); } catch (_) {}
-    try { vm.refreshVirtualTable && vm.refreshVirtualTable(); } catch (_) {}
+    } catch(_) {
+      // Ignore subscription errors
+    }
+    try { vm.initializeLazyData && vm.initializeLazyData(); } catch(_) {
+      // Ignore subscription errors
+    }
+    try { vm.refreshVirtualTable && vm.refreshVirtualTable(); } catch(_) {
+      // Ignore subscription errors
+    }
   };
   const unsubReverse = subscribe('appState:reverseModeChanged', debounce(onReverse, 24));
   unsubs.push(unsubReverse);

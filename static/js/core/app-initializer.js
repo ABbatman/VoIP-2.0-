@@ -148,13 +148,17 @@ export class AppInitializer {
           try {
             // Если активен виртуальный режим — не дергать стандартный контроллер
             if (window.virtualManager && window.virtualManager.isActive) {
-              try { window.virtualManager.refreshVirtualTable(); } catch (_) {}
+              try { window.virtualManager.refreshVirtualTable(); } catch (_) {
+                // Virtual table refresh might fail
+              }
               return;
             }
             if (this.tableController && typeof this.tableController.redrawTable === 'function') {
               this.tableController.redrawTable(loadedState);
             }
-          } catch (_) {}
+          } catch (_) {
+            // Table redraw might fail
+          }
         });
       });
       

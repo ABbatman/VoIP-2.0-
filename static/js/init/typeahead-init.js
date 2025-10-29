@@ -27,10 +27,14 @@ function applyNoHistory(el, kind) {
   el.setAttribute('aria-autocomplete', 'none');
   el.setAttribute('enterkeyhint', 'search');
   el.setAttribute('inputmode', 'text');
-  try { el.setAttribute('type', 'text'); } catch(_) {}
+  try { el.setAttribute('type', 'text'); } catch(_) {
+      // Ignore typeahead init errors
+    }
   el.setAttribute('results', '0');
   el.setAttribute('autosave', 'off');
-  try { el.setAttribute('name', `${kind}_` + Math.random().toString(36).slice(2)); } catch(_) {}
+  try { el.setAttribute('name', `${kind}_` + Math.random().toString(36).slice(2)); } catch(_) {
+      // Ignore typeahead init errors
+    }
 
   // Dummy password to absorb autofill
   try {
@@ -42,7 +46,9 @@ function applyNoHistory(el, kind) {
     dummy.style.left = '-9999px';
     dummy.style.height = '0';
     el.parentNode.insertBefore(dummy, el);
-  } catch(_) {}
+  } catch(_) {
+      // Ignore typeahead init errors
+    }
 
   // Do NOT toggle readOnly; keep inputs fully editable to preserve caret and deletion behavior
   // Additionally, re-randomize attributes on every focus to defeat history/autofill
@@ -50,11 +56,17 @@ function applyNoHistory(el, kind) {
     const refreshAttrs = () => {
       const r = Math.random().toString(36).slice(2);
       el.setAttribute('autocomplete', `off-${r}`);
-      try { el.setAttribute('name', `${kind}_` + Math.random().toString(36).slice(2)); } catch(_) {}
-      try { el.setAttribute('list', 'ta-block'); } catch(_) {}
+      try { el.setAttribute('name', `${kind}_` + Math.random().toString(36).slice(2)); } catch(_) {
+      // Ignore typeahead init errors
+    }
+      try { el.setAttribute('list', 'ta-block'); } catch(_) {
+      // Ignore typeahead init errors
+    }
     };
     el.addEventListener('focus', refreshAttrs, true);
-  } catch(_) {}
+  } catch(_) {
+      // Ignore typeahead init errors
+    }
 }
 
 export function initTypeaheadFilters() {
@@ -63,21 +75,27 @@ export function initTypeaheadFilters() {
   const ci = document.getElementById('customerInput');
   if (ci) {
     applyNoHistory(ci, 'customer');
-    try { ci.setAttribute('list', 'ta-block'); } catch(_) {}
+    try { ci.setAttribute('list', 'ta-block'); } catch(_) {
+      // Ignore typeahead init errors
+    }
     attachTypeahead(ci, { sourceUrl: '/api/suggest/customer' });
   }
 
   const si = document.getElementById('supplierInput');
   if (si) {
     applyNoHistory(si, 'supplier');
-    try { si.setAttribute('list', 'ta-block'); } catch(_) {}
+    try { si.setAttribute('list', 'ta-block'); } catch(_) {
+      // Ignore typeahead init errors
+    }
     attachTypeahead(si, { sourceUrl: '/api/suggest/supplier' });
   }
 
   const di = document.getElementById('destinationInput');
   if (di) {
     applyNoHistory(di, 'destination');
-    try { di.setAttribute('list', 'ta-block'); } catch(_) {}
+    try { di.setAttribute('list', 'ta-block'); } catch(_) {
+      // Ignore typeahead init errors
+    }
     attachTypeahead(di, { sourceUrl: '/api/suggest/destination' });
   }
 }

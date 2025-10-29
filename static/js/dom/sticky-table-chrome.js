@@ -45,7 +45,9 @@ function bindHeaderYToggle() {
   floatingHeader.addEventListener('click', (e) => {
     const btn = e.target && e.target.closest && e.target.closest('.y-column-toggle-btn');
     if (!btn) return;
-    try { toggleYColumnsVisible(); } catch(_) {}
+    try { toggleYColumnsVisible(); } catch(_) {
+    // Ignore sticky chrome errors
+  }
   });
   floatingHeader._yBound = true;
 }
@@ -128,7 +130,9 @@ function syncFloatingHeader() {
   if (!tableVisibleInViewport || originalHeaderVisible) {
     if (_floatingHeaderShown) {
       floatingHeader.classList.add('is-hidden');
-      try { floatingHeader.style.pointerEvents = 'none'; } catch(_) {}
+      try { floatingHeader.style.pointerEvents = 'none'; } catch(_) {
+    // Ignore sticky chrome errors
+  }
       _floatingHeaderShown = false;
     }
     return;
@@ -136,7 +140,9 @@ function syncFloatingHeader() {
 
   if (!_floatingHeaderShown) {
     floatingHeader.classList.remove('is-hidden');
-    try { floatingHeader.style.pointerEvents = 'auto'; } catch(_) {}
+    try { floatingHeader.style.pointerEvents = 'auto'; } catch(_) {
+    // Ignore sticky chrome errors
+  }
     _floatingHeaderShown = true;
   }
 

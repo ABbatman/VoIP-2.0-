@@ -63,7 +63,9 @@ export class VirtualManager {
     let tid = null;
     return (...args) => {
       if (tid) clearTimeout(tid);
-      tid = setTimeout(() => { tid = null; try { fn.apply(this, args); } catch(_) {} }, delay);
+      tid = setTimeout(() => { tid = null; try { fn.apply(this, args); } catch(_) {
+      // Ignore virtual manager errors
+    } }, delay);
     };
   }
 
@@ -98,10 +100,14 @@ export class VirtualManager {
         try { this.data = attachData(this); } catch (_) { this.data = null; }
         
         // Set up DOM update callback via render layer
-        try { this.render && this.render.setupDomCallbacks && this.render.setupDomCallbacks(); } catch (_) {}
+        try { this.render && this.render.setupDomCallbacks && this.render.setupDomCallbacks(); } catch (_) {
+          // Ignore DOM callback setup errors
+        }
         // Attach UI facade
         try { this.ui = attachUI(); } catch (_) { this.ui = null; }
-        try { const { unsubs } = attachSubscriptions(this); this._unsubscribers.push(...(unsubs || [])); } catch (_) {}
+        try { const { unsubs } = attachSubscriptions(this); this._unsubscribers.push(...(unsubs || [])); } catch (_) {
+          // Ignore subscription attachment errors
+        }
         this.updateUI(true);
         // Ensure Expand/Collapse All button reflects current state on init
         try { this.syncExpandCollapseAllButtonLabel(); } catch (_) { /* no-op */ }
@@ -111,8 +117,12 @@ export class VirtualManager {
         // Обернуть refreshVirtualTable в лёгкий debounce, чтобы сгладить серии частых обновлений
         try {
           const originalRefresh = this.refreshVirtualTable.bind(this);
-          this.refreshVirtualTable = this._debounce(() => { try { originalRefresh(); } catch(_) {} }, 24);
-        } catch(_) {}
+          this.refreshVirtualTable = this._debounce(() => { try { originalRefresh(); } catch(_) {
+            // Ignore refresh errors
+          } }, 24);
+        } catch(_) {
+          // Ignore debounce wrap errors
+        }
         logDebug('✅ Virtual Manager: initialized successfully');
         return true;
       } else {
@@ -145,7 +155,9 @@ export class VirtualManager {
 
   // Thin wrapper: delegate sync to ui-sync module
   syncFloatingHeader() {
-    try { return syncFloatingHeader(this); } catch (_) {}
+    try { return syncFloatingHeader(this); } catch (_) {
+      // Ignore sync errors
+    }
   }
 
   /**
@@ -391,8 +403,12 @@ export class VirtualManager {
       this.adapter.destroy();
       this.adapter = null;
     }
-    try { import('./manager/ui-sync.js').then(m => m.unbindFloatingHeader && m.unbindFloatingHeader(this)); } catch (_) {}
-    try { setCurrentManager(null); } catch (_) {}
+    try { import('./manager/ui-sync.js').then(m => m.unbindFloatingHeader && m.unbindFloatingHeader(this)); } catch (_) {
+      // Ignore cleanup errors
+    }
+    try { setCurrentManager(null); } catch (_) {
+      // Ignore registry cleanup errors
+    }
     
     this.updateUI(false);
     this.isActive = false;

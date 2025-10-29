@@ -17,7 +17,9 @@ import { getProcessedData } from '../../data/tableProcessor.js';
 
 // Lightweight logger mirroring VM behavior
 function logDebug(...args) {
-  try { if (typeof window !== 'undefined' && window.DEBUG) console.log(...args); } catch (_) {}
+  try { if (typeof window !== 'undefined' && window.DEBUG) console.log(...args); } catch (_) {
+    // Ignore debug logging errors
+  }
 }
 
 export function attachSelectors(vm) {
@@ -91,9 +93,15 @@ export function attachSelectors(vm) {
       const key = vm._computeFilterSortKey();
       if (key !== vm._filterSortKey) {
         vm._filterSortKey = key;
-        try { vm._mainFilterPass?.clear(); } catch (_) {}
-        try { vm._peerRowsCache?.clear(); } catch (_) {}
-        try { vm._hourlyRowsCache?.clear(); } catch (_) {}
+        try { vm._mainFilterPass?.clear(); } catch (_) {
+          // Ignore cache clear errors
+        }
+        try { vm._peerRowsCache?.clear(); } catch (_) {
+          // Ignore cache clear errors
+        }
+        try { vm._hourlyRowsCache?.clear(); } catch (_) {
+          // Ignore cache clear errors
+        }
       }
     }
     // Also reset caches if filters have changed (independent of sort key)
@@ -101,11 +109,19 @@ export function attachSelectors(vm) {
       const fk = filtersKey();
       if (vm._lastFiltersKey !== fk) {
         vm._lastFiltersKey = fk;
-        try { vm._mainFilterPass?.clear(); } catch (_) {}
-        try { vm._peerRowsCache?.clear(); } catch (_) {}
-        try { vm._hourlyRowsCache?.clear(); } catch (_) {}
+        try { vm._mainFilterPass?.clear(); } catch (_) {
+          // Ignore cache clear errors
+        }
+        try { vm._peerRowsCache?.clear(); } catch (_) {
+          // Ignore cache clear errors
+        }
+        try { vm._hourlyRowsCache?.clear(); } catch (_) {
+          // Ignore cache clear errors
+        }
       }
-    } catch(_) {}
+    } catch(_) {
+      // Ignore selector errors
+    }
   }
 
   function getLazyVisibleData() {
@@ -129,13 +145,17 @@ export function attachSelectors(vm) {
       const state = getState();
       columnFilters = state.columnFilters || {};
       globalFilter = (state.globalFilterQuery || '').trim().toLowerCase();
-    } catch (_) {}
+    } catch (_) {
+      // Ignore filter state read errors
+    }
 
     // If processed says empty, short-circuit
     try {
       const { pagedData } = getProcessedData();
       if (!pagedData || pagedData.length === 0) return [];
-    } catch (_) {}
+    } catch (_) {
+      // Ignore processed data check errors
+    }
 
     // Iterate main rows lazily
     vm.lazyData.mainIndex.forEach(mainMeta => {
@@ -186,7 +206,9 @@ export function attachSelectors(vm) {
           if (Array.isArray(peersPassing) && peersPassing.length > 0) {
             pass = true;
           }
-        } catch(_) {}
+        } catch(_) {
+      // Ignore selector errors
+    }
       }
       if (!pass) return;
 
@@ -262,7 +284,9 @@ export function attachSelectors(vm) {
         }
         // If peer itself didn't pass, allow inclusion when any hourly child passes filters
         if (!ok) {
-          try { const hours = getHourlyRowsLazy(r.groupId); if (Array.isArray(hours) && hours.length > 0) ok = true; } catch(_) {}
+          try { const hours = getHourlyRowsLazy(r.groupId); if (Array.isArray(hours) && hours.length > 0) ok = true; } catch(_) {
+      // Ignore selector errors
+    }
         }
         return ok;
       });
@@ -271,7 +295,9 @@ export function attachSelectors(vm) {
       const deduped = uniqueByKeyFn(out, peerKeyOf);
       vm._peerRowsCache.set(cacheKey, deduped);
       return deduped;
-    } catch (_) {}
+    } catch (_) {
+      // Ignore peer filtering errors
+    }
 
     const sorted = vm.applySortingToPeerRows(base);
     const dedupedSorted = uniqueByKeyFn(sorted, peerKeyOf);
@@ -327,7 +353,9 @@ export function attachSelectors(vm) {
       const deduped = uniqueByKeyFn(out, hourKeyOf);
       vm._hourlyRowsCache.set(cacheKey, deduped);
       return deduped;
-    } catch (_) {}
+    } catch (_) {
+      // Ignore hourly filtering errors
+    }
 
     const sorted = vm.applySortingToHourlyRows(base);
     const dedupedSorted = uniqueByKeyFn(sorted, hourKeyOf);
@@ -341,9 +369,15 @@ export function attachSelectors(vm) {
     getHourlyRowsLazy,
     getFilterSortKey: () => (typeof vm._computeFilterSortKey === 'function' ? vm._computeFilterSortKey() : (vm._filterSortKey || '')),
     clearCaches: () => {
-      try { vm._mainFilterPass?.clear(); } catch (_) {}
-      try { vm._peerRowsCache?.clear(); } catch (_) {}
-      try { vm._hourlyRowsCache?.clear(); } catch (_) {}
+      try { vm._mainFilterPass?.clear(); } catch (_) {
+        // Ignore cache clear errors
+      }
+      try { vm._peerRowsCache?.clear(); } catch (_) {
+        // Ignore cache clear errors
+      }
+      try { vm._hourlyRowsCache?.clear(); } catch (_) {
+        // Ignore cache clear errors
+      }
     }
   };
 }

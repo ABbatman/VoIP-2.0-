@@ -18,7 +18,9 @@ export function applyRowDiff(tr, html, scratchTbody) {
           dstCount: dstCells.length
         });
       }
-    } catch (_) {}
+    } catch (_) {
+    // Ignore diff calculation errors
+  }
     tr.innerHTML = html;
   } else {
     for (let c = 0; c < srcCells.length; c++) {
@@ -49,7 +51,9 @@ export function applyRowDiff(tr, html, scratchTbody) {
               console.warn('⚠️ renderRowFn contract: filter cell missing data-* (data-filter-value or data-full-text)');
             }
           }
-        } catch (_) {}
+        } catch (_) {
+    // Ignore diff calculation errors
+  }
       }
       // Text/HTML content
       const sHasChildren = s.children && s.children.length > 0;

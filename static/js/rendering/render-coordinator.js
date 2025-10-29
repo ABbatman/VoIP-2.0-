@@ -67,7 +67,9 @@ class RenderCoordinator {
         try {
           // Mark global rendering in progress for table pipeline to let subscribers skip
           if (typeof window !== 'undefined' && item.kind === 'table') {
-            try { window.__renderingInProgress = true; } catch(_) {}
+            try { window.__renderingInProgress = true; } catch(_) {
+              // Ignore render coordination errors
+            }
           }
           this._activeKinds.add(item.kind);
           await item.taskFn();
@@ -77,10 +79,14 @@ class RenderCoordinator {
           item.reject(err);
         } finally {
           if (typeof window !== 'undefined' && item.kind === 'table') {
-            try { window.__renderingInProgress = false; } catch(_) {}
+            try { window.__renderingInProgress = false; } catch(_) {
+              // Ignore render coordination errors
+            }
           }
           this._pendingByKind.delete(item.kind);
-          try { this._lastCompletedByKind.set(item.kind, performance.now()); } catch(_) {}
+          try { this._lastCompletedByKind.set(item.kind, performance.now()); } catch(_) {
+            // Ignore render coordination errors
+          }
           this._activeKinds.delete(item.kind);
         }
       }

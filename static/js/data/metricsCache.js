@@ -9,7 +9,7 @@ const MAX_BYTES = 2 * 1024 * 1024; // ~2MB
 export function makeCacheKey(params) {
   try {
     const entries = Object.entries(params)
-      .filter(([k, v]) => v != null)
+      .filter(([_k, v]) => v != null)
       .sort(([a], [b]) => a.localeCompare(b));
     return JSON.stringify(entries);
   } catch (_) {
@@ -44,5 +44,7 @@ export function putCachedMetrics(params, data) {
       CACHE.delete(firstKey);
       BYTES -= ev && ev.size ? ev.size : 0;
     }
-  } catch (_) {}
+  } catch (_) {
+    // Cache operation might fail
+  }
 }

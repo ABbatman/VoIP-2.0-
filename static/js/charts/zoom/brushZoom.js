@@ -75,7 +75,9 @@ export function attachChartZoom(mount, { fromTs, toTs, onApplyRange, marginLeft 
   let dragging = false;
   let x0 = 0;
   // Zoom history stack to support multi-level undo via RMB
-  try { if (!window.__chartsZoomStack) window.__chartsZoomStack = []; } catch(_) {}
+  try { if (!window.__chartsZoomStack) window.__chartsZoomStack = []; } catch(_) {
+    // Ignore zoom stack initialization errors
+  }
   const stack = (typeof window !== 'undefined') ? (window.__chartsZoomStack || []) : [];
   // Base range (from charts) used when stack is empty and no active zoom exists
   let baseRange = { fromTs, toTs };
@@ -106,7 +108,9 @@ export function attachChartZoom(mount, { fromTs, toTs, onApplyRange, marginLeft 
           });
           under.dispatchEvent(evt);
         }
-      } catch(_) {}
+      } catch(_) {
+        // Ignore mouse event forwarding errors
+      }
       return;
     }
     e.stopPropagation();
@@ -146,7 +150,9 @@ export function attachChartZoom(mount, { fromTs, toTs, onApplyRange, marginLeft 
         // No active zoom yet; remember base range from charts/filters for final restore
         baseRange = { fromTs: Date.parse(current.from) || fromTs, toTs: Date.parse(current.to) || toTs };
       }
-    } catch(_) {}
+    } catch(_) {
+      // Ignore zoom stack push errors
+    }
 
     // Store selection globally (active zoom)
     try {
@@ -154,10 +160,14 @@ export function attachChartZoom(mount, { fromTs, toTs, onApplyRange, marginLeft 
         fromTs: selFrom,
         toTs: selTo,
       };
-    } catch(_) {}
+    } catch(_) {
+      // Ignore zoom range storage errors
+    }
 
     if (typeof onApplyRange === 'function') {
-      try { onApplyRange(selFrom, selTo, null); } catch(_) {}
+      try { onApplyRange(selFrom, selTo, null); } catch(_) {
+        // Ignore callback errors
+      }
     }
   };
 
@@ -179,7 +189,9 @@ export function attachChartZoom(mount, { fromTs, toTs, onApplyRange, marginLeft 
         toRestore = baseRange;
         needsRefetch = true; // need fresh data for base range
       }
-    } catch(_) {}
+    } catch(_) {
+      // Ignore zoom restore errors
+    }
     sel.style.display = 'none';
     // Trigger data refetch for restored range to avoid mixed granularity artifacts
     if (needsRefetch) {
@@ -191,16 +203,20 @@ export function attachChartZoom(mount, { fromTs, toTs, onApplyRange, marginLeft 
         } catch(_) {
           // Fallback: just re-render with existing data
           if (typeof onApplyRange === 'function') {
-            try { onApplyRange(toRestore.fromTs, toRestore.toTs, null); } catch(_) {}
+            try { onApplyRange(toRestore.fromTs, toRestore.toTs, null); } catch(_) {
+              // Ignore callback errors
+            }
           }
         }
       })();
     } else if (typeof onApplyRange === 'function') {
-      try { onApplyRange(toRestore.fromTs, toRestore.toTs, null); } catch(_) {}
+      try { onApplyRange(toRestore.fromTs, toRestore.toTs, null); } catch(_) {
+        // Ignore callback errors
+      }
     }
   };
 
-  const onMouseOut = (e) => {
+  const onMouseOut = (_e) => {
     // Forward leave to underlying overlay to hide tooltips
     try {
       const under = svg.querySelector('.chart-overlay');
@@ -208,7 +224,9 @@ export function attachChartZoom(mount, { fromTs, toTs, onApplyRange, marginLeft 
         const evt = new Event('mouseleave', { bubbles: true });
         under.dispatchEvent(evt);
       }
-    } catch(_) {}
+    } catch(_) {
+      // Ignore mouse out event forwarding errors
+    }
   };
 
   hit.addEventListener('mousedown', onMouseDown);
@@ -225,6 +243,8 @@ export function attachChartZoom(mount, { fromTs, toTs, onApplyRange, marginLeft 
       window.removeEventListener('mouseup', onMouseUp);
       hit.removeEventListener('contextmenu', onContextMenu);
       overlay.remove();
-    } catch(_) {}
+    } catch(_) {
+      // Ignore cleanup errors - elements may already be removed
+    }
   };
 }

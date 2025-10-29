@@ -5,9 +5,16 @@ import * as d3 from 'd3';
 
 export function initD3() {
   // Expose for console debugging only (non-breaking)
-  try { window.d3 = d3; } catch (_) {}
+  window.d3 = d3;
+
   // Enable ECharts renderers globally (read by initD3Dashboard)
-  try { window.__chartsUseEcharts = true; } catch (_) {}
+  window.__chartsUseEcharts = true;
+  
+  import('./d3-dashboard.js').then(m => m.initD3Dashboard()).catch(err => {
+    console.error('[d3-init] Failed to load dashboard:', err);
+  });
+
+  console.debug('[d3-init] loaded');
 
   // Example: ensure a dedicated D3 root container exists (no DOM changes if present)
   const id = 'd3-root';

@@ -16,6 +16,8 @@ export function maybeNotifyDomUpdate(vm, { forceRender = false, structuralChange
         // eslint-disable-next-line no-console
         console.warn(`⚠️ onDOMUpdate budget exceeded: ${Math.round(dur)}ms (>16ms)`);
       }
-    } catch (_) {}
+    } catch(_) {
+    // Ignore DOM callback errors
+  }
   }
 }

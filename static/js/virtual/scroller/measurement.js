@@ -12,5 +12,7 @@ export function recomputeRowHeight(vm) {
   vm.rowHeight = real;
   const corrected = vm.data.length * vm.rowHeight;
   vm.spacer.style.height = `${corrected}px`;
-  try { vm.render(true); } catch (_) {}
+  try { vm.render(true); } catch(_) {
+    // Ignore measurement errors
+  }
 }

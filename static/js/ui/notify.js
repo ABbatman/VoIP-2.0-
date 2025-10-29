@@ -86,7 +86,9 @@ export function toast(message, { type = 'warning', duration = 3000 } = {}) {
         t.style.opacity = '0';
         t.style.transform = 'translateY(-4px)';
         setTimeout(() => { if (item.parentNode) item.parentNode.removeChild(item); }, 180);
-      } catch(_) {}
+      } catch(_) {
+      // Ignore notification errors
+    }
     };
 
     let timer = setTimeout(remove, duration);
@@ -95,7 +97,9 @@ export function toast(message, { type = 'warning', duration = 3000 } = {}) {
     return { dismiss: () => { clearTimeout(timer); remove(); } };
   } catch (_) {
     // last resort, avoid blocking alerts
-    try { console.warn('[toast]', message); } catch(e) {}
+    try { console.warn('[toast]', message); } catch(e) {
+      // Ignore console errors
+    }
     return { dismiss: () => {} };
   }
 }

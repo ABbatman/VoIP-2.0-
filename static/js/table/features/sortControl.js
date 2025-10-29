@@ -5,7 +5,7 @@
 import { getState, setMultiSort } from "../../state/tableState.js";
 import { renderCoordinator } from "../../rendering/render-coordinator.js";
 
-function computeNextMultiSort(current, key, textFields) {
+function computeNextMultiSort(current, key, _textFields) {
   let ms = Array.isArray(current) ? [...current] : [];
   const found = ms.find((s) => s.key === key);
   if (!found) {
@@ -38,7 +38,9 @@ export async function applySortSafe(key) {
       setMultiSort(next);
       if (isVirtual()) {
         // Виртуальный режим: один гарантированный refresh внутри координатора
-        try { const tb = document.getElementById('tableBody'); if (tb) tb.innerHTML = ''; } catch(_) {}
+        try { const tb = document.getElementById('tableBody'); if (tb) tb.innerHTML = ''; } catch(_) {
+    // Ignore sort errors
+  }
         window.virtualManager.refreshVirtualTable();
       } else {
         // Стандартный режим: рендерим напрямую (без вложенного координатора контроллера)
@@ -47,8 +49,12 @@ export async function applySortSafe(key) {
           if (window.virtualManager && window.virtualManager.isActive) {
             window.virtualManager.destroy();
           }
-        } catch(_) {}
-        try { const tb = document.getElementById('tableBody'); if (tb) tb.innerHTML = ''; } catch(_) {}
+        } catch(_) {
+    // Ignore sort errors
+  }
+        try { const tb = document.getElementById('tableBody'); if (tb) tb.innerHTML = ''; } catch(_) {
+    // Ignore sort errors
+  }
         const mod = await import('../../dom/table.js');
         const app = await import('../../data/tableProcessor.js');
         const { getMetricsData } = await import('../../state/appState.js');
@@ -56,7 +62,9 @@ export async function applySortSafe(key) {
         const { pagedData } = app.getProcessedData();
         mod.renderGroupedTable(pagedData || [], data?.peer_rows || [], data?.hourly_rows || []);
       }
-    } catch (_) {}
+    } catch (_) {
+      // Ignore render errors
+    }
   }, { debounceMs: 120, cooldownMs: 0 }); // user-driven sort must not be throttled by cooldown
   return true;
 }

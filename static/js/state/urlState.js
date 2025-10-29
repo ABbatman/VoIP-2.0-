@@ -123,7 +123,9 @@ export function loadStateFromUrl() {
             return decodedState;
           }
         }
-      } catch (_) {}
+      } catch(_) {
+    // Ignore URL state save errors
+  }
 
       // Новый формат
       if (decodedState.version === "2.0" || decodedState.appState) {
