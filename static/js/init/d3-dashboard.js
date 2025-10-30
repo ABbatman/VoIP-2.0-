@@ -289,10 +289,13 @@ export async function initD3Dashboard() {
     if (!m) { console.warn('[charts] mount not found at render time'); return; }
     // Stream: render as a single full-area chart with internal dropdowns; no interval control
     if (type === 'stream') {
+      // Use zoom range if available, otherwise use base range
+      const streamFromTs = (zr && Number.isFinite(zr.fromTs)) ? zr.fromTs : baseFromTs;
+      const streamToTs = (zr && Number.isFinite(zr.toTs)) ? zr.toTs : baseToTs;
       const { data: shapedData, options: shapedOptions } = shapeChartPayload(hourRows && hourRows.length ? hourRows : fiveRows, {
         type,
-        fromTs: baseFromTs,
-        toTs: baseToTs,
+        fromTs: streamFromTs,
+        toTs: streamToTs,
         stepMs,
         height: fixedH,
       });

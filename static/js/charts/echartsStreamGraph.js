@@ -1,4 +1,5 @@
 import * as echarts from 'echarts';
+import { makeStreamTooltip } from './tooltip.js';
 
 function ensureContainer(container) {
   if (typeof container === 'string') {
@@ -23,28 +24,62 @@ function buildStackedAreaData(rows, state, startVal, endVal) {
     if (state.destination && state.destination !== 'All' && String(r[dstKey]) !== String(state.destination)) return false;
     return true;
   });
-  const bySeries = new Map(); // name -> Map<ts, sum>
+  const bySeries = new Map(); // name -> Map<ts, {sum, count}>
   const allTs = new Set();
-  if (Number.isFinite(startVal)) allTs.add(startVal);
-  if (Number.isFinite(endVal)) allTs.add(endVal);
+  const isAvgMetric = (state.metric === 'ASR' || state.metric === 'ACD');
   for (const r of filtered) {
     const name = String(r[dstKey] ?? 'Unknown');
     const t = parseRowTs(r.time);
     if (!Number.isFinite(t)) continue;
     allTs.add(t);
-    const y = Number(r[metricKey] ?? 0);
+    let y = Number(r[metricKey] ?? 0);
     if (!Number.isFinite(y)) continue;
+    // ASR: cap at 100
+    if (state.metric === 'ASR' && y > 100) y = 100;
     let m = bySeries.get(name);
     if (!m) { m = new Map(); bySeries.set(name, m); }
-    m.set(t, (m.get(t) || 0) + y);
+    const existing = m.get(t) || { sum: 0, count: 0 };
+    existing.sum += y;
+    existing.count += 1;
+    m.set(t, existing);
   }
   const names = Array.from(bySeries.keys());
   const tsList = Array.from(allTs).sort((a,b) => a - b);
   const seriesMap = new Map(); // name -> Array<[ts, value]>
   for (const name of names) {
     const m = bySeries.get(name) || new Map();
-    const arr = tsList.map(ts => [ts, Number(m.get(ts) || 0)]);
+    const arr = tsList.map(ts => {
+      if (!m.has(ts)) return [ts, null];
+      const agg = m.get(ts);
+      const val = isAvgMetric ? (agg.count > 0 ? agg.sum / agg.count : 0) : agg.sum;
+      return [ts, Number(val || 0)];
+    });
     seriesMap.set(name, arr);
+  }
+  // Insert gap-breaking nulls for periods where there is no data at all
+  const diffs = [];
+  for (let i = 1; i < tsList.length; i++) {
+    const d = tsList[i] - tsList[i-1];
+    if (d > 0) diffs.push(d);
+  }
+  diffs.sort((a,b) => a - b);
+  const baseStep = diffs.length ? diffs[0] : 0;
+  if (baseStep > 0) {
+    const threshold = Math.round(baseStep * 1.5);
+    for (const [name, arr] of seriesMap.entries()) {
+      const out = [];
+      for (let i = 0; i < arr.length; i++) {
+        out.push(arr[i]);
+        if (i < arr.length - 1) {
+          const t0 = arr[i][0];
+          const t1 = arr[i+1][0];
+          if ((t1 - t0) > threshold) {
+            out.push([t0 + baseStep, null]);
+          }
+        }
+      }
+      seriesMap.set(name, out);
+    }
   }
   return { names, seriesMap, tsList };
 }
@@ -146,6 +181,9 @@ function ensureStreamControls(rows, initial, onChange) {
         btn.textContent = `${label}: ${val}`;
         menu.querySelectorAll('.charts-dd__item').forEach(x => x.classList.toggle('is-selected', x === li));
         onChange(id, val);
+        // close dropdown after selection
+        try { dd.classList.remove('is-open'); } catch(_) {}
+        try { btn.blur && btn.blur(); } catch(_) {}
       });
       menu.appendChild(li);
     }
@@ -185,57 +223,265 @@ export function renderStreamGraphEcharts(container, data = [], options = {}) {
     height: options.height || (el.clientHeight || 600),
   };
 
+  // Restore persisted metric or default to ACD
   let state = {
-    metric: 'TCalls',
-    customer: 'All',
-    supplier: 'All',
-    destination: 'All'
+    metric: (typeof window !== 'undefined' && window.__streamMetric) || 'ACD',
+    customer: (typeof window !== 'undefined' && window.__streamCustomer) || 'All',
+    supplier: (typeof window !== 'undefined' && window.__streamSupplier) || 'All',
+    destination: (typeof window !== 'undefined' && window.__streamDestination) || 'All'
   };
 
   const onControlChange = (id, val) => {
-    if (id === 'stream-metric') state.metric = val;
-    else if (id === 'stream-customer') state.customer = val;
-    else if (id === 'stream-supplier') state.supplier = val;
-    else if (id === 'stream-destination') state.destination = val;
+    if (id === 'stream-metric') {
+      state.metric = val;
+      try { if (typeof window !== 'undefined') window.__streamMetric = val; } catch(_) {}
+    }
+    else if (id === 'stream-customer') {
+      state.customer = val;
+      try { if (typeof window !== 'undefined') window.__streamCustomer = val; } catch(_) {}
+    }
+    else if (id === 'stream-supplier') {
+      state.supplier = val;
+      try { if (typeof window !== 'undefined') window.__streamSupplier = val; } catch(_) {}
+    }
+    else if (id === 'stream-destination') {
+      state.destination = val;
+      try { if (typeof window !== 'undefined') window.__streamDestination = val; } catch(_) {}
+    }
     update();
   };
 
   state = ensureStreamControls(rows, state, onControlChange);
+  
+  function refreshDropdownsForZoom() {
+    try {
+      let from = null, to = null;
+      try {
+        const model = chart.getModel();
+        const xa = model && model.getComponent('xAxis', 0);
+        const scale = xa && xa.axis && xa.axis.scale;
+        if (scale && typeof scale.getExtent === 'function') {
+          const ext = scale.getExtent();
+          from = Math.floor(ext[0]);
+          to = Math.ceil(ext[1]);
+        }
+      } catch(_) {}
+      if (!(Number.isFinite(from) && Number.isFinite(to) && to > from)) {
+        const zr = (typeof window !== 'undefined' && window.__chartsZoomRange) || null;
+        if (zr && Number.isFinite(zr.fromTs) && Number.isFinite(zr.toTs) && zr.toTs > zr.fromTs) {
+          from = zr.fromTs; to = zr.toTs;
+        }
+      }
+      if (!(Number.isFinite(from) && Number.isFinite(to) && to > from)) return false;
+      const customerKey = 'main';
+      const supplierKey = 'peer';
+      const dstKey = 'destination';
+      const inWin = (rows || []).filter(r => {
+        const t = parseRowTs(r.time);
+        return Number.isFinite(t) && t >= from && t <= to;
+      });
+      // Interlink dropdowns within the current zoom window
+      const activeCustomer = String(state.customer || 'All');
+      const activeSupplier = String(state.supplier || 'All');
+      // Restrict customers by selected supplier if any
+      const rowsForCustomers = (activeSupplier !== 'All')
+        ? inWin.filter(r => String(r[supplierKey]) === activeSupplier)
+        : inWin;
+      // Restrict suppliers by selected customer if any
+      const rowsForSuppliers = (activeCustomer !== 'All')
+        ? inWin.filter(r => String(r[customerKey]) === activeCustomer)
+        : inWin;
+      // Destinations respect both selections if present
+      const rowsForDest = inWin.filter(r => (
+        (activeCustomer === 'All' || String(r[customerKey]) === activeCustomer) &&
+        (activeSupplier === 'All' || String(r[supplierKey]) === activeSupplier)
+      ));
+      const customers = ['All', ...uniq(rowsForCustomers.map(r => r[customerKey])).sort()];
+      const suppliers = ['All', ...uniq(rowsForSuppliers.map(r => r[supplierKey])).sort()];
+      const destinations = ['All', ...uniq(rowsForDest.map(r => r[dstKey])).sort()];
+
+      function rebuildDd(id, label, items, currentVal) {
+        const dd = document.getElementById(id);
+        if (!dd) return false;
+        const btn = dd.querySelector('.charts-dd__button');
+        const menu = dd.querySelector('.charts-dd__menu');
+        if (!btn || !menu) return false;
+        let selected = currentVal || 'All';
+        if (!items.includes(selected)) selected = 'All';
+        // Update button text
+        try { btn.textContent = `${label}: ${selected}`; } catch(_) {}
+        // Rebuild menu
+        try { while (menu.firstChild) menu.removeChild(menu.firstChild); } catch(_) {}
+        for (const it of items) {
+          const li = document.createElement('li');
+          li.className = 'charts-dd__item';
+          li.dataset.value = String(it);
+          li.textContent = String(it);
+          if (String(it) === String(selected)) li.classList.add('is-selected');
+          li.addEventListener('click', () => {
+            const val = String(it);
+            try { btn.textContent = `${label}: ${val}`; } catch(_) {}
+            try { menu.querySelectorAll('.charts-dd__item').forEach(x => x.classList.toggle('is-selected', x === li)); } catch(_) {}
+            onControlChange(id, val);
+            try { dd.classList.remove('is-open'); } catch(_) {}
+            try { btn.blur && btn.blur(); } catch(_) {}
+          });
+          menu.appendChild(li);
+        }
+        // If selected changed versus state, propagate
+        const prev = String(currentVal || 'All');
+        if (String(selected) !== prev) {
+          onControlChange(id, selected);
+          return true;
+        }
+        return false;
+      }
+
+      let changed = false;
+      changed = rebuildDd('stream-customer', 'Customer', customers, state.customer) || changed;
+      changed = rebuildDd('stream-supplier', 'Supplier', suppliers, state.supplier) || changed;
+      changed = rebuildDd('stream-destination', 'Destination', destinations, state.destination) || changed;
+      return changed;
+    } catch(_) { return false; }
+  }
 
   function buildOption() {
-    const startVal = Number.isFinite(base.fromTs) ? base.fromTs : null;
-    const endVal = Number.isFinite(base.toTs) ? base.toTs : null;
-    const { names, seriesMap } = buildStackedAreaData(rows, state, startVal, endVal);
-    const series = names.map((name) => ({
-      name,
-      type: 'line',
-      stack: 'total',
-      showSymbol: false,
-      areaStyle: {},
-      lineStyle: { width: 1 },
-      emphasis: { focus: 'self' },
-      data: seriesMap.get(name) || []
-    }));
+    // xAxis reflects global filter range; zoom is applied via dataZoom only
+    const filterFrom = Number.isFinite(base.fromTs) ? base.fromTs : null; // global filters: from
+    const filterTo = Number.isFinite(base.toTs) ? base.toTs : null;       // global filters: to
+    // Restore view (zoom) window if available, otherwise fall back to filters
+    const zr = (typeof window !== 'undefined' && window.__chartsZoomRange) || null;
+    let zoomStart = (zr && Number.isFinite(zr.fromTs)) ? zr.fromTs : filterFrom;
+    let zoomEnd = (zr && Number.isFinite(zr.toTs)) ? zr.toTs : filterTo;
+    // clamp zoom window to filter range to avoid invalid view after filters change
+    if (Number.isFinite(filterFrom) && Number.isFinite(filterTo) && filterTo > filterFrom) {
+      if (Number.isFinite(zoomStart)) zoomStart = Math.max(filterFrom, Math.min(zoomStart, filterTo));
+      if (Number.isFinite(zoomEnd)) zoomEnd = Math.max(filterFrom, Math.min(zoomEnd, filterTo));
+      if (!(Number.isFinite(zoomStart) && Number.isFinite(zoomEnd) && zoomEnd > zoomStart)) {
+        zoomStart = filterFrom; zoomEnd = filterTo;
+      }
+    }
+    const { names, seriesMap } = buildStackedAreaData(rows, state, filterFrom, filterTo);
+    // detect sparse data in current zoom view to avoid visual jumps on small values
+    const inViewTs = new Set();
+    let maxInViewVal = 0; // track max value in current view to detect low amplitude
+    for (const arr of seriesMap.values()) {
+      for (const d of (arr || [])) {
+        const t = Number(d[0]); const y = d[1];
+        if (Number.isFinite(t) && (zoomStart == null || t >= zoomStart) && (zoomEnd == null || t <= zoomEnd) && y != null) {
+          inViewTs.add(t);
+          if (Number.isFinite(y)) maxInViewVal = Math.max(maxInViewVal, Number(y));
+        }
+      }
+    }
+    const isSparse = inViewTs.size <= 6; // small number of points in view
+    const isLow = maxInViewVal <= 3;     // very small amplitudes (e.g. 1 call)
+    const yFmt = (val) => {
+      const n = Number(val);
+      if (!Number.isFinite(n)) return '';
+      return Math.round(n).toLocaleString();
+    };
+    const yMax = (state.metric === 'ASR') ? 100 : null;
+    // Calm and balanced color palette
+    const modernColors = [
+      ['#6366f1', '#8b5cf6'],
+      ['#ec4899', '#f472b6'],
+      ['#3b82f6', '#60a5fa'],
+      ['#10b981', '#34d399'],
+      ['#f59e0b', '#fbbf24'],
+      ['#8b5cf6', '#a78bfa'],
+      ['#06b6d4', '#22d3ee'],
+      ['#f97316', '#fb923c'],
+      ['#14b8a6', '#2dd4bf'],
+      ['#ef4444', '#f87171']
+    ];
+    const series = names.map((name, idx) => {
+      const [c0, c1] = modernColors[idx % modernColors.length];
+      // choose rendering mode based on data density and amplitude
+      const showSymbols = isSparse || isLow;
+      const doSmooth = (!isSparse && !isLow) && (state.metric === 'ASR' || state.metric === 'ACD');
+      const useSampling = (!isSparse && !isLow);
+      return {
+        name,
+        type: 'line',
+        stack: 'total',
+        // for sparse/low data: show symbols and disable smoothing to prevent curve overshoot
+        showSymbol: showSymbols,
+        symbol: showSymbols ? 'circle' : 'none',
+        symbolSize: showSymbols ? 4 : 0,
+        smooth: doSmooth ? 0.45 : 0,
+        smoothMonotone: 'x',
+        // prevent symbol bounce on hover for tiny datasets
+        hoverAnimation: showSymbols ? false : true,
+        connectNulls: false,
+        // disable sampling when sparse/low to avoid downsampling artifacts
+        sampling: useSampling ? 'lttb' : undefined,
+        clip: true,
+        areaStyle: {
+          opacity: 0.75,
+          color: {
+            type: 'linear',
+            x: 0, y: 0, x2: 0, y2: 1,
+            colorStops: [
+              { offset: 0, color: c0 },
+              { offset: 1, color: c1 }
+            ]
+          }
+        },
+        lineStyle: { width: isLow ? 2 : 1, color: c0 },
+        emphasis: { 
+          focus: 'series',
+          blurScope: 'coordinateSystem', // de-emphasize other series on hover
+          lineStyle: { width: 2, color: c0 },
+          areaStyle: { opacity: 0.9 }
+        },
+        blur: {
+          lineStyle: { opacity: 0.3 }, // dim line when another series is hovered
+          areaStyle: { opacity: 0.3 }  // dim area when another series is hovered
+        },
+        data: seriesMap.get(name) || []
+      };
+    });
     return {
       animation: true,
       animationDurationUpdate: 200,
       animationEasingUpdate: 'cubicOut',
       legend: { show: false },
       grid: { left: 40, right: 16, top: 12, bottom: 56 },
-      xAxis: { type: 'time', min: startVal, max: endVal, boundaryGap: false, axisLabel: { show: false }, axisLine: { show: false }, axisTick: { show: false }, splitLine: { show: false } },
-      yAxis: { type: 'value', min: 0, axisLabel: { color: '#6e7781' }, splitLine: { show: true, lineStyle: { color: '#eaeef2' } } },
-      tooltip: { show: false },
+      // keep full filter period on axis; zoom is controlled by dataZoom below
+      xAxis: { type: 'time', min: filterFrom, max: filterTo, boundaryGap: false, axisLabel: { show: false }, axisLine: { show: false }, axisTick: { show: false }, splitLine: { show: false } },
+      yAxis: { 
+        type: 'value', 
+        min: 0, 
+        max: yMax, 
+        minInterval: 1, // force integer ticks
+        splitNumber: 5, // nice divisions
+        axisLabel: { color: '#6e7781', formatter: yFmt }, 
+        splitLine: { show: true, lineStyle: { color: '#eaeef2' } } 
+      },
+      tooltip: makeStreamTooltip(state),
+      // apply current zoom window as a view only (does not change xAxis range)
       dataZoom: [
-        { type: 'inside', xAxisIndex: 0, startValue: startVal, endValue: endVal, throttle: 80, zoomOnMouseWheel: 'shift', moveOnMouseWheel: false, moveOnMouseMove: true, brushSelect: false },
-        { type: 'slider', xAxisIndex: 0, startValue: startVal, endValue: endVal, height: 32, bottom: 8, throttle: 80 }
+        // avoid moving zoom window on hover/mouse move
+        { type: 'inside', xAxisIndex: 0, startValue: zoomStart, endValue: zoomEnd, throttle: 80, zoomOnMouseWheel: 'shift', moveOnMouseWheel: false, moveOnMouseMove: false, brushSelect: false },
+        { type: 'slider', xAxisIndex: 0, startValue: zoomStart, endValue: zoomEnd, height: 32, bottom: 8, throttle: 80 }
       ],
       series
     };
   }
 
+  let __initialized = false;
   function update() {
     const option = buildOption();
-    chart.setOption(option, { notMerge: true, lazyUpdate: true });
+    if (!__initialized) {
+      chart.setOption(option, { notMerge: true, lazyUpdate: true });
+      __initialized = true;
+    } else {
+      // preserve zoom by not touching xAxis/dataZoom; update only yAxis + series
+      chart.setOption({ yAxis: option.yAxis, series: option.series }, { notMerge: false, replaceMerge: ['series'], lazyUpdate: true });
+    }
+    // Keep dropdowns in sync with current zoom window
+    try { refreshDropdownsForZoom(); } catch(_) {}
   }
 
   update();
@@ -259,6 +505,7 @@ export function renderStreamGraphEcharts(container, data = [], options = {}) {
     chart.on('dataZoom', () => {
       const zr = getZoomRange();
       try { if (zr) window.__chartsZoomRange = zr; } catch(_) {}
+      try { refreshDropdownsForZoom(); } catch(_) {}
     });
   } catch(_) {}
 

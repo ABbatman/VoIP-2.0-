@@ -1,3 +1,51 @@
+export function makeStreamTooltip(state) {
+  return {
+    trigger: 'axis',
+    axisPointer: { type: 'line', lineStyle: { color: '#6366f1', width: 1, type: 'solid' } },
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderColor: '#e5e7eb',
+    borderWidth: 1,
+    padding: [8, 12],
+    textStyle: { color: '#374151', fontSize: 13 },
+    confine: true,
+    formatter: (params) => {
+      if (!Array.isArray(params) || params.length === 0) return '';
+      // Find the series that mouse is hovering over (last non-null in stack)
+      let hoveredParam = null;
+      for (let i = params.length - 1; i >= 0; i--) {
+        const p = params[i];
+        if (p && p.value && p.value[1] != null && Number.isFinite(p.value[1]) && p.value[1] !== 0) {
+          hoveredParam = p;
+          break;
+        }
+      }
+      if (!hoveredParam) hoveredParam = params[0];
+      if (!hoveredParam || !hoveredParam.value) return '';
+      
+      const time = new Date(hoveredParam.value[0]);
+      const timeStr = time.toLocaleString('ru-RU', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+      const val = hoveredParam.value[1];
+      // Format value: ACD with 1 decimal, others as integer
+      const valStr = (val != null && Number.isFinite(val)) 
+        ? (state.metric === 'ACD' ? val.toFixed(1) : Math.round(val).toLocaleString()) 
+        : 'N/A';
+      // Build tooltip content
+      let html = `<div style="font-weight: 600; margin-bottom: 6px;">${timeStr}</div>`;
+      html += `<div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">` +
+              `<span style="display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: ${hoveredParam.color};"></span>` +
+              `<span><strong>${hoveredParam.seriesName}</strong></span>` +
+              `</div>`;
+      html += `<div style="margin-left: 16px; font-size: 12px; color: #6b7280;">` +
+              `Customer: ${state.customer || 'All'} | Supplier: ${state.supplier || 'All'}` +
+              `</div>`;
+      html += `<div style="margin-top: 4px; margin-left: 16px;">` +
+              `${state.metric}: <strong>${valStr}</strong>` +
+              `</div>`;
+      return html;
+    }
+  };
+}
+
 export function makeBarLineLikeTooltip({ chart, stepMs }) {
   const names = ['TCalls', 'ASR', 'Minutes', 'ACD'];
   const half = Math.max(1, Math.floor((Number(stepMs) || 3600e3) / 2));
