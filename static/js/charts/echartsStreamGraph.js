@@ -18,17 +18,32 @@ function buildStackedAreaData(rows, state, startVal, endVal) {
   const customerKey = 'main';
   const supplierKey = 'peer';
   const dstKey = 'destination';
+  // UI-only: aggregated mode only when neither dropdown nor globals specify concrete values
+  const isAll = (v) => (v == null) || String(v) === 'All';
   const filtered = (rows || []).filter(r => {
     if (state.customer && state.customer !== 'All' && String(r[customerKey]) !== String(state.customer)) return false;
     if (state.supplier && state.supplier !== 'All' && String(r[supplierKey]) !== String(state.supplier)) return false;
     if (state.destination && state.destination !== 'All' && String(r[dstKey]) !== String(state.destination)) return false;
     return true;
   });
+  // Detect whether globals already narrowed dataset to a specific value
+  const uCust = new Set();
+  const uSupp = new Set();
+  const uDst = new Set();
+  for (const r of filtered) {
+    uCust.add(String(r[customerKey]));
+    uSupp.add(String(r[supplierKey]));
+    uDst.add(String(r[dstKey]));
+  }
+  const noConcreteDropdowns = isAll(state.customer) && isAll(state.supplier) && isAll(state.destination);
+  const noConcreteGlobals = (uCust.size > 1) && (uSupp.size > 1) && (uDst.size > 1);
+  const aggregateByCustomer = noConcreteDropdowns && noConcreteGlobals;
+  const nameKey = aggregateByCustomer ? customerKey : dstKey; // group dimension
   const bySeries = new Map(); // name -> Map<ts, {sum, count}>
   const allTs = new Set();
   const isAvgMetric = (state.metric === 'ASR' || state.metric === 'ACD');
   for (const r of filtered) {
-    const name = String(r[dstKey] ?? 'Unknown');
+    const name = String(r[nameKey] ?? 'Unknown');
     const t = parseRowTs(r.time);
     if (!Number.isFinite(t)) continue;
     allTs.add(t);
@@ -382,7 +397,7 @@ export function renderStreamGraphEcharts(container, data = [], options = {}) {
       return Math.round(n).toLocaleString();
     };
     const yMax = (state.metric === 'ASR') ? 100 : null;
-    // Calm and balanced color palette
+    // Palettes: vibrant for detailed (destination), simplified for aggregated (customer-only)
     const modernColors = [
       ['#6366f1', '#8b5cf6'],
       ['#ec4899', '#f472b6'],

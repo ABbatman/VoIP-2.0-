@@ -107,6 +107,9 @@
   opacity: 0;
   pointer-events: none;
   transition: opacity 120ms ease, transform 120ms ease;
+  /* limit height and enable scroll to avoid pushing layout */
+  max-height: 280px;
+  overflow-y: auto;
 }
 .charts-dd.is-open .charts-dd__menu { opacity: 1; pointer-events: auto; }
 .charts-dd__item {
