@@ -67,6 +67,24 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
     perProvider: !!options.perProvider,
     providerRows: Array.isArray(options.providerRows) ? options.providerRows : [],
   };
+  try {
+    // reset zoom if filters range expanded
+    const w = (typeof window !== 'undefined') ? window : {};
+    const prev = w.__chartsLastFilters || null;
+    const f = Number(base.fromTs);
+    const t = Number(base.toTs);
+    if (prev && Number.isFinite(f) && Number.isFinite(t)) {
+      const pf = Number(prev.fromTs);
+      const pt = Number(prev.toTs);
+      if ((Number.isFinite(pf) && f < pf) || (Number.isFinite(pt) && t > pt)) {
+        // clear persisted zoom to show full new range
+        try { w.__chartsZoomRange = null; } catch(_) {}
+      }
+    }
+    try { w.__chartsLastFilters = { fromTs: f, toTs: t }; } catch(_) {}
+  } catch(_) {
+    // Ignore zoom reset errors
+  }
 
   const buildPairs = (opts, d, srcOverride) => {
     // Prefer provided srcOverride; otherwise use options.acdSeries; lastly treat input data

@@ -198,18 +198,8 @@ export function attachSelectors(vm) {
         }
         vm._mainFilterPass.set(mainMeta.groupId, !!pass);
       }
-      // Keep expansion independent from inclusion, but DO NOT bypass filters.
-      // If main itself doesn't pass, include it if any of its peer/hourly children pass the active filters.
-      if (!pass) {
-        try {
-          const peersPassing = getPeerRowsLazy(mainMeta.groupId);
-          if (Array.isArray(peersPassing) && peersPassing.length > 0) {
-            pass = true;
-          }
-        } catch(_) {
-      // Ignore selector errors
-    }
-      }
+      // Strict filter: do not include non-passing main by children (no bypass)
+      // (User expectation: e.g., ACD 1 must hide rows with ACD < 1)
       if (!pass) return;
 
       if (loadedCounts.main === 0) logDebug('🧪 First main row groupId:', mainRowData.groupId);
@@ -282,12 +272,7 @@ export function attachSelectors(vm) {
           const mainText = (r.main || '').toString().toLowerCase();
           if (!peerText.includes(globalFilter) && !destinationText.includes(globalFilter) && !mainText.includes(globalFilter)) ok = false;
         }
-        // If peer itself didn't pass, allow inclusion when any hourly child passes filters
-        if (!ok) {
-          try { const hours = getHourlyRowsLazy(r.groupId); if (Array.isArray(hours) && hours.length > 0) ok = true; } catch(_) {
-      // Ignore selector errors
-    }
-        }
+        // Strict filter: do not include peer by hourly children (no bypass)
         return ok;
       });
       logDebug(`🔍 Peer rows after filtering: ${filtered.length}/${peerRows.length}`);

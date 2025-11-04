@@ -38,16 +38,33 @@ function buildStackedAreaData(rows, state, startVal, endVal) {
   const noConcreteDropdowns = isAll(state.customer) && isAll(state.supplier) && isAll(state.destination);
   const noConcreteGlobals = (uCust.size > 1) && (uSupp.size > 1) && (uDst.size > 1);
   const aggregateByCustomer = noConcreteDropdowns && noConcreteGlobals;
-  const nameKey = aggregateByCustomer ? customerKey : dstKey; // group dimension
+  // Grouping rule:
+  // - Destination selected -> group by Customer (all customers to this direction)
+  // - Supplier selected   -> group by Customer (all customers to this supplier)
+  // - Customer selected   -> group by Destination (all directions of this customer)
+  // - None selected and globals wide -> aggregate by Customer (reduce clutter)
+  // - Else default -> Destination
+  let nameKey = dstKey;
+  if (!isAll(state.destination)) nameKey = customerKey;
+  else if (!isAll(state.supplier)) nameKey = customerKey;
+  else if (!isAll(state.customer)) nameKey = dstKey;
+  else if (aggregateByCustomer) nameKey = customerKey;
   const bySeries = new Map(); // name -> Map<ts, {sum, count}>
   const allTs = new Set();
   const isAvgMetric = (state.metric === 'ASR' || state.metric === 'ACD');
   for (const r of filtered) {
     const name = String(r[nameKey] ?? 'Unknown');
-    const t = parseRowTs(r.time);
+    const t = parseRowTs(r.time || r.slot || r.hour || r.timestamp);
     if (!Number.isFinite(t)) continue;
     allTs.add(t);
-    let y = Number(r[metricKey] ?? 0);
+    // robust metric value extraction
+    let yRaw;
+    if (state.metric === 'TCalls') yRaw = (r.TCall ?? r.TCalls ?? r.total_calls);
+    else if (state.metric === 'Minutes') yRaw = (r.Min ?? r.Minutes);
+    else if (state.metric === 'ASR') yRaw = r.ASR;
+    else if (state.metric === 'ACD') yRaw = r.ACD;
+    else yRaw = (r.TCall ?? r.TCalls ?? r.total_calls);
+    let y = Number(yRaw ?? 0);
     if (!Number.isFinite(y)) continue;
     // ASR: cap at 100
     if (state.metric === 'ASR' && y > 100) y = 100;
@@ -133,10 +150,16 @@ function buildThemeRiverData(rows, state) {
   const allTs = new Set();
   for (const r of filtered) {
     const name = String(r[dstKey] ?? 'Unknown');
-    const t = parseRowTs(r.time);
+    const t = parseRowTs(r.time || r.slot || r.hour || r.timestamp);
     if (!Number.isFinite(t)) continue;
     allTs.add(t);
-    const y = Number(r[metricKey] ?? 0);
+    let yRaw;
+    if (state.metric === 'TCalls') yRaw = (r.TCall ?? r.TCalls ?? r.total_calls);
+    else if (state.metric === 'Minutes') yRaw = (r.Min ?? r.Minutes);
+    else if (state.metric === 'ASR') yRaw = r.ASR;
+    else if (state.metric === 'ACD') yRaw = r.ACD;
+    else yRaw = (r.TCall ?? r.TCalls ?? r.total_calls);
+    const y = Number(yRaw ?? 0);
     if (!Number.isFinite(y)) continue;
     let m = bySeries.get(name);
     if (!m) { m = new Map(); bySeries.set(name, m); }
@@ -237,6 +260,22 @@ export function renderStreamGraphEcharts(container, data = [], options = {}) {
     toTs: options.toTs || null,
     height: options.height || (el.clientHeight || 600),
   };
+  try {
+    // reset zoom if filters range expanded
+    const w = (typeof window !== 'undefined') ? window : {};
+    const prev = w.__chartsLastFilters || null;
+    const f = Number(base.fromTs);
+    const t = Number(base.toTs);
+    if (prev && Number.isFinite(f) && Number.isFinite(t)) {
+      const pf = Number(prev.fromTs);
+      const pt = Number(prev.toTs);
+      if ((Number.isFinite(pf) && f < pf) || (Number.isFinite(pt) && t > pt)) {
+        // clear persisted zoom to show full new range
+        try { w.__chartsZoomRange = null; } catch(_) {}
+      }
+    }
+    try { w.__chartsLastFilters = { fromTs: f, toTs: t }; } catch(_) {}
+  } catch(_) {}
 
   // Restore persisted metric or default to ACD
   let state = {
@@ -292,7 +331,7 @@ export function renderStreamGraphEcharts(container, data = [], options = {}) {
       const supplierKey = 'peer';
       const dstKey = 'destination';
       const inWin = (rows || []).filter(r => {
-        const t = parseRowTs(r.time);
+        const t = parseRowTs(r.time || r.slot || r.hour || r.timestamp);
         return Number.isFinite(t) && t >= from && t <= to;
       });
       // Interlink dropdowns within the current zoom window
@@ -391,6 +430,51 @@ export function renderStreamGraphEcharts(container, data = [], options = {}) {
     }
     const isSparse = inViewTs.size <= 6; // small number of points in view
     const isLow = maxInViewVal <= 3;     // very small amplitudes (e.g. 1 call)
+    const isDense = inViewTs.size >= 200; // large number of points in view
+    // Filter out series without any meaningful data in the visible domain
+    // Visible domain = zoom window if set, otherwise global filter range
+    const inRange = (ts) => {
+      const t = Number(ts);
+      const hasZoom = Number.isFinite(zoomStart) && Number.isFinite(zoomEnd) && zoomEnd > zoomStart;
+      if (hasZoom) return t >= zoomStart && t <= zoomEnd;
+      const lo = Number.isFinite(filterFrom) ? Number(filterFrom) : null;
+      const hi = Number.isFinite(filterTo) ? Number(filterTo) : null;
+      if (lo != null && t < lo) return false;
+      if (hi != null && t > hi) return false;
+      return true;
+    };
+    const hasPositive = (arr, onlyView = true) => {
+      if (!Array.isArray(arr)) return false;
+      for (const d of arr) {
+        const t = Number(d && d[0]); const y = d && d[1];
+        if (!Number.isFinite(t)) continue;
+        if (onlyView && !inRange(t)) continue;
+        if (y != null && Number.isFinite(y) && Number(y) > 0) return true;
+      }
+      return false;
+    };
+    const effectiveNames = names.filter(name => {
+      const arr = seriesMap.get(name) || [];
+      // keep only if has positive values inside the visible domain
+      return hasPositive(arr, true);
+    });
+    // Order layers bottom->top by ascending average in visible domain
+    const avgInView = (arr) => {
+      if (!Array.isArray(arr) || arr.length === 0) return 0;
+      let s = 0, c = 0;
+      for (const d of arr) {
+        const t = Number(d && d[0]); const y = d && d[1];
+        if (!Number.isFinite(t)) continue;
+        if (!inRange(t)) continue;
+        if (y != null && Number.isFinite(y)) { s += Number(y); c += 1; }
+      }
+      if (c === 0) {
+        // fallback to overall average when no in-view points (rare)
+        for (const d of (arr || [])) { const y = d && d[1]; if (y != null && Number.isFinite(y)) { s += Number(y); c += 1; } }
+      }
+      return c > 0 ? (s / c) : 0;
+    };
+    const orderedNames = effectiveNames.slice().sort((a, b) => avgInView(seriesMap.get(a) || []) - avgInView(seriesMap.get(b) || []));
     const yFmt = (val) => {
       const n = Number(val);
       if (!Number.isFinite(n)) return '';
@@ -410,12 +494,14 @@ export function renderStreamGraphEcharts(container, data = [], options = {}) {
       ['#14b8a6', '#2dd4bf'],
       ['#ef4444', '#f87171']
     ];
-    const series = names.map((name, idx) => {
+    const series = orderedNames.map((name, idx) => {
       const [c0, c1] = modernColors[idx % modernColors.length];
       // choose rendering mode based on data density and amplitude
       const showSymbols = isSparse || isLow;
-      const doSmooth = (!isSparse && !isLow) && (state.metric === 'ASR' || state.metric === 'ACD');
-      const useSampling = (!isSparse && !isLow);
+      // apply smoothing for all metrics (stronger for ASR/ACD)
+      const smoothFactor = isSparse ? 0.2 : ((state.metric === 'ASR' || state.metric === 'ACD') ? 0.45 : 0.3);
+      const useSampling = !isSparse;
+      const samplingMode = isDense ? 'average' : 'lttb';
       return {
         name,
         type: 'line',
@@ -424,16 +510,16 @@ export function renderStreamGraphEcharts(container, data = [], options = {}) {
         showSymbol: showSymbols,
         symbol: showSymbols ? 'circle' : 'none',
         symbolSize: showSymbols ? 4 : 0,
-        smooth: doSmooth ? 0.45 : 0,
+        smooth: smoothFactor,
         smoothMonotone: 'x',
         // prevent symbol bounce on hover for tiny datasets
         hoverAnimation: showSymbols ? false : true,
         connectNulls: false,
         // disable sampling when sparse/low to avoid downsampling artifacts
-        sampling: useSampling ? 'lttb' : undefined,
+        sampling: useSampling ? samplingMode : undefined,
         clip: true,
         areaStyle: {
-          opacity: 0.75,
+          opacity: 0.6,
           color: {
             type: 'linear',
             x: 0, y: 0, x2: 0, y2: 1,
@@ -474,11 +560,11 @@ export function renderStreamGraphEcharts(container, data = [], options = {}) {
         axisLabel: { color: '#6e7781', formatter: yFmt }, 
         splitLine: { show: true, lineStyle: { color: '#eaeef2' } } 
       },
-      tooltip: makeStreamTooltip(state),
+      tooltip: makeStreamTooltip(state, { chart }),
       // apply current zoom window as a view only (does not change xAxis range)
       dataZoom: [
         // avoid moving zoom window on hover/mouse move
-        { type: 'inside', xAxisIndex: 0, startValue: zoomStart, endValue: zoomEnd, throttle: 80, zoomOnMouseWheel: 'shift', moveOnMouseWheel: false, moveOnMouseMove: false, brushSelect: false },
+        { type: 'inside', xAxisIndex: 0, startValue: zoomStart, endValue: zoomEnd, throttle: 80, zoomOnMouseWheel: 'shift', moveOnMouseWheel: false, moveOnMouseMove: true, brushSelect: false },
         { type: 'slider', xAxisIndex: 0, startValue: zoomStart, endValue: zoomEnd, height: 32, bottom: 8, throttle: 80 }
       ],
       series
@@ -522,6 +608,29 @@ export function renderStreamGraphEcharts(container, data = [], options = {}) {
       try { if (zr) window.__chartsZoomRange = zr; } catch(_) {}
       try { refreshDropdownsForZoom(); } catch(_) {}
     });
+    // Remember hovered series for tooltip to prefer the actual layer under cursor
+    chart.on('mouseover', (p) => {
+      try {
+        if (p && p.componentType === 'series' && typeof p.seriesName === 'string') window.__streamHoveredSeriesName = p.seriesName;
+        if (p && p.componentType === 'series' && Number.isFinite(p.seriesIndex)) window.__streamHoveredSeriesIndex = p.seriesIndex;
+      } catch(_) {}
+    });
+    chart.on('globalout', () => {
+      try { window.__streamHoveredSeriesName = null; window.__streamHoveredSeriesIndex = null; } catch(_) {}
+    });
+    // Track mouse pixel position for precise layer pick in tooltip
+    const zr = chart.getZr && chart.getZr();
+    if (zr && zr.on) {
+      zr.on('mousemove', (e) => {
+        try {
+          window.__streamMouseX = Number(e && (e.offsetX ?? e.offset_x));
+          window.__streamMouseY = Number(e && (e.offsetY ?? e.offset_y));
+        } catch(_) {}
+      });
+      zr.on('globalout', () => {
+        try { window.__streamMouseX = null; window.__streamMouseY = null; } catch(_) {}
+      });
+    }
   } catch(_) {}
 
   function dispose() { try { chart.dispose(); } catch(_) {} }

@@ -302,6 +302,24 @@ export function renderMultiLineChartEcharts(container, data, options = {}) {
     interval: options.interval || (options.stepMs === 5 * 60e3 ? '5m' : (options.stepMs === 3600e3 ? '1h' : undefined)),
     noFiveMinData: !!options.noFiveMinData,
   };
+  try {
+    // reset zoom if filters range expanded
+    const w = (typeof window !== 'undefined') ? window : {};
+    const prev = w.__chartsLastFilters || null;
+    const f = Number(base.fromTs);
+    const t = Number(base.toTs);
+    if (prev && Number.isFinite(f) && Number.isFinite(t)) {
+      const pf = Number(prev.fromTs);
+      const pt = Number(prev.toTs);
+      if ((Number.isFinite(pf) && f < pf) || (Number.isFinite(pt) && t > pt)) {
+        // clear persisted zoom to show full new range
+        try { w.__chartsZoomRange = null; } catch(_) {}
+      }
+    }
+    try { w.__chartsLastFilters = { fromTs: f, toTs: t }; } catch(_) {}
+  } catch(_) {
+    // Ignore zoom reset errors
+  }
   const option = buildMultiOption({ data, ...base });
   try { option.tooltip = option.tooltip || {}; option.tooltip.formatter = makeBarLineLikeTooltip({ chart, stepMs: (base.interval === '5m') ? 5 * 60e3 : (base.interval === '1h' ? 3600e3 : 24 * 3600e3) }); } catch(_) {
     // Ignore tooltip formatter errors
