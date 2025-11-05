@@ -507,8 +507,27 @@ export function makeStripeOverlay(id, xAxisIndex, yAxisIndex, totalsPairs, stack
         const children = [];
         children.push({ type: 'rect', shape: { x: xStripe, y: yStripe, width: barW, height: stripeH }, style });
 
+        // show labels only for ACD and ASR (today + yesterday)
+        if (metricName === 'ASR' || metricName === 'ACD') {
+          // custom modern markers (capsule or rounded rectangle)
+          try {
+            const segVal = Math.max(0, Number(y1) - Number(y0));
+            if (Number.isFinite(segVal) && segVal > 0) {
+              const pillW = barW;
+              const pillH = Math.max(stripeH + 2, Math.min(14, Math.round(stripeH * 1.25)));
+              const px = Math.round(xStripe);
+              const py = Math.round(yCenter - pillH / 2);
+              const bg = { fill: color, opacity: 0.9, shadowBlur: 6, shadowColor: 'rgba(0,0,0,0.18)' };
+              children.push({ type: 'rect', shape: { x: px, y: py, width: pillW, height: pillH, r: Math.round(pillH / 2) }, style: bg, silent: true });
+              const lbl = (segVal >= 10 ? segVal.toFixed(0) : segVal.toFixed(1));
+              children.push({ type: 'text', style: { text: lbl, x: Math.round(px + pillW / 2), y: Math.round(py + pillH / 2), fill: '#ffffff', font: '600 10px system-ui, -apple-system, Segoe UI, Roboto, sans-serif', align: 'center', verticalAlign: 'middle', shadowBlur: 0 }, silent: true });
+            }
+          } catch(_) {}
+        }
+
         // Yesterday marker (same supplier at ts-24h)
-        try {
+        // show labels only for ACD and ASR (today + yesterday)
+        if (metricName === 'ASR' || metricName === 'ACD') try {
           const dayMs = 24 * 3600e3;
           const tsY = x - dayMs;
           let sumY = 0, cntY = 0, hasY = false;
@@ -529,11 +548,29 @@ export function makeStripeOverlay(id, xAxisIndex, yAxisIndex, totalsPairs, stack
             const valY = (metricName === 'ASR' || metricName === 'ACD') ? (cntY ? (sumY / cntY) : null) : sumY;
             if (Number.isFinite(valY)) {
               const yPix = api.coord([x, valY])[1];
-              const cx = Math.round(xStripe + barW / 2);
-              const r = Math.max(2, Math.round(Math.min(5, barW * 0.12)));
-              const styleY = { fill: color, opacity: 0.6, stroke: null };
-              children.push({ type: 'circle', shape: { cx, cy: yPix, r }, style: styleY, silent: true });
+              // same marker shape as main series
+              // dimmed style for yesterday markers
+              const styleY = { fill: color, opacity: 0.55, stroke: null, shadowBlur: 4, shadowColor: 'rgba(0,0,0,0.12)' };
+              // position marker in center of grey bar
+              const gx = Math.round(binCenter + (gapPx / 2));
+              const gy0 = Math.round(yPix - Math.max(2, stripeH) / 2);
+              const pillH = Math.max(stripeH + 2, Math.min(14, Math.round(stripeH * 1.25)));
+              const gy = Math.round(yPix - pillH / 2);
+              children.push({ type: 'rect', shape: { x: gx, y: gy, width: barW, height: pillH, r: Math.round(pillH / 2) }, style: styleY, silent: true });
+              const lblY = (valY >= 10 ? valY.toFixed(0) : valY.toFixed(1));
+              children.push({ type: 'text', style: { text: lblY, x: Math.round(gx + barW / 2), y: Math.round(gy + pillH / 2), fill: '#ffffff', font: '600 10px system-ui, -apple-system, Segoe UI, Roboto, sans-serif', align: 'center', verticalAlign: 'middle' }, silent: true });
             }
+          }
+        } catch(_) {}
+
+        // add modern group separation between bar clusters
+        try {
+          const firstProv = (providerMeta && Array.isArray(providerMeta.providers) && providerMeta.providers.length) ? providerMeta.providers[0] : supplierName;
+          if (supplierName === firstProv) {
+            const sepX = Math.round(p1[0] - 1);
+            const sepY = Math.min(base, topY);
+            const sepH = Math.max(2, Math.abs(base - topY));
+            children.push({ type: 'rect', shape: { x: sepX, y: sepY, width: 2, height: sepH }, style: { fill: 'rgba(0,0,0,0.06)' }, silent: true });
           }
         } catch(_) {}
 
