@@ -16,8 +16,7 @@ import morphdom from 'morphdom'; // NEW: DOM patching library
 
 import { MetricsDashboardModule, clearTableFilters, clearSpecificFilter } from './core/MetricsDashboardModule.js';
 import { initTypeaheadFilters } from './init/typeahead-init.js'; // Typeahead init
-import { initD3 } from './init/d3-init.js'; // D3 core init
-import { initD3Dashboard } from './init/d3-dashboard.js'; // D3 charts dashboard
+import { initD3 } from './init/d3-init.js'; // D3 core init (now bootstraps dashboard lazily)
 
 const ready = (fn) => (document.readyState !== 'loading' ? fn() : document.addEventListener('DOMContentLoaded', fn));
 
@@ -40,9 +39,9 @@ ready(() => {
 
   // Init filters typeahead (isolated module)
   try { initTypeaheadFilters(); } catch (_) { /* no-op */ }
-  // Init D3 (exposes window.d3; no UI changes)
+  // Init D3 (exposes window.d3; also lazy-loads dashboard)
   try { initD3(); } catch (_) { /* no-op */ }
-  // Init D3 Charts Dashboard (prepares charts area and selector)
-  try { initD3Dashboard(); } catch (_) { /* no-op */ }
+  // Do not call initD3Dashboard directly — initD3 will import and run it lazily
+  // (avoid double initialization and race conditions)
 })
 ;

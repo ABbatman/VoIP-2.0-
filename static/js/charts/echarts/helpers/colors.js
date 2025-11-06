@@ -1,10 +1,11 @@
 // static/js/charts/echarts/helpers/colors.js
 // stable palette + mapping per supplier
+// Avoid greys to keep labels visibly distinct
 export const PROVIDER_COLORS = [
   '#ff7f0e','#2ca02c','#d62728','#9467bd','#8c564b',
-  '#e377c2','#7f7f7f','#bcbd22','#17becf','#4e79a7',
-  '#f28e2b','#59a14f','#e15759','#76b7b2','#edc949',
-  '#af7aa1','#ff9da7','#9c755f','#bab0ab','#1f77b4'
+  '#e377c2','#bcbd22','#17becf','#4e79a7','#f28e2b',
+  '#59a14f','#e15759','#76b7b2','#edc949','#af7aa1',
+  '#ff9da7','#9c755f','#06b6d4','#f97316','#10b981'
 ];
 
 export function getStableColor(name, suggested) {

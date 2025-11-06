@@ -2,7 +2,8 @@
 import * as echarts from 'echarts';
 import { makeBarLineLikeTooltip } from './echarts/helpers/tooltip.js';
 // move logic: use modular helpers/builders
-import { buildCenters, makePairSets } from './echarts/helpers/dataTransform.js';
+import { buildCenters, makePairSets, detectProviderKey, parseRowTs } from './echarts/helpers/dataTransform.js';
+import { getStableColor } from './echarts/helpers/colors.js';
 import { getStepMs } from './echarts/helpers/time.js';
 import { buildBarSeries } from './echarts/builders/BarChartBuilder.js';
 import { subscribe } from '../state/eventBus.js';
@@ -45,6 +46,77 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
     labels: (options && typeof options.labels === 'object') ? options.labels : {}, // use backend labels
     colorMap: (options && typeof options.colorMap === 'object') ? options.colorMap : undefined, // color mapping per supplier
   };
+
+  // Build a stable color map per supplier using provider rows
+  // Note: Colors are neutral and consistent across renders (shared map in window)
+  try {
+    if (!base.colorMap) {
+      const rows = Array.isArray(options?.providerRows) ? options.providerRows : [];
+      const key = detectProviderKey(rows);
+      const map = Object.create(null);
+      // debug: providerRows sample
+      try {
+        if (typeof window !== 'undefined' && window.__chartsDebug) {
+          console.debug('[bar] providerRows.len', rows.length, 'sample.keys', rows[0] ? Object.keys(rows[0]) : null, 'detectedKey', key);
+        }
+      } catch(_) {}
+      if (rows.length && key) {
+        const seen = new Set();
+        const ID_CAND_KEYS = ['supplierId','providerId','vendorId','carrierId','peerId','id','supplier_id','provider_id','vendor_id','carrier_id','peer_id'];
+        for (const r of rows) {
+          const name = String(r?.[key] ?? '').trim();
+          const idKey = ID_CAND_KEYS.find(k => r && Object.prototype.hasOwnProperty.call(r, k));
+          const rawId = idKey ? r[idKey] : undefined;
+          const id = (rawId != null) ? String(rawId) : undefined;
+          if (!name && !id) continue;
+          const color = getStableColor(name || id);
+          if (name && !map[name]) map[name] = color; // map by human-readable name
+          if (id && !map[id]) map[id] = color;       // map by numeric/string id for labels lookup
+          const dedupKey = name || id;
+          if (dedupKey) seen.add(dedupKey);
+        }
+      }
+      // Fallback: seed from labels when rows/key are not available
+      if (Object.keys(map).length === 0 && base.labels && (base.labels.ASR || base.labels.ACD)) {
+        const collect = (obj) => {
+          if (!obj || typeof obj !== 'object') return [];
+          const all = [];
+          for (const ts of Object.keys(obj)) {
+            const arr = obj[ts] || obj[String(ts)] || [];
+            if (!Array.isArray(arr)) continue;
+            for (const it of arr) {
+              const sid = (it && (it.supplierId ?? it.supplier ?? it.id ?? it.name)) ?? null;
+              if (sid == null) continue;
+              const name = String(it.name ?? it.supplier ?? '').trim();
+              const id = String(sid);
+              all.push({ id, name });
+            }
+          }
+          return all;
+        };
+        const entries = [
+          ...collect(base.labels.ASR),
+          ...collect(base.labels.ACD)
+        ];
+        const seen = new Set();
+        for (const { id, name } of entries) {
+          const key = name || id;
+          if (!key || seen.has(key)) continue;
+          const color = getStableColor(key);
+          if (name && !map[name]) map[name] = color;
+          if (id && !map[id]) map[id] = color;
+          seen.add(key);
+        }
+      }
+      base.colorMap = map;
+      // debug: colorMap size
+      try {
+        if (typeof window !== 'undefined' && window.__chartsDebug) {
+          console.debug('[bar] colorMap.size', Object.keys(map).length);
+        }
+      } catch(_) {}
+    }
+  } catch(_) { /* keep default colorMap */ }
   try {
     // reset zoom if filters range expanded
     const w = (typeof window !== 'undefined') ? window : {};
@@ -146,6 +218,87 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
 
     // remove suppliers branching; chart builds the same way
 
+    // Build overlay labels per supplier when backend labels have no supplier info
+    const labelsEffective = (() => {
+      try {
+        const hasSupplierInfo = (obj) => {
+          if (!obj || typeof obj !== 'object') return false;
+          for (const k of Object.keys(obj)) {
+            const arr = obj[k];
+            if (!Array.isArray(arr)) continue;
+            for (const it of arr) {
+              if (it && typeof it === 'object' && (
+                Object.prototype.hasOwnProperty.call(it, 'supplierId') ||
+                Object.prototype.hasOwnProperty.call(it, 'id') ||
+                Object.prototype.hasOwnProperty.call(it, 'supplier') ||
+                Object.prototype.hasOwnProperty.call(it, 'name')
+              )) return true;
+            }
+          }
+          return false;
+        };
+        const le = { ASR: (opts.labels && opts.labels.ASR) || {}, ACD: (opts.labels && opts.labels.ACD) || {} };
+        const needBuild = !(hasSupplierInfo(le.ASR) || hasSupplierInfo(le.ACD));
+        try { if (typeof window !== 'undefined' && window.__chartsDebug) console.debug('[bar] labels.hasSupplierInfo', !needBuild); } catch(_) {}
+        if (!needBuild) return le;
+        const rows = Array.isArray(options?.providerRows) ? options.providerRows : [];
+        if (!rows.length) return le;
+
+        const NAME_KEYS = ['name','supplier','provider','peer','vendor','carrier','operator','route','trunk','gateway','partner','supplier_name','provider_name','vendor_name','carrier_name','peer_name'];
+        const ID_KEYS = ['supplierId','providerId','vendorId','carrierId','peerId','id','supplier_id','provider_id','vendor_id','carrier_id','peer_id'];
+        const slotCenter = (t) => {
+          const step = Number(step) || Number(opts.stepMs) || getStepMs(opts.interval);
+          const s = Number.isFinite(step) && step > 0 ? Math.floor(t / step) * step : t;
+          return Number.isFinite(step) && step > 0 ? (s + Math.floor(step / 2)) : s;
+        };
+        const aggASR = new Map(); // ts -> Map<key,{sum,cnt,name,id}>
+        const aggACD = new Map();
+        for (const r of rows) {
+          const t = parseRowTs(r.time || r.slot || r.hour || r.timestamp);
+          if (!Number.isFinite(t)) continue;
+          const c = (() => { const stepv = Number(opts.stepMs) || getStepMs(opts.interval); const base = Math.floor(t / stepv) * stepv; return base + Math.floor(stepv / 2); })();
+          let name = null; let sid = null;
+          for (const k of ID_KEYS) { if (sid == null && Object.prototype.hasOwnProperty.call(r, k)) sid = r[k]; }
+          for (const k of NAME_KEYS) { if (name == null && Object.prototype.hasOwnProperty.call(r, k)) name = r[k]; }
+          const key = String(sid != null ? sid : (name != null ? name : ''));
+          if (!key) continue;
+          const asr = Number(r.ASR ?? r.asr);
+          const acd = Number(r.ACD ?? r.acd);
+          if (Number.isFinite(asr)) {
+            let m = aggASR.get(c); if (!m) { m = new Map(); aggASR.set(c, m); }
+            const cell = m.get(key) || { sum: 0, cnt: 0, name: (name != null ? String(name) : null), id: (sid != null ? String(sid) : null) };
+            cell.sum += asr; cell.cnt += 1; m.set(key, cell);
+          }
+          if (Number.isFinite(acd)) {
+            let m = aggACD.get(c); if (!m) { m = new Map(); aggACD.set(c, m); }
+            const cell = m.get(key) || { sum: 0, cnt: 0, name: (name != null ? String(name) : null), id: (sid != null ? String(sid) : null) };
+            cell.sum += acd; cell.cnt += 1; m.set(key, cell);
+          }
+        }
+        const toArrMap = (agg) => {
+          const out = {};
+          for (const [ts, m] of agg.entries()) {
+            const arr = [];
+            for (const [k, v] of m.entries()) {
+              const val = v.cnt > 0 ? (v.sum / v.cnt) : null;
+              if (Number.isFinite(val)) arr.push({ supplierId: v.id ?? v.name ?? k, name: v.name ?? null, value: val });
+            }
+            out[ts] = arr;
+          }
+          return out;
+        };
+        const eff = { ASR: toArrMap(aggASR), ACD: toArrMap(aggACD) };
+        // debug: labelsEffective shape
+        try {
+          if (typeof window !== 'undefined' && window.__chartsDebug) {
+            const k = Object.keys(eff.ASR || {});
+            console.debug('[bar] labelsEffective.ASR.keys.len', k.length, 'firstLens', k.slice(0,3).map(ts => (eff.ASR[ts]||[]).length));
+          }
+        } catch(_) {}
+        return eff;
+      } catch(_) { return { ASR: (opts.labels && opts.labels.ASR) || {}, ACD: (opts.labels && opts.labels.ACD) || {} }; }
+    })();
+
     const showLabels = (() => { try { return !!(typeof window !== 'undefined' && window.__chartsBarPerProvider); } catch(_) { return false; } })();
     const out = {
       animation: true,
@@ -182,7 +335,7 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
           dataBackground: { lineStyle: { color: 'rgba(0,0,0,0)' }, areaStyle: { color: 'rgba(0,0,0,0)' } }
         }
       ],
-      series: buildBarSeries({ setsT, setsA, setsM, setsC, centers, interval: opts.interval, stepMs: step, labels: opts.labels, colorMap: opts.colorMap }),
+      series: buildBarSeries({ setsT, setsA, setsM, setsC, centers, interval: opts.interval, stepMs: step, labels: labelsEffective, colorMap: opts.colorMap }),
       graphic: graphicLabels
     };
     if (!showLabels) {
