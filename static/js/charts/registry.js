@@ -19,10 +19,11 @@ export function listTypes() {
 // Bootstrap default registrations lazily to avoid circular deps
 export async function ensureDefaults() {
   if (_registry.size > 0) return;
-  const [{ renderMultiLineChart }, { renderBarChart }] = await Promise.all([
-    import('./multiLineChart.js'),
-    import('./barChart.js'),
+  // Removed D3 usage; ECharts is the sole charting system.
+  const [{ renderMultiLineChartEcharts }, { renderBarChartEcharts }] = await Promise.all([
+    import('./echartsRenderer.js'),
+    import('./echartsBarChart.js'),
   ]);
-  registerChart('line', renderMultiLineChart);
-  registerChart('bar', renderBarChart);
+  registerChart('line', renderMultiLineChartEcharts);
+  registerChart('bar', renderBarChartEcharts);
 }

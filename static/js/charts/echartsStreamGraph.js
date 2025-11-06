@@ -1,3 +1,4 @@
+// Archived: Stream graph is disabled (not wired to registry/UI).
 import * as echarts from 'echarts';
 import { makeStreamTooltip } from './tooltip.js';
 

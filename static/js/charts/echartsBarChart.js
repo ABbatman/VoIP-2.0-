@@ -1,8 +1,12 @@
 // static/js/charts/echartsBarChart.js
 import * as echarts from 'echarts';
-import { toast } from '../ui/notify.js';
-import { makeBarLineLikeTooltip } from './tooltip.js';
-import { createLabelOverlaySeries } from './echartsBarChartHelper.js'; // move label logic to helper
+import { makeBarLineLikeTooltip } from './echarts/helpers/tooltip.js';
+// move logic: use modular helpers/builders
+import { buildCenters, makePairSets } from './echarts/helpers/dataTransform.js';
+import { getStepMs } from './echarts/helpers/time.js';
+import { buildBarSeries } from './echarts/builders/BarChartBuilder.js';
+import { subscribe } from '../state/eventBus.js';
+import { initChart, setOptionWithZoomSync } from './echarts/renderer/EchartsRenderer.js';
 
 function ensureContainer(container) {
   if (typeof container === 'string') {
@@ -14,33 +18,7 @@ function ensureContainer(container) {
   return container;
 }
 
-function toPairs(arr) {
-  if (!Array.isArray(arr)) return [];
-  return arr
-    .filter(d => d && d.x != null && (d.y == null || isFinite(Number(d.y))))
-    .map(d => {
-      const t = d.x instanceof Date ? d.x.getTime() : (typeof d.x === 'number' ? d.x : Date.parse(d.x));
-      return [t, d.y == null ? null : Number(d.y)];
-    })
-    .filter(p => Number.isFinite(p[0]));
-}
-
-function chooseBarWidthPx(interval) {
-  switch (interval) {
-    case '5m': return 6;
-    case '1h': return 10;
-    case '1d': return 16;
-    default: return 10;
-  }
-}
-
-function getStepMs(interval, fallbackStep) {
-  if (Number.isFinite(fallbackStep)) return Number(fallbackStep);
-  if (interval === '5m') return 5 * 60e3;
-  if (interval === '1h') return 3600e3;
-  if (interval === '1d') return 24 * 3600e3;
-  return 3600e3;
-}
+// remove legacy inline helpers (moved to helpers/dataTransform.js)
 
 export function renderBarChartEcharts(container, data = [], options = {}) {
   const el = ensureContainer(container);
@@ -50,7 +28,8 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
   } catch (_) {
     // Ignore error if chart instance doesn't exist
   }
-  const chart = echarts.init(el);
+  const chart = initChart(el);
+  let unsubscribeToggle = null; // event unsubscribe handle
 
   const base = {
     fromTs: options.fromTs || null,
@@ -63,10 +42,8 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
     asrSeries: Array.isArray(options.asrSeries) ? options.asrSeries : [],
     minutesSeries: Array.isArray(options.minutesSeries) ? options.minutesSeries : [],
     acdSeries: Array.isArray(options.acdSeries) ? options.acdSeries : [],
-    // provider stacking
-    perProvider: !!options.perProvider,
-    providerRows: Array.isArray(options.providerRows) ? options.providerRows : [],
     labels: (options && typeof options.labels === 'object') ? options.labels : {}, // use backend labels
+    colorMap: (options && typeof options.colorMap === 'object') ? options.colorMap : undefined, // color mapping per supplier
   };
   try {
     // reset zoom if filters range expanded
@@ -87,27 +64,7 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
     // Ignore zoom reset errors
   }
 
-  const buildPairs = (opts, d, srcOverride) => {
-    // Prefer provided srcOverride; otherwise use options.acdSeries; lastly treat input data
-    let src = Array.isArray(srcOverride) && srcOverride.length
-      ? srcOverride
-      : (Array.isArray(opts.acdSeries) && opts.acdSeries.length
-        ? opts.acdSeries
-        : (Array.isArray(d?.ACD) ? d.ACD : (Array.isArray(d) ? d : [])));
-    let pairs = toPairs(src).sort((a,b) => a[0] - b[0]);
-    const step = Number(opts.stepMs) || getStepMs(opts.interval);
-    // Snap to step grid and dedupe by snapped x
-    const map = new Map();
-    for (const [t, y] of pairs) {
-      // center bars inside their time bin so barWidth can exactly equal step width
-      const base = Number.isFinite(step) && step > 0 ? Math.floor(t / step) * step : t;
-      const x = Number.isFinite(step) && step > 0 ? (base + Math.floor(step / 2)) : base;
-      if (y == null || isNaN(y)) continue;
-      map.set(x, Number(y));
-    }
-    pairs = Array.from(map.entries()).sort((a,b) => a[0] - b[0]);
-    return pairs;
-  };
+  // remove legacy buildPairs (moved to helpers/dataTransform.js)
 
   const buildOption = (opts, d) => {
     const fromTs = Number(opts.fromTs);
@@ -115,37 +72,12 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
     const step = Number(opts.stepMs) || getStepMs(opts.interval);
     const dayMs = 24 * 3600e3;
 
-    const buildCenters = () => {
-      const centers = [];
-      if (Number.isFinite(fromTs) && Number.isFinite(toTs) && Number.isFinite(step) && step > 0) {
-        const start = Math.floor(fromTs / step) * step;
-        const end = Math.ceil(toTs / step) * step;
-        for (let t = start; t <= end; t += step) centers.push(t + Math.floor(step / 2));
-      }
-      return centers;
-    };
-    const centers = buildCenters();
+    const centers = buildCenters(fromTs, toTs, step);
 
-    const makePairSets = (srcArr) => {
-      const currPairs = buildPairs(opts, d, srcArr);
-      const currMap = new Map(currPairs);
-      const curr = [];
-      const prev = [];
-      const hasCenters = centers.length > 0 ? centers : currPairs.map(p => p[0]);
-      for (const c of hasCenters) {
-        const yCur = currMap.get(c);
-        if (yCur != null && !isNaN(yCur)) curr.push([c, yCur]);
-        const yPrev = currMap.get(c - dayMs);
-        if (yPrev != null && !isNaN(yPrev)) prev.push([c, yPrev]);
-      }
-      return { curr, prev };
-    };
-
-    const setsT = makePairSets((Array.isArray(opts.tCallsSeries) && opts.tCallsSeries.length) ? opts.tCallsSeries : (Array.isArray(d?.TCalls) ? d.TCalls : []));
-    const setsA = makePairSets((Array.isArray(opts.asrSeries) && opts.asrSeries.length) ? opts.asrSeries : (Array.isArray(d?.ASR) ? d.ASR : []));
-    const setsM = makePairSets((Array.isArray(opts.minutesSeries) && opts.minutesSeries.length) ? opts.minutesSeries : (Array.isArray(d?.Minutes) ? d.Minutes : []));
-    const setsC = makePairSets((Array.isArray(opts.acdSeries) && opts.acdSeries.length) ? opts.acdSeries : (Array.isArray(d?.ACD) ? d.ACD : []));
-    const bw = chooseBarWidthPx(opts.interval);
+    const setsT = makePairSets(opts, d, (Array.isArray(opts.tCallsSeries) && opts.tCallsSeries.length) ? opts.tCallsSeries : (Array.isArray(d?.TCalls) ? d.TCalls : []), centers);
+    const setsA = makePairSets(opts, d, (Array.isArray(opts.asrSeries) && opts.asrSeries.length) ? opts.asrSeries : (Array.isArray(d?.ASR) ? d.ASR : []), centers);
+    const setsM = makePairSets(opts, d, (Array.isArray(opts.minutesSeries) && opts.minutesSeries.length) ? opts.minutesSeries : (Array.isArray(d?.Minutes) ? d.Minutes : []), centers);
+    const setsC = makePairSets(opts, d, (Array.isArray(opts.acdSeries) && opts.acdSeries.length) ? opts.acdSeries : (Array.isArray(d?.ACD) ? d.ACD : []), centers);
 
     // Initialize zoom window from global range if present
     let startVal = Number.isFinite(fromTs) ? fromTs : null;
@@ -214,7 +146,8 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
 
     // remove suppliers branching; chart builds the same way
 
-    return {
+    const showLabels = (() => { try { return !!(typeof window !== 'undefined' && window.__chartsBarPerProvider); } catch(_) { return false; } })();
+    const out = {
       animation: true,
       animationDurationUpdate: 200,
       animationEasingUpdate: 'cubicOut',
@@ -249,37 +182,28 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
           dataBackground: { lineStyle: { color: 'rgba(0,0,0,0)' }, areaStyle: { color: 'rgba(0,0,0,0)' } }
         }
       ],
-      series: (() => {
-        const list = [];
-        // bars (single path)
-        list.push({ id: 'tc', name: 'TCalls', type: 'bar', xAxisIndex: 0, yAxisIndex: 0, large: true, barWidth: bw, barGap: '4%', barCategoryGap: '20%',
-          emphasis: { focus: 'series', blurScope: 'coordinateSystem' }, blur: { itemStyle: { opacity: 0.12 } }, itemStyle: { color: colors.TCalls }, data: setsT.curr });
-        list.push({ id: 'tcPrev', name: 'TCalls -24h', type: 'bar', xAxisIndex: 0, yAxisIndex: 0, large: true, barWidth: bw, barGap: '4%', barCategoryGap: '20%', itemStyle: { color: 'rgba(140,148,156,0.85)' }, data: setsT.prev, emphasis: { disabled: true }, tooltip: { show: false }, silent: true, blur: { itemStyle: { opacity: 0.4 } } });
-        list.push({ id: 'as', name: 'ASR', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, large: true, barWidth: bw, barGap: '4%', barCategoryGap: '20%', emphasis: { focus: 'series', blurScope: 'coordinateSystem' }, blur: { itemStyle: { opacity: 0.12 } }, itemStyle: { color: colors.ASR }, data: setsA.curr });
-        list.push({ id: 'asPrev', name: 'ASR -24h', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, large: true, barWidth: bw, barGap: '4%', barCategoryGap: '20%', itemStyle: { color: 'rgba(140,148,156,0.85)' }, data: setsA.prev, emphasis: { disabled: true }, tooltip: { show: false }, silent: true, blur: { itemStyle: { opacity: 0.4 } } });
-        list.push({ id: 'mn', name: 'Minutes', type: 'bar', xAxisIndex: 2, yAxisIndex: 2, large: true, barWidth: bw, barGap: '4%', barCategoryGap: '20%', emphasis: { focus: 'series', blurScope: 'coordinateSystem' }, blur: { itemStyle: { opacity: 0.12 } }, itemStyle: { color: colors.Minutes }, data: setsM.curr });
-        list.push({ id: 'mnPrev', name: 'Minutes -24h', type: 'bar', xAxisIndex: 2, yAxisIndex: 2, large: true, barWidth: bw, barGap: '4%', barCategoryGap: '20%', itemStyle: { color: 'rgba(140,148,156,0.85)' }, data: setsM.prev, emphasis: { disabled: true }, tooltip: { show: false }, silent: true, blur: { itemStyle: { opacity: 0.4 } } });
-        list.push({ id: 'ac', name: 'ACD', type: 'bar', xAxisIndex: 3, yAxisIndex: 3, large: true, barWidth: bw, barGap: '4%', barCategoryGap: '20%', emphasis: { focus: 'series', blurScope: 'coordinateSystem' }, blur: { itemStyle: { opacity: 0.12 } }, itemStyle: { color: colors.ACD }, data: setsC.curr });
-        list.push({ id: 'acPrev', name: 'ACD -24h', type: 'bar', xAxisIndex: 3, yAxisIndex: 3, large: true, barWidth: bw, barGap: '4%', barCategoryGap: '20%', itemStyle: { color: 'rgba(140,148,156,0.85)' }, data: setsC.prev, emphasis: { disabled: true }, tooltip: { show: false }, silent: true, blur: { itemStyle: { opacity: 0.4 } } });
-        // overlay (single call)
-        try {
-          const labelsASR = (opts && opts.labels && opts.labels.ASR) || {};
-          const labelsACD = (opts && opts.labels && opts.labels.ACD) || {};
-          const tsList = Array.isArray(centers) && centers.length ? centers : (Array.isArray(setsA.curr) ? setsA.curr.map(p => p[0]) : []);
-          list.push(createLabelOverlaySeries({ timestamps: tsList, labelsMap: labelsASR, gridIndex: 1, xAxisIndex: 1, yAxisIndex: 1 }));
-          list.push(createLabelOverlaySeries({ timestamps: tsList, labelsMap: labelsACD, gridIndex: 3, xAxisIndex: 3, yAxisIndex: 3 }));
-        } catch (_) { /* ignore overlay errors */ }
-        // preview
-        const previewData = setsT.curr;
-        list.push({ id: 'preview', name: 'Preview', type: 'bar', xAxisIndex: 4, yAxisIndex: 4, large: true, silent: true, barWidth: Math.max(1, Math.floor(bw * 0.66)), itemStyle: { color: '#4f86ff', opacity: 0.45 }, emphasis: { disabled: true }, tooltip: { show: false }, data: previewData });
-        return list;
-      })(),
+      series: buildBarSeries({ setsT, setsA, setsM, setsC, centers, interval: opts.interval, stepMs: step, labels: opts.labels, colorMap: opts.colorMap }),
       graphic: graphicLabels
     };
+    if (!showLabels) {
+      try {
+        out.series = Array.isArray(out.series) ? out.series.filter(s => !(s && s.type === 'custom' && s.name === 'LabelsOverlay')) : out.series;
+      } catch(_) {/* keep series */}
+    }
+    return out;
   };
 
   const option = buildOption(base, data);
-  chart.setOption(option, { notMerge: true, lazyUpdate: true });
+  setOptionWithZoomSync(chart, option, { onAfterSet: () => {
+    try { requestAnimationFrame(() => setTimeout(applyDynamicBarWidth, 0)); } catch (_) {}
+  } });
+
+  // react to Suppliers checkbox toggle: re-render overlay labels visibility
+  try {
+    unsubscribeToggle = subscribe('charts:bar:perProviderChanged', () => {
+      try { const next = buildOption(base, data); setOptionWithZoomSync(chart, next); } catch(_) {}
+    });
+  } catch(_) { /* ignore subscription errors */ }
 
   const computeStepWidthPx = () => {
     try {
@@ -315,70 +239,9 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
       }
     }
   };
-  // apply once after initial render
-  try { requestAnimationFrame(() => setTimeout(applyDynamicBarWidth, 0)); } catch (_) {
-    // Ignore animation frame errors
-  }
+  // move logic: initial bar width adjustment scheduled in onAfterSet above
 
-  const getZoomRange = () => {
-    try {
-      const model = chart.getModel();
-      const xa = model && model.getComponent('xAxis', 0);
-      const scale = xa && xa.axis && xa.axis.scale;
-      if (scale && typeof scale.getExtent === 'function') {
-        const ext = scale.getExtent();
-        const fromTs = Math.floor(ext[0]);
-        const toTs = Math.ceil(ext[1]);
-        if (Number.isFinite(fromTs) && Number.isFinite(toTs) && toTs > fromTs) return { fromTs, toTs };
-      }
-    } catch (_) {
-      // Ignore zoom range extraction errors
-    }
-    return null;
-  };
-
-  chart.on('dataZoom', () => {
-    const zr = getZoomRange();
-    try {
-      if (zr) {
-        window.__chartsZoomRange = zr;
-        // adjust bar width to current zoom scale
-        try { applyDynamicBarWidth(); } catch (_) {
-          // Ignore bar width adjustment errors
-        }
-        try {
-          const diffDays = (zr.toTs - zr.fromTs) / (24 * 3600e3);
-          const curInt = (typeof window !== 'undefined' && window.__chartsCurrentInterval) ? String(window.__chartsCurrentInterval) : '5m';
-          if (curInt === '5m' && Number.isFinite(diffDays) && diffDays > 5.0001) {
-            const now = Date.now();
-            const last = window.__zoomPolicyLastSwitchTs || 0;
-            if (now - last > 600) {
-              window.__zoomPolicyLastSwitchTs = now;
-              try { toast('5-minute interval is available only for ranges up to 5 days. Switching to 1 hour.', { type: 'warning', duration: 3500 }); } catch (_) {
-                // Toast notification might fail if UI not ready
-              }
-              try { window.__chartsCurrentInterval = '1h'; } catch (_) {
-                // Ignore global variable update errors
-              }
-              try {
-                import('../state/eventBus.js').then(({ publish }) => {
-                  try { publish('charts:intervalChanged', { interval: '1h' }); } catch (_) {
-                    // Event bus might not be ready
-                  }
-                }).catch(() => {});
-              } catch (_) {
-                // Module import might fail
-              }
-            }
-          }
-        } catch (_) {
-          // Ignore zoom policy errors
-        }
-      }
-    } catch (_) {
-      // Ignore dataZoom errors
-    }
-  });
+  // remove legacy dataZoom handler (handled by renderer)
 
   // Re-apply bar width after any setOption finishes (resize, update, etc.)
   try { chart.on('finished', applyDynamicBarWidth); } catch (_) {
@@ -397,22 +260,11 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
       base.asrSeries = Array.isArray(merged.asrSeries) ? merged.asrSeries : base.asrSeries;
       base.minutesSeries = Array.isArray(merged.minutesSeries) ? merged.minutesSeries : base.minutesSeries;
       base.acdSeries = Array.isArray(merged.acdSeries) ? merged.acdSeries : base.acdSeries;
-      base.perProvider = !!merged.perProvider;
-      base.providerRows = Array.isArray(merged.providerRows) ? merged.providerRows : base.providerRows;
     } catch (_) {
       // Ignore base update errors
     }
     const next = buildOption(merged, newData);
-    chart.setOption({
-      xAxis: next.xAxis,
-      yAxis: next.yAxis,
-      grid: next.grid,
-      series: next.series,
-      graphic: next.graphic || []
-    }, { replaceMerge: ['grid','xAxis','yAxis','series','graphic'], lazyUpdate: true });
-    try { applyDynamicBarWidth(); } catch (_) {
-      // Ignore bar width update errors
-    }
+    setOptionWithZoomSync(chart, next, { onAfterSet: () => { try { applyDynamicBarWidth(); } catch (_) {} } });
     try {
       const baseLo = Number(merged.fromTs);
       const baseHi = Number(merged.toTs);
@@ -422,21 +274,14 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
       let ev = Number.isFinite(zr?.toTs) ? clamp(Number(zr.toTs)) : baseHi;
       if (Number.isFinite(sv) && Number.isFinite(ev) && ev > sv) {
         chart.setOption({ dataZoom: [ { startValue: sv, endValue: ev }, { startValue: sv, endValue: ev } ] }, { lazyUpdate: true });
-        try {
-          const dz = (chart.getOption()?.dataZoom) || [];
-          dz.forEach((_, idx) => {
-            chart.dispatchAction({ type: 'dataZoom', dataZoomIndex: idx, startValue: sv, endValue: ev });
-          });
-        } catch (_) {
-          // Ignore dispatch action errors
-        }
       }
     } catch (_) {
       // Ignore zoom update errors
     }
   }
 
-  function dispose() { try { chart.dispose(); } catch (_) {
+  function dispose() { try { if (typeof unsubscribeToggle === 'function') unsubscribeToggle(); } catch(_) {}
+    try { chart.dispose(); } catch (_) {
     // Chart might already be disposed
   } }
   function getInstance() { return chart; }
