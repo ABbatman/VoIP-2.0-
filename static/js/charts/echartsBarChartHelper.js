@@ -28,6 +28,59 @@ function parseRowTs(raw) {
   return NaN;
 }
 
+// Lightweight overlay: draw labels as text only using existing axes
+// values come from backend without any calculations here
+export function createLabelOverlaySeries({ timestamps, labelsMap, gridIndex, xAxisIndex, yAxisIndex }) {
+  // move label logic: series builder only
+  const dataTs = Array.isArray(timestamps)
+    ? Array.from(new Set(timestamps.map(t => Number(t)).filter(Number.isFinite))).sort((a,b) => a - b)
+    : [];
+  return {
+    id: `labels_overlay_${xAxisIndex}_${yAxisIndex}`,
+    name: 'LabelsOverlay',
+    type: 'custom',
+    coordinateSystem: 'cartesian2d',
+    gridIndex: Number.isFinite(gridIndex) ? Number(gridIndex) : undefined,
+    xAxisIndex: Number(xAxisIndex),
+    yAxisIndex: Number(yAxisIndex),
+    silent: true,
+    tooltip: { show: false },
+    z: 100,
+    zlevel: 100,
+    renderItem: (params, api) => {
+      // layout labels: sort asc, stack vertically, no overlap math
+      const ts = api.value(0);
+      let values = (labelsMap && (labelsMap[ts] || labelsMap[String(ts)] || labelsMap[Math.floor(Number(ts)/1000)] || labelsMap[String(Math.floor(Number(ts)/1000))])) || [];
+      if (!Array.isArray(values) || values.length === 0) return null;
+      values = values.map(v => Number(v)).filter(Number.isFinite).sort((a,b) => a - b);
+      const children = [];
+      for (let i = 0; i < values.length; i++) {
+        const v = values[i];
+        const c = api.coord([ts, v]);
+        const x = Math.round(c[0]);
+        const y = Math.round(c[1] - i * 14); // simple vertical stacking
+        children.push({
+          type: 'text',
+          style: {
+            text: v.toFixed(1),
+            x,
+            y,
+            align: 'center',
+            verticalAlign: 'middle',
+            fontSize: 11,
+            fontWeight: 600,
+            fill: '#fff',
+          },
+          silent: true,
+        });
+      }
+      if (!children.length) return null;
+      return { type: 'group', children };
+    },
+    data: dataTs.map(ts => [ts])
+  };
+}
+
 // Build labels series for ASR and ACD bar panels from backend labels
 // opts.labels = { ASR: { tsSec: [vals...] }, ACD: { tsSec: [vals...] } }
 export function buildBarLabelsSeries({ opts, setsA, setsC, stepMs, asrAxis = { x: 1, y: 1 }, acdAxis = { x: 3, y: 3 } }) {
