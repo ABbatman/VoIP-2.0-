@@ -325,7 +325,9 @@ export async function initD3Dashboard() {
         });
         const mergedOptions = { ...shapedOptions, stepMs: step1h, interval: '1h',
           perProvider: !!(typeof window !== 'undefined' && window.__chartsBarPerProvider),
-          providerRows: hourRows || [] };
+          providerRows: hourRows || [],
+          labels: (md && md.labels) || {} // use backend labels
+        };
         renderer(m, shapedData, mergedOptions);
         return;
       }
@@ -388,7 +390,9 @@ export async function initD3Dashboard() {
       };
       const rawOptions = { height: fixedH, fromTs: baseFromTs, toTs: baseToTs, noDefined: true, stepMs, interval: currentInterval, noFiveMinData: false,
         perProvider: !!(typeof window !== 'undefined' && window.__chartsBarPerProvider),
-        providerRows: rows || [] };
+        providerRows: rows || [],
+        labels: (md && md.labels) || {} // use backend labels
+      };
       renderer(m, rawData, rawOptions);
     } else {
       // Thin-facade: delegate shaping to the engine (binning)
@@ -401,7 +405,9 @@ export async function initD3Dashboard() {
       });
       const mergedOptions = { ...shapedOptions, stepMs, interval: currentInterval,
         perProvider: !!(typeof window !== 'undefined' && window.__chartsBarPerProvider),
-        providerRows: rows || [] };
+        providerRows: rows || [],
+        labels: (md && md.labels) || {} // use backend labels
+      };
       renderer(m, shapedData, mergedOptions);
     }
     // Post-render: once visible, reflow and adjust height if it changed, then re-render once

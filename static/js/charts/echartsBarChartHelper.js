@@ -28,6 +28,93 @@ function parseRowTs(raw) {
   return NaN;
 }
 
+// Build labels series for ASR and ACD bar panels from backend labels
+// opts.labels = { ASR: { tsSec: [vals...] }, ACD: { tsSec: [vals...] } }
+export function buildBarLabelsSeries({ opts, setsA, setsC, stepMs, asrAxis = { x: 1, y: 1 }, acdAxis = { x: 3, y: 3 } }) {
+  // move label logic to helper
+  const list = [];
+  try {
+    const labelsASR = (opts && opts.labels && opts.labels.ASR) || {};
+    const labelsACD = (opts && opts.labels && opts.labels.ACD) || {};
+    const totalASRMap = new Map((setsA && setsA.curr) || []);
+    const totalACDMap = new Map((setsC && setsC.curr) || []);
+    if (labelsASR && Object.keys(labelsASR).length) {
+      list.push(makeBackendLabelsSeries('ASR__labels', Number(asrAxis.x ?? 1), Number(asrAxis.y ?? 1), totalASRMap, labelsASR, Number(stepMs)));
+    }
+    if (labelsACD && Object.keys(labelsACD).length) {
+      list.push(makeBackendLabelsSeries('ACD__labels', Number(acdAxis.x ?? 3), Number(acdAxis.y ?? 3), totalACDMap, labelsACD, Number(stepMs)));
+    }
+  } catch(_) { /* safe no-op */ }
+  return list;
+}
+
+// Build ECharts custom-series from backend-provided labels (no arithmetic)
+// - values already rounded/deduped on backend
+// - here we only sort, layout, prevent overlap, and render
+export function makeBackendLabelsSeries(id, xAxisIndex, yAxisIndex, totalsMap, labelsMap, stepMs) {
+  // prepare data points [ts(ms), value]
+  const seriesData = [];
+  try {
+    const keys = Object.keys(labelsMap || {}).sort((a, b) => Number(a) - Number(b)); // sort by ts asc
+    for (const k of keys) {
+      const ts = Number(k) * 1000; // seconds -> ms
+      const vals = Array.isArray(labelsMap[k]) ? labelsMap[k].slice().sort((a, b) => a - b) : [];
+      for (const v of vals) seriesData.push([ts, Number(v)]);
+    }
+  } catch(_) { /* safe no-op */ }
+  const layoutMap = new Map(); // ts -> used ranges
+  return {
+    id,
+    name: id,
+    type: 'custom',
+    coordinateSystem: 'cartesian2d',
+    xAxisIndex,
+    yAxisIndex,
+    silent: true,
+    tooltip: { show: false },
+    z: 100,
+    zlevel: 100,
+    renderItem: (params, api) => {
+      // layout labels (no value math)
+      const ts = api.value(0);
+      const val = api.value(1);
+      const total = Number(totalsMap?.get?.(ts) || 0);
+      if (!Number.isFinite(ts) || !Number.isFinite(val) || !(total > 0)) return null;
+      const half = Math.floor(stepMs / 2);
+      const p0 = api.coord([ts - half, 0]);
+      const p1 = api.coord([ts + half, 0]);
+      const base = api.coord([ts, 0])[1];
+      const topY = api.coord([ts, total])[1];
+      const fullW = Math.abs(p1[0] - p0[0]);
+      const height = Math.abs(base - topY);
+      const barW = Math.max(2, Math.round(fullW * 0.32));
+      const xStripe = Math.round((p0[0] + p1[0]) / 2 - barW / 2);
+      const yPix = api.coord([ts, val])[1];
+      const pillH = Math.max(8, Math.min(14, Math.round(height * 0.12)));
+      // inside the bar bounds
+      const minY = Math.min(base, topY);
+      const maxY = Math.max(base, topY);
+      let py0 = Math.max(minY, Math.min(maxY - pillH, Math.round(yPix - pillH / 2)));
+      // prevent overlap by stacking vertically per ts
+      const arr = layoutMap.get(ts) || [];
+      const overlaps = (a,b,c,d) => !(d <= a || c >= b);
+      let gy = py0; let guard = 0;
+      while (arr.some(([s,e]) => overlaps(s,e,gy,gy+pillH)) && guard++ < 50) {
+        const next = Math.min(maxY - pillH, gy + pillH + 2);
+        if (next === gy) break;
+        gy = next;
+      }
+      arr.push([gy, gy + pillH]);
+      layoutMap.set(ts, arr);
+      // unified pill style
+      const rect = { type: 'rect', shape: { x: xStripe, y: gy, width: barW, height: pillH, r: Math.round(pillH/2) }, style: { fill: '#4f86ff', opacity: 0.9, shadowBlur: 6, shadowColor: 'rgba(0,0,0,0.18)' }, silent: true };
+      const text = { type: 'text', style: { text: String(val), x: Math.round(xStripe + barW/2), y: Math.round(gy + pillH/2), fill: '#ffffff', font: '600 10px system-ui, -apple-system, Segoe UI, Roboto, sans-serif', align: 'center', verticalAlign: 'middle' }, silent: true };
+      return { type: 'group', children: [rect, text] };
+    },
+    data: seriesData
+  };
+}
+
 function detectDestinationKey(rows) {
   if (!Array.isArray(rows) || rows.length === 0) return null;
   // prefer well-known destination-like keys
@@ -406,7 +493,81 @@ export function makeStripeOverlay(id, xAxisIndex, yAxisIndex, totalsPairs, stack
   // Precompute keys and rows for tooltip
   const allRows = Array.isArray(rawRows) ? rawRows : [];
   const provKey = String(providerMeta?.providerKey || '').trim();
-  const destKey = detectDestinationKey(allRows);
+  // remove legacy marker logic (unused)
+
+  // merge cache for labels per timestamp
+  const __mergeCache = new Map();
+  const __mergeDrawn = new Map();
+  // stack layout caches (separate for today/yesterday)
+  const __layoutToday = new Map();
+  const __layoutYest = new Map();
+  function __allocY(layoutMap, key, proposedGy, h, minY, maxY) {
+    // stack labels vertically if crowded
+    const arr = layoutMap.get(key) || [];
+    let gy = Math.max(minY, Math.min(maxY - h, proposedGy));
+    const pad = 2;
+    const overlaps = (a,b,c,d) => !(d <= a || c >= b);
+    // push up until no overlap; if overflow, push down
+    let triedDown = false;
+    let guard = 0;
+    while (arr.some(([s,e]) => overlaps(s, e, gy, gy + h)) && guard++ < 50) {
+      const nextUp = Math.min(maxY - h, gy + h + pad);
+      if (nextUp === gy) {
+        if (triedDown) break;
+        triedDown = true;
+        gy = Math.max(minY, proposedGy - (h + pad));
+      } else {
+        gy = nextUp;
+      }
+    }
+    arr.push([gy, gy + h]);
+    layoutMap.set(key, arr);
+    return gy;
+  }
+  function __computeMergeGroups(ts) {
+    const k = `${metricName}|${ts}`;
+    if (__mergeCache.has(k)) return __mergeCache.get(k);
+    const sums = new Map();
+    const cnts = new Map();
+    for (const r of allRows) {
+      if (!r || typeof r !== 'object') continue;
+      const name = String(r[provKey] || '').trim();
+      if (!name) continue;
+      const rt = parseRowTs(r.time || r.Time || r.timestamp || r.Timestamp || r.slot || r.Slot || r.hour || r.Hour || r.datetime || r.DateTime || r.ts || r.TS || r.period || r.Period || r.start || r.Start || r.start_time || r.StartTime);
+      if (!Number.isFinite(rt)) continue;
+      const bucket = Math.floor(rt / stepMs) * stepMs + Math.floor(stepMs / 2);
+      if (bucket !== ts) continue;
+      let v = null;
+      if (metricName === 'ASR') { const t = Number(r.ASR); if (Number.isFinite(t)) v = t; }
+      else if (metricName === 'ACD') { const t = Number(r.ACD); if (Number.isFinite(t)) v = t; }
+      if (v == null) continue;
+      sums.set(name, (sums.get(name) || 0) + v);
+      cnts.set(name, (cnts.get(name) || 0) + 1);
+    }
+    const entries = [];
+    for (const [name, s] of sums.entries()) {
+      const c = Number(cnts.get(name) || 0);
+      if (!c) continue;
+      entries.push([name, s / c]);
+    }
+    entries.sort((a,b) => a[1] - b[1]);
+    const groups = [];
+    let cur = [];
+    for (const [name, val] of entries) {
+      if (!cur.length) { cur.push([name, val]); continue; }
+      const lastVal = cur[cur.length - 1][1];
+      // merge labels if abs(value1 - value2) <= 0.1
+      if (Math.abs(val - lastVal) <= 0.1) { cur.push([name, val]); }
+      else { if (cur.length > 1) groups.push(cur.slice()); cur = [[name, val]]; }
+    }
+    if (cur.length > 1) groups.push(cur);
+    const result = groups.map(g => ({
+      provs: g.map(it => it[0]).sort(),
+      avg: g.reduce((acc,it)=>acc+it[1],0)/g.length
+    }));
+    __mergeCache.set(k, result);
+    return result;
+  }
 
   const makeFormatter = (supplierName) => makeBarOverlayTooltipFormatter({
     metricName,
@@ -422,6 +583,7 @@ export function makeStripeOverlay(id, xAxisIndex, yAxisIndex, totalsPairs, stack
     const suggested = providerMeta?.colors?.[prov] || '#ff7f0e';
     const color = getStableColor(prov, suggested);
     const supplierName = prov; // capture for closures
+    // keep only modern label rendering
     series.push({
       id: `${id}__${prov}`,
       name: metricName,
@@ -437,6 +599,8 @@ export function makeStripeOverlay(id, xAxisIndex, yAxisIndex, totalsPairs, stack
       zlevel: 100,
       renderItem: (params, api) => {
         if (!active) return null;
+        // show labels only for ACD and ASR (today + yesterday)
+        if (!(metricName === 'ASR' || metricName === 'ACD')) return null;
         const x = api.value(0);
         const total = api.value(1);
         const y0 = api.value(2);
@@ -465,7 +629,8 @@ export function makeStripeOverlay(id, xAxisIndex, yAxisIndex, totalsPairs, stack
         const yy1 = api.coord([x, y1])[1];
         let yCenter = Math.round((yy0 + yy1) / 2);
 
-        // if supplier metric > bar average -> place above bar
+        // if supplier metric > bar average -> keep label inside (top-center)
+        let supValNow = null;
         try {
           const rows = Array.isArray(allRows) ? allRows : [];
           const pKey = String(provKey || '').trim();
@@ -483,44 +648,79 @@ export function makeStripeOverlay(id, xAxisIndex, yAxisIndex, totalsPairs, stack
               else if (metricName === 'ASR') { const v = Number(r.ASR); if (Number.isFinite(v)) { sum += v; cnt += 1; } }
               else if (metricName === 'ACD') { const v = Number(r.ACD); if (Number.isFinite(v)) { sum += v; cnt += 1; } }
             }
-            const supVal = (metricName === 'ASR' || metricName === 'ACD') ? (cnt ? (sum / cnt) : 0) : sum;
-            if (Number.isFinite(supVal) && supVal > Number(total)) {
-              // place stripe just above bar top
-              yCenter = Math.round(topY - stripeH - 4);
-              // mark for skipping inside-bar clamp
-              params.__placeAbove = true;
+            supValNow = (metricName === 'ASR' || metricName === 'ACD') ? (cnt ? (sum / cnt) : 0) : sum;
+            if (Number.isFinite(supValNow) && supValNow > Number(total)) {
+              // label stays within its own bar bounds
+              yCenter = Math.round(topY + Math.max(1, stripeH / 2) + 2);
             }
           }
         } catch(_) {}
 
-        let yStripe = yCenter - Math.round(stripeH / 2);
-        const minY = Math.min(base, topY);
-        const maxY = Math.max(base, topY);
-        // clamp only when not placed above
-        if (!params.__placeAbove) {
-          if (Number.isFinite(minY) && yStripe < minY) yStripe = minY;
-          if (Number.isFinite(maxY) && (yStripe + stripeH) > maxY) yStripe = Math.max(minY, maxY - stripeH);
-        }
-        const style = api.style({ opacity: 0.95, stroke: '#ffffff', lineWidth: 0.6, fill: color });
-
         // Build children: current stripe + optional yesterday marker (dimmed)
         const children = [];
-        children.push({ type: 'rect', shape: { x: xStripe, y: yStripe, width: barW, height: stripeH }, style });
+        // remove legacy marker logic (unused)
 
         // show labels only for ACD and ASR (today + yesterday)
         if (metricName === 'ASR' || metricName === 'ACD') {
-          // custom modern markers (capsule or rounded rectangle)
+          // apply modern marker style for all markers
           try {
             const segVal = Math.max(0, Number(y1) - Number(y0));
-            if (Number.isFinite(segVal) && segVal > 0) {
-              const pillW = barW;
-              const pillH = Math.max(stripeH + 2, Math.min(14, Math.round(stripeH * 1.25)));
-              const px = Math.round(xStripe);
-              const py = Math.round(yCenter - pillH / 2);
-              const bg = { fill: color, opacity: 0.9, shadowBlur: 6, shadowColor: 'rgba(0,0,0,0.18)' };
-              children.push({ type: 'rect', shape: { x: px, y: py, width: pillW, height: pillH, r: Math.round(pillH / 2) }, style: bg, silent: true });
-              const lbl = (segVal >= 10 ? segVal.toFixed(0) : segVal.toFixed(1));
-              children.push({ type: 'text', style: { text: lbl, x: Math.round(px + pillW / 2), y: Math.round(py + pillH / 2), fill: '#ffffff', font: '600 10px system-ui, -apple-system, Segoe UI, Roboto, sans-serif', align: 'center', verticalAlign: 'middle', shadowBlur: 0 }, silent: true });
+            const labelVal = Number.isFinite(supValNow) ? supValNow : segVal;
+            if (Number.isFinite(labelVal) && labelVal > 0) {
+              // merge labels if abs(value1 - value2) <= 0.1
+              let skipIndividual = false;
+              try {
+                const groups = __computeMergeGroups(x) || [];
+                const grp = groups.find(g => Array.isArray(g.provs) && g.provs.includes(supplierName));
+                if (grp && grp.provs.length > 1) {
+                  const gKey = `${x}|${grp.provs.join('|')}`;
+                  const already = !!__mergeDrawn.get(gKey);
+                  if (!already) {
+                    const pillW = barW;
+                    const pillH = Math.max(stripeH + 2, Math.min(14, Math.round(stripeH * 1.25)));
+                    // keep label inside its own bar bounds (today on blue bar)
+                    const px = Math.round(xStripe);
+                    const yPixM = api.coord([x, grp.avg])[1];
+                    // label stays within its own bar bounds
+                    const minY = Math.min(base, topY);
+                    const maxY = Math.max(base, topY);
+                    let py0 = Math.round(yPixM - pillH / 2);
+                    py0 = Math.max(minY, Math.min(maxY - pillH, py0));
+                    // sort labels by value asc (small at bottom, bigger above)
+                    const py = __allocY(__layoutToday, x, py0, pillH, minY, maxY);
+                    // apply modern marker style for all markers (today uses main color)
+                    const bgN = { fill: color, opacity: 0.9, shadowBlur: 6, shadowColor: 'rgba(0,0,0,0.18)' };
+                    children.push({ type: 'rect', shape: { x: px, y: py, width: pillW, height: pillH, r: Math.round(pillH / 2) }, style: bgN, silent: true });
+                    // label value = real data value (rounded to 1 decimal)
+                    const lblM = grp.avg.toFixed(1);
+                    children.push({ type: 'text', style: { text: lblM, x: Math.round(px + pillW / 2), y: Math.round(py + pillH / 2), fill: '#ffffff', font: '600 10px system-ui, -apple-system, Segoe UI, Roboto, sans-serif', align: 'center', verticalAlign: 'middle', shadowBlur: 0 }, silent: true });
+                    __mergeDrawn.set(gKey, true);
+                  }
+                  // skip individual label if supplier included in merged label
+                  skipIndividual = true;
+                }
+              } catch(_) {}
+
+              if (!skipIndividual) {
+                const pillW = barW;
+                const pillH = Math.max(stripeH + 2, Math.min(14, Math.round(stripeH * 1.25)));
+                // keep label inside its own bar bounds (today on blue bar)
+                const px = Math.round(xStripe);
+                // use real value position for ordering
+                const yPixL = api.coord([x, labelVal])[1];
+                // label stays within its own bar bounds
+                const minY = Math.min(base, topY);
+                const maxY = Math.max(base, topY);
+                let py0 = Math.round(yPixL - pillH / 2);
+                py0 = Math.max(minY, Math.min(maxY - pillH, py0));
+                // sort labels by value asc (small at bottom, bigger above)
+                const py = __allocY(__layoutToday, x, py0, pillH, minY, maxY);
+                const bg = { fill: color, opacity: 0.9, shadowBlur: 6, shadowColor: 'rgba(0,0,0,0.18)' };
+                children.push({ type: 'rect', shape: { x: px, y: py, width: pillW, height: pillH, r: Math.round(pillH / 2) }, style: bg, silent: true });
+                // label value = real data value (rounded to 1 decimal)
+                const lbl = labelVal.toFixed(1);
+                children.push({ type: 'text', style: { text: lbl, x: Math.round(px + pillW / 2), y: Math.round(py + pillH / 2), fill: '#ffffff', font: '600 10px system-ui, -apple-system, Segoe UI, Roboto, sans-serif', align: 'center', verticalAlign: 'middle', shadowBlur: 0 }, silent: true });
+              }
             }
           } catch(_) {}
         }
@@ -548,31 +748,62 @@ export function makeStripeOverlay(id, xAxisIndex, yAxisIndex, totalsPairs, stack
             const valY = (metricName === 'ASR' || metricName === 'ACD') ? (cntY ? (sumY / cntY) : null) : sumY;
             if (Number.isFinite(valY)) {
               const yPix = api.coord([x, valY])[1];
-              // same marker shape as main series
-              // dimmed style for yesterday markers
-              const styleY = { fill: color, opacity: 0.55, stroke: null, shadowBlur: 4, shadowColor: 'rgba(0,0,0,0.12)' };
               // position marker in center of grey bar
               const gx = Math.round(binCenter + (gapPx / 2));
-              const gy0 = Math.round(yPix - Math.max(2, stripeH) / 2);
-              const pillH = Math.max(stripeH + 2, Math.min(14, Math.round(stripeH * 1.25)));
-              const gy = Math.round(yPix - pillH / 2);
-              children.push({ type: 'rect', shape: { x: gx, y: gy, width: barW, height: pillH, r: Math.round(pillH / 2) }, style: styleY, silent: true });
-              const lblY = (valY >= 10 ? valY.toFixed(0) : valY.toFixed(1));
-              children.push({ type: 'text', style: { text: lblY, x: Math.round(gx + barW / 2), y: Math.round(gy + pillH / 2), fill: '#ffffff', font: '600 10px system-ui, -apple-system, Segoe UI, Roboto, sans-serif', align: 'center', verticalAlign: 'middle' }, silent: true });
+              // merge labels if abs(value1 - value2) <= 0.1
+              let skipY = false;
+              try {
+                const groupsY = __computeMergeGroups(tsY) || [];
+                const grpY = groupsY.find(g => Array.isArray(g.provs) && g.provs.includes(supplierName));
+                if (grpY && grpY.provs.length > 1) {
+                  const gKeyY = `Y|${tsY}|${grpY.provs.join('|')}`;
+                  const alreadyY = !!__mergeDrawn.get(gKeyY);
+                  if (!alreadyY) {
+                    const yPixM = api.coord([x, grpY.avg])[1];
+                    const pillH = Math.max(stripeH + 2, Math.min(14, Math.round(stripeH * 1.25)));
+                    // label stays within its own bar bounds
+                    const minYGm = Math.min(base, yPixM);
+                    const maxYGm = Math.max(base, yPixM);
+                    let gy0M = Math.round(yPixM - pillH / 2);
+                    gy0M = Math.max(minYGm, Math.min(maxYGm - pillH, gy0M));
+                    // sort labels by value asc (small at bottom, bigger above)
+                    const gyM = __allocY(__layoutYest, x, gy0M, pillH, minYGm, maxYGm);
+                    // dimmed style for yesterday markers (neutral)
+                    const styleYM = { fill: 'rgba(140,148,156,0.7)', opacity: 1, stroke: null, shadowBlur: 4, shadowColor: 'rgba(0,0,0,0.12)' };
+                    children.push({ type: 'rect', shape: { x: gx, y: gyM, width: barW, height: pillH, r: Math.round(pillH / 2) }, style: styleYM, silent: true });
+                    // label value = real data value (rounded to 1 decimal)
+                    const lblYM = grpY.avg.toFixed(1);
+                    children.push({ type: 'text', style: { text: lblYM, x: Math.round(gx + barW / 2), y: Math.round(gyM + pillH / 2), fill: '#ffffff', font: '600 10px system-ui, -apple-system, Segoe UI, Roboto, sans-serif', align: 'center', verticalAlign: 'middle' }, silent: true });
+                    __mergeDrawn.set(gKeyY, true);
+                  }
+                  // skip individual label if supplier included in merged label
+                  skipY = true;
+                }
+              } catch(_) {}
+
+              if (!skipY) {
+                // same marker shape as main series
+                // dimmed style for yesterday markers
+                const styleY = { fill: color, opacity: 0.55, stroke: null, shadowBlur: 4, shadowColor: 'rgba(0,0,0,0.12)' };
+                const pillH = Math.max(stripeH + 2, Math.min(14, Math.round(stripeH * 1.25)));
+                // label stays within its own bar bounds
+                const minYG = Math.min(base, yPix);
+                const maxYG = Math.max(base, yPix);
+                let gy0 = Math.round(yPix - pillH / 2);
+                gy0 = Math.max(minYG, Math.min(maxYG - pillH, gy0));
+                // sort labels by value asc (small at bottom, bigger above)
+                const gy = __allocY(__layoutYest, x, gy0, pillH, minYG, maxYG);
+                children.push({ type: 'rect', shape: { x: gx, y: gy, width: barW, height: pillH, r: Math.round(pillH / 2) }, style: styleY, silent: true });
+                // label value = real data value (rounded to 1 decimal)
+                const lblY = valY.toFixed(1);
+                children.push({ type: 'text', style: { text: lblY, x: Math.round(gx + barW / 2), y: Math.round(gy + pillH / 2), fill: '#ffffff', font: '600 10px system-ui, -apple-system, Segoe UI, Roboto, sans-serif', align: 'center', verticalAlign: 'middle' }, silent: true });
+              }
             }
           }
         } catch(_) {}
 
         // add modern group separation between bar clusters
-        try {
-          const firstProv = (providerMeta && Array.isArray(providerMeta.providers) && providerMeta.providers.length) ? providerMeta.providers[0] : supplierName;
-          if (supplierName === firstProv) {
-            const sepX = Math.round(p1[0] - 1);
-            const sepY = Math.min(base, topY);
-            const sepH = Math.max(2, Math.abs(base - topY));
-            children.push({ type: 'rect', shape: { x: sepX, y: sepY, width: 2, height: sepH }, style: { fill: 'rgba(0,0,0,0.06)' }, silent: true });
-          }
-        } catch(_) {}
+        // removed per request: no grey markers between bars
 
         return { type: 'group', children };
       },

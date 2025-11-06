@@ -5,6 +5,7 @@ from typing import Optional, Dict, Any, Tuple, List
 
 from app.utils.metrics import calculate_metrics
 from app.utils.grouped import calculate_grouped_metrics, calculate_hourly_metrics, calculate_5min_metrics
+from app.services.labels_service import build_labels  # use backend labels
 from app.utils.logger import log_info
 from app.repositories.metrics_repository import MetricsRepository
 
@@ -88,6 +89,18 @@ class MetricsService:
             extra_fields=("time",),
         )
 
+        # Build labels (backend computes; JS only lays out)
+        try:
+            if g == "5m":
+                labels = build_labels(five_today or [], granularity="5m")
+            elif g == "1h":
+                labels = build_labels(hourly_today or [], granularity="1h")
+            else:
+                # default to 1h when both requested
+                labels = build_labels(hourly_today or [], granularity="1h")
+        except Exception:
+            labels = {}
+
         return {
             "today_metrics": today_metrics,
             "yesterday_metrics": yesterday_metrics,
@@ -95,6 +108,7 @@ class MetricsService:
             "peer_rows": peer_rows,
             "hourly_rows": hourly_rows,
             "five_min_rows": five_min_rows,
+            "labels": labels,  # additive field
         }
 
     async def _fetch_comparison_data(

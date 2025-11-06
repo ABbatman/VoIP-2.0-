@@ -2,7 +2,7 @@
 import * as echarts from 'echarts';
 import { toast } from '../ui/notify.js';
 import { makeBarLineLikeTooltip } from './tooltip.js';
-import { buildProviderStacks, makeStripeOverlay } from './echartsBarChartHelper.js';
+import { buildProviderStacks, buildBarLabelsSeries } from './echartsBarChartHelper.js'; // move label logic to helper
 
 function ensureContainer(container) {
   if (typeof container === 'string') {
@@ -66,6 +66,7 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
     // provider stacking
     perProvider: !!options.perProvider,
     providerRows: Array.isArray(options.providerRows) ? options.providerRows : [],
+    labels: (options && typeof options.labels === 'object') ? options.labels : {}, // use backend labels
   };
   try {
     // reset zoom if filters range expanded
@@ -310,23 +311,8 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
 
           list.push({ id: 'as', name: 'ASR', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, large: true, barWidth: bw, barGap: '4%', barCategoryGap: '20%', emphasis: { focus: 'series', blurScope: 'coordinateSystem' }, blur: { itemStyle: { opacity: 0.12 } }, itemStyle: { color: colors.ASR }, data: provider.totals.ASR });
           list.push({ id: 'asPrev', name: 'ASR -24h', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, large: true, barWidth: bw, barGap: '4%', barCategoryGap: '20%', itemStyle: { color: 'rgba(140,148,156,0.85)' }, data: setsA.prev, emphasis: { disabled: true }, tooltip: { show: false }, silent: true, blur: { itemStyle: { opacity: 0.4 } } });
-          {
-            const _asOver = makeStripeOverlay(
-              'asOverlay',
-              1,
-              1,
-              (provider.totals && provider.totals.ASR && provider.totals.ASR.some(p => Number(p && p[1]) > 0)) ? provider.totals.ASR : setsA.curr,
-              (provider.stacks && provider.stacks.ASR && provider.stacks.ASR.curr && Object.keys(provider.stacks.ASR.curr).some(k => (provider.stacks.ASR.curr[k] || []).length > 0))
-                ? provider.stacks.ASR.curr
-                : (provider.stacks && provider.stacks.TCalls ? provider.stacks.TCalls.curr : {}),
-              step,
-              provider,
-              'ASR',
-              !!(typeof window !== 'undefined' && window.__chartsBarPerProvider),
-              opts.providerRows
-            );
-            if (Array.isArray(_asOver) && _asOver.length) list.push(..._asOver);
-          }
+          // add backend labels via helper (ASR+ACD)
+          list.push(...buildBarLabelsSeries({ opts, setsA, setsC, stepMs: step, asrAxis: { x: 1, y: 1 }, acdAxis: { x: 3, y: 3 } }));
 
           list.push({ id: 'mn', name: 'Minutes', type: 'bar', xAxisIndex: 2, yAxisIndex: 2, large: true, barWidth: bw, barGap: '4%', barCategoryGap: '20%', emphasis: { focus: 'series', blurScope: 'coordinateSystem' }, blur: { itemStyle: { opacity: 0.12 } }, itemStyle: { color: colors.Minutes }, data: provider.totals.Minutes });
           list.push({ id: 'mnPrev', name: 'Minutes -24h', type: 'bar', xAxisIndex: 2, yAxisIndex: 2, large: true, barWidth: bw, barGap: '4%', barCategoryGap: '20%', itemStyle: { color: 'rgba(140,148,156,0.85)' }, data: setsM.prev, emphasis: { disabled: true }, tooltip: { show: false }, silent: true, blur: { itemStyle: { opacity: 0.4 } } });
@@ -334,33 +320,20 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
 
           list.push({ id: 'ac', name: 'ACD', type: 'bar', xAxisIndex: 3, yAxisIndex: 3, large: true, barWidth: bw, barGap: '4%', barCategoryGap: '20%', emphasis: { focus: 'series', blurScope: 'coordinateSystem' }, blur: { itemStyle: { opacity: 0.12 } }, itemStyle: { color: colors.ACD }, data: provider.totals.ACD });
           list.push({ id: 'acPrev', name: 'ACD -24h', type: 'bar', xAxisIndex: 3, yAxisIndex: 3, large: true, barWidth: bw, barGap: '4%', barCategoryGap: '20%', itemStyle: { color: 'rgba(140,148,156,0.85)' }, data: setsC.prev, emphasis: { disabled: true }, tooltip: { show: false }, silent: true, blur: { itemStyle: { opacity: 0.4 } } });
-          {
-            const _acOver = makeStripeOverlay(
-              'acOverlay',
-              3,
-              3,
-              (provider.totals && provider.totals.ACD && provider.totals.ACD.some(p => Number(p && p[1]) > 0)) ? provider.totals.ACD : setsC.curr,
-              (provider.stacks && provider.stacks.ACD && provider.stacks.ACD.curr && Object.keys(provider.stacks.ACD.curr).some(k => (provider.stacks.ACD.curr[k] || []).length > 0))
-                ? provider.stacks.ACD.curr
-                : (provider.stacks && provider.stacks.Minutes ? provider.stacks.Minutes.curr : {}),
-              step,
-              provider,
-              'ACD',
-              !!(typeof window !== 'undefined' && window.__chartsBarPerProvider),
-              opts.providerRows
-            );
-            if (Array.isArray(_acOver) && _acOver.length) list.push(..._acOver);
-          }
+          // labels already added above
         } else {
           // Default: two bars per step (all blue), previous grey
           list.push({ id: 'tc', name: 'TCalls', type: 'bar', xAxisIndex: 0, yAxisIndex: 0, large: true, barWidth: bw, barGap: '4%', barCategoryGap: '20%', emphasis: { focus: 'series', blurScope: 'coordinateSystem' }, blur: { itemStyle: { opacity: 0.12 } }, itemStyle: { color: colors.TCalls }, data: setsT.curr });
           list.push({ id: 'tcPrev', name: 'TCalls -24h', type: 'bar', xAxisIndex: 0, yAxisIndex: 0, large: true, barWidth: bw, barGap: '4%', barCategoryGap: '20%', itemStyle: { color: 'rgba(140,148,156,0.85)' }, data: setsT.prev, emphasis: { disabled: true }, tooltip: { show: false }, silent: true, blur: { itemStyle: { opacity: 0.4 } } });
           list.push({ id: 'as', name: 'ASR', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, large: true, barWidth: bw, barGap: '4%', barCategoryGap: '20%', emphasis: { focus: 'series', blurScope: 'coordinateSystem' }, blur: { itemStyle: { opacity: 0.12 } }, itemStyle: { color: colors.ASR }, data: setsA.curr });
           list.push({ id: 'asPrev', name: 'ASR -24h', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, large: true, barWidth: bw, barGap: '4%', barCategoryGap: '20%', itemStyle: { color: 'rgba(140,148,156,0.85)' }, data: setsA.prev, emphasis: { disabled: true }, tooltip: { show: false }, silent: true, blur: { itemStyle: { opacity: 0.4 } } });
+          // add backend labels via helper (ASR+ACD)
+          list.push(...buildBarLabelsSeries({ opts, setsA, setsC, stepMs: step, asrAxis: { x: 1, y: 1 }, acdAxis: { x: 3, y: 3 } }));
           list.push({ id: 'mn', name: 'Minutes', type: 'bar', xAxisIndex: 2, yAxisIndex: 2, large: true, barWidth: bw, barGap: '4%', barCategoryGap: '20%', emphasis: { focus: 'series', blurScope: 'coordinateSystem' }, blur: { itemStyle: { opacity: 0.12 } }, itemStyle: { color: colors.Minutes }, data: setsM.curr });
           list.push({ id: 'mnPrev', name: 'Minutes -24h', type: 'bar', xAxisIndex: 2, yAxisIndex: 2, large: true, barWidth: bw, barGap: '4%', barCategoryGap: '20%', itemStyle: { color: 'rgba(140,148,156,0.85)' }, data: setsM.prev, emphasis: { disabled: true }, tooltip: { show: false }, silent: true, blur: { itemStyle: { opacity: 0.4 } } });
           list.push({ id: 'ac', name: 'ACD', type: 'bar', xAxisIndex: 3, yAxisIndex: 3, large: true, barWidth: bw, barGap: '4%', barCategoryGap: '20%', emphasis: { focus: 'series', blurScope: 'coordinateSystem' }, blur: { itemStyle: { opacity: 0.12 } }, itemStyle: { color: colors.ACD }, data: setsC.curr });
           list.push({ id: 'acPrev', name: 'ACD -24h', type: 'bar', xAxisIndex: 3, yAxisIndex: 3, large: true, barWidth: bw, barGap: '4%', barCategoryGap: '20%', itemStyle: { color: 'rgba(140,148,156,0.85)' }, data: setsC.prev, emphasis: { disabled: true }, tooltip: { show: false }, silent: true, blur: { itemStyle: { opacity: 0.4 } } });
+          // labels already added via helper above
         }
         // Preview bars under the slider track (grid/xAxis/yAxis index 4)
         const previewData = provider ? provider.totals.TCalls : setsT.curr;
