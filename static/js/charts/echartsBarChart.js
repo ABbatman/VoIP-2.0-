@@ -7,6 +7,7 @@ import { getStableColor } from './echarts/helpers/colors.js';
 import { getStepMs } from './echarts/helpers/time.js';
 import { buildBarSeries } from './echarts/builders/BarChartBuilder.js';
 import { subscribe } from '../state/eventBus.js';
+import { attachCapsuleTooltip, detachCapsuleTooltip } from './echarts/helpers/capsuleTooltip.js';
 import { initChart, setOptionWithZoomSync } from './echarts/renderer/EchartsRenderer.js';
 
 function ensureContainer(container) {
@@ -31,6 +32,7 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
   }
   const chart = initChart(el);
   let unsubscribeToggle = null; // event unsubscribe handle
+  let capsuleTooltipAttached = false; // capsule tooltip state
 
   const base = {
     fromTs: options.fromTs || null,
@@ -335,7 +337,16 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
           dataBackground: { lineStyle: { color: 'rgba(0,0,0,0)' }, areaStyle: { color: 'rgba(0,0,0,0)' } }
         }
       ],
-      series: buildBarSeries({ setsT, setsA, setsM, setsC, centers, interval: opts.interval, stepMs: step, labels: labelsEffective, colorMap: opts.colorMap }),
+      series: buildBarSeries({
+        setsT, setsA, setsM, setsC,
+        centers,
+        interval: opts.interval,
+        stepMs: step,
+        labels: labelsEffective,
+        colorMap: opts.colorMap,
+        providerRows: Array.isArray(options?.providerRows) ? options.providerRows : [],
+        providerKey: (() => { try { return detectProviderKey(Array.isArray(options?.providerRows) ? options.providerRows : []); } catch(_) { return null; } })()
+      }),
       graphic: graphicLabels
     };
     if (!showLabels) {
@@ -349,6 +360,30 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
   const option = buildOption(base, data);
   setOptionWithZoomSync(chart, option, { onAfterSet: () => {
     try { requestAnimationFrame(() => setTimeout(applyDynamicBarWidth, 0)); } catch (_) {}
+    // attach capsule tooltip once
+    try {
+      if (!capsuleTooltipAttached) {
+        const metricByGridIndex = { 0: 'TCalls', 1: 'ASR', 2: 'Minutes', 3: 'ACD' };
+        const getCapsuleData = ({ metric, ts }) => {
+          try {
+            const src = (options && options.capsuleTooltipData) || (typeof window !== 'undefined' ? window.__capsuleTooltipData : null);
+            if (!src) return null;
+            const key = metric && src[metric] ? metric : (metric && src[String(metric).toUpperCase()] ? String(metric).toUpperCase() : null);
+            const perMetric = key ? src[key] : null;
+            const byTs = perMetric ? (perMetric[ts] || perMetric[String(ts)] || perMetric[Math.floor(Number(ts)/1000)] || perMetric[String(Math.floor(Number(ts)/1000))]) : null;
+            if (!byTs) return null;
+            return {
+              time: byTs.time || new Date(Number(ts)).toISOString().replace('T',' ').replace('Z',''),
+              suppliers: Array.isArray(byTs.suppliers) ? byTs.suppliers : [],
+              customers: Array.isArray(byTs.customers) ? byTs.customers : [],
+              destinations: Array.isArray(byTs.destinations) ? byTs.destinations : [],
+            };
+          } catch(_) { return null; }
+        };
+        attachCapsuleTooltip(chart, { getCapsuleData, textColor: 'var(--ds-color-fg)', metricByGridIndex });
+        capsuleTooltipAttached = true;
+      }
+    } catch(_) { /* ignore tooltip attach errors */ }
   } });
 
   // react to Suppliers checkbox toggle: re-render overlay labels visibility
@@ -417,7 +452,32 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
       // Ignore base update errors
     }
     const next = buildOption(merged, newData);
-    setOptionWithZoomSync(chart, next, { onAfterSet: () => { try { applyDynamicBarWidth(); } catch (_) {} } });
+    setOptionWithZoomSync(chart, next, { onAfterSet: () => { 
+      try { applyDynamicBarWidth(); } catch (_) {}
+      // reattach capsule tooltip to reflect updated data source if provided
+      try { detachCapsuleTooltip(chart); } catch(_) {}
+      try {
+        const metricByGridIndex = { 0: 'TCalls', 1: 'ASR', 2: 'Minutes', 3: 'ACD' };
+        const getCapsuleData = ({ metric, ts }) => {
+          try {
+            const src = (merged && merged.capsuleTooltipData) || (options && options.capsuleTooltipData) || (typeof window !== 'undefined' ? window.__capsuleTooltipData : null);
+            if (!src) return null;
+            const key = metric && src[metric] ? metric : (metric && src[String(metric).toUpperCase()] ? String(metric).toUpperCase() : null);
+            const perMetric = key ? src[key] : null;
+            const byTs = perMetric ? (perMetric[ts] || perMetric[String(ts)] || perMetric[Math.floor(Number(ts)/1000)] || perMetric[String(Math.floor(Number(ts)/1000))]) : null;
+            if (!byTs) return null;
+            return {
+              time: byTs.time || new Date(Number(ts)).toISOString().replace('T',' ').replace('Z',''),
+              suppliers: Array.isArray(byTs.suppliers) ? byTs.suppliers : [],
+              customers: Array.isArray(byTs.customers) ? byTs.customers : [],
+              destinations: Array.isArray(byTs.destinations) ? byTs.destinations : [],
+            };
+          } catch(_) { return null; }
+        };
+        attachCapsuleTooltip(chart, { getCapsuleData, textColor: 'var(--ds-color-fg)', metricByGridIndex });
+        capsuleTooltipAttached = true;
+      } catch(_) { /* ignore tooltip attach errors */ }
+    } });
     try {
       const baseLo = Number(merged.fromTs);
       const baseHi = Number(merged.toTs);

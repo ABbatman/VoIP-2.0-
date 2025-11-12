@@ -3,7 +3,7 @@
 import { buildLabelOverlay } from '../helpers/labelOverlay.js';
 import { chooseBarWidthPx } from '../helpers/dataTransform.js';
 
-export function buildBarSeries({ setsT, setsA, setsM, setsC, centers, interval, stepMs, labels, colorMap }) {
+export function buildBarSeries({ setsT, setsA, setsM, setsC, centers, interval, stepMs, labels, colorMap, providerRows, providerKey }) {
   // move logic: only assemble series from prepared data
   const bw = chooseBarWidthPx(interval);
   const colorMain = '#4f86ff';
@@ -25,8 +25,8 @@ export function buildBarSeries({ setsT, setsA, setsM, setsC, centers, interval, 
     const labelsASR = (labels && labels.ASR) || {};
     const labelsACD = (labels && labels.ACD) || {};
     const tsList = Array.isArray(centers) && centers.length ? centers : (Array.isArray(setsA.curr) ? setsA.curr.map(p => p[0]) : []);
-    list.push(buildLabelOverlay({ metric: 'ASR', timestamps: tsList, labels: labelsASR, colorMap, gridIndex: 1, xAxisIndex: 1, yAxisIndex: 1, secondary: false, stepMs, align: 'current' }));
-    list.push(buildLabelOverlay({ metric: 'ACD', timestamps: tsList, labels: labelsACD, colorMap, gridIndex: 3, xAxisIndex: 3, yAxisIndex: 3, secondary: false, stepMs, align: 'current' }));
+    list.push(buildLabelOverlay({ metric: 'ASR', timestamps: tsList, labels: labelsASR, colorMap, gridIndex: 1, xAxisIndex: 1, yAxisIndex: 1, secondary: false, stepMs, align: 'current', providerRows, providerKey }));
+    list.push(buildLabelOverlay({ metric: 'ACD', timestamps: tsList, labels: labelsACD, colorMap, gridIndex: 3, xAxisIndex: 3, yAxisIndex: 3, secondary: false, stepMs, align: 'current', providerRows, providerKey }));
   } catch(_) { /* overlay labels */ }
   return list;
 }
