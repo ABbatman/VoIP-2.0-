@@ -24,6 +24,40 @@ function formatMetricText(metric, value) { // visual-only
   return v.toFixed(1);
 }
 
+// compute compact vertical gap so that N items fit into available height (no scaling)
+function computeCompactGap(count, itemHeight, baseGap, availablePx) { // gap reducer only
+  try {
+    const n = Number(count) | 0;
+    const h = Math.max(0, Number(itemHeight) || 0);
+    const g0 = Math.max(0, Number(baseGap) || 0);
+    const avail = Math.max(0, Number(availablePx) || 0);
+    if (n <= 1) return g0;
+    const need = (n - 1) * (h + g0);
+    if (need <= avail) return g0; // nothing to compact
+    const g = Math.floor(avail / (n - 1) - h);
+    return Math.max(1, Math.min(g0, Number.isFinite(g) ? g : g0));
+  } catch(_) {
+    return Math.max(1, Number(baseGap) || 4);
+  }
+}
+
+// throttle helper for renderItem (avoid re-render on every hover)
+function makeThrottled(fn, waitMs) { // simple throttle
+  let last = 0;
+  let lastKey = null;
+  let cached = null;
+  return function throttled(params, api) {
+    const now = Date.now();
+    let key = null;
+    try { key = Number(api && api.value ? api.value(0) : null); } catch(_) { key = (params && Number.isFinite(params.dataIndex)) ? params.dataIndex : null; }
+    if (cached != null && key === lastKey && (now - last) < (waitMs || 80)) return cached;
+    cached = fn(params, api);
+    last = now;
+    lastKey = key;
+    return cached;
+  };
+}
+
 export function buildLabelOverlay({ metric, timestamps, labels, colorMap, gridIndex, xAxisIndex, yAxisIndex, secondary = false, stepMs, align = 'current', providerKey, providerRows }) {
   // custom series: draw labels via renderItem only
   const dataTs = Array.isArray(timestamps)
@@ -35,20 +69,8 @@ export function buildLabelOverlay({ metric, timestamps, labels, colorMap, gridIn
     return (labels && (labels[ts] || labels[String(ts)] || labels[sec] || labels[String(sec)])) || [];
   };
 
-  return {
-    id,
-    name: 'LabelsOverlay',
-    type: 'custom',
-    coordinateSystem: 'cartesian2d',
-    clip: true, // keep drawings inside the grid
-    gridIndex: Number.isFinite(gridIndex) ? Number(gridIndex) : undefined,
-    xAxisIndex: Number(xAxisIndex),
-    yAxisIndex: Number(yAxisIndex),
-    silent: false,
-    tooltip: { show: false },
-    z: 100,
-    zlevel: 100,
-    renderItem: (_params, api) => {
+  // prepare impl and throttled wrapper
+  const renderItemImpl = (_params, api) => {
       // overlay labels: visual-only sorting and formatting
       const ts = api.value(0);
       const raw = getByTs(ts);
@@ -67,10 +89,17 @@ export function buildLabelOverlay({ metric, timestamps, labels, colorMap, gridIn
             for (const k of ID_KEYS) { if (sid == null && Object.prototype.hasOwnProperty.call(it, k)) sid = it[k]; }
             for (const k of NAME_KEYS) { if (name == null && Object.prototype.hasOwnProperty.call(it, k)) name = it[k]; }
           }
-          const val = Number(it && (it.value ?? it.v ?? it.ASR ?? it.ACD));
+          // strict normalization: don't synthesize zeros
+          let rawVal = (it?.value ?? it?.v ?? it?.ASR ?? it?.ACD);
+          // skip missing values
+          if (rawVal === undefined || rawVal === null || rawVal === '') {
+            return null; // no label when value is missing
+          }
+          const val = Number(rawVal);
+          if (!Number.isFinite(val)) return null;
           return { supplierId: sid ?? null, name: (name != null ? String(name) : null), value: val };
         })
-        .filter(e => Number.isFinite(e.value));
+        .filter(Boolean);
       if (!entries.length) return null;
       // sort asc visually (no business calc)
       entries.sort((a,b) => a.value - b.value);
@@ -97,6 +126,65 @@ export function buildLabelOverlay({ metric, timestamps, labels, colorMap, gridIn
       } catch(_) {}
       const children = [];
       if (!grouped.length) return null;
+      // measure constant capsule height using first label's text (font height is stable)
+      const font = '600 11px system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+      const sampleTxt = formatMetricText(metric, grouped[0].value);
+      const padX = 6; const padY = 3;
+      const trSample = (echarts && echarts.format && typeof echarts.format.getTextRect === 'function')
+        ? echarts.format.getTextRect(sampleTxt, font)
+        : { width: (String(sampleTxt).length * 7), height: 12 };
+      const h = Math.round(trSample.height + padY * 2);
+      // available area bounds in pixel (grid top/bottom)
+      let yBase = 0; let areaTop = 0; let areaBottom = 0;
+      try {
+        const c0 = api.coord([ts, grouped[0].value]);
+        yBase = Array.isArray(c0) ? Number(c0[1]) : 0;
+        areaTop = (_params && _params.coordSys && Number.isFinite(_params.coordSys.y)) ? Number(_params.coordSys.y) : 0;
+        areaBottom = (_params && _params.coordSys && Number.isFinite(_params.coordSys.height)) ? (areaTop + Number(_params.coordSys.height)) : (areaTop + 1e6);
+      } catch(_) {}
+      const baseGap = 4; // default visual gap between capsules
+      const minGap = 1;  // minimal visual gap when space is tight
+      // build ideal (value-tied) positions for current bar
+      const yList = grouped.map(g => { try { const c = api.coord([ts, g.value]); return Math.round(Array.isArray(c) ? Number(c[1]) : yBase); } catch(_) { return yBase; } });
+      const yTop = Math.min(...yList);
+      const yBottom = Math.max(...yList);
+      const topBound = areaTop + Math.floor(h / 2);
+      const bottomBound = (areaBottom - Math.floor(h / 2));
+      const availableSpan = Math.max(0, bottomBound - topBound);
+      // check if ideal positions already fit (no compaction)
+      let fits = (yTop >= topBound);
+      if (fits) {
+        for (let i = 1; i < yList.length; i++) {
+          if ((yList[i-1] - yList[i]) < (h + baseGap)) { fits = false; break; }
+        }
+      }
+      // compute final y positions: either ideal, proportionally compressed, or strict stacking
+      let yPos = yList.slice();
+      if (!fits) {
+        const origSpan = Math.max(0, yBottom - yTop);
+        if (origSpan > 0 && availableSpan > 0) {
+          const scale = availableSpan / origSpan;
+          const mapped = yList.map(y => topBound + (y - yTop) * scale);
+          // verify minimal gap constraint after mapping
+          let ok = (mapped[0] <= bottomBound + 0.5 && mapped[mapped.length - 1] >= topBound - 0.5);
+          if (ok) {
+            for (let i = 1; i < mapped.length; i++) {
+              if ((mapped[i-1] - mapped[i]) < (h + minGap)) { ok = false; break; }
+            }
+          }
+          if (ok) {
+            yPos = mapped;
+          } else {
+            // fallback: strict stacking from bottom with compact gap
+            const vGap = computeCompactGap(grouped.length, h, baseGap, availableSpan);
+            yPos = grouped.map((_, i) => bottomBound - i * (h + vGap));
+          }
+        } else {
+          // no span to distribute -> strict stacking
+          const vGap = computeCompactGap(grouped.length, h, baseGap, availableSpan);
+          yPos = grouped.map((_, i) => bottomBound - i * (h + vGap));
+        }
+      }
       for (let i = 0; i < grouped.length; i++) {
         const { supplierId, name, value } = grouped[i];
         const c = api.coord([ts, value]);
@@ -108,14 +196,12 @@ export function buildLabelOverlay({ metric, timestamps, labels, colorMap, gridIn
           if (align === 'current') x = Math.round(x - dx);
           else if (align === 'prev') x = Math.round(x + dx);
         } catch(_) { /* keep center */ }
-        const font = '600 11px system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
         const txt = formatMetricText(metric, value);
         const tr = (echarts && echarts.format && typeof echarts.format.getTextRect === 'function')
           ? echarts.format.getTextRect(txt, font)
           : { width: (String(txt).length * 7), height: 12 };
-        const padX = 6; const padY = 3; const h = Math.round(tr.height + padY * 2);
         const w = Math.round(tr.width + padX * 2);
-        const y = Math.round(c[1] - i * (h + 4)); // visual stacking upwards
+        const y = Math.round(yPos[i]); // per-bar compacted/ideal position
         // Resolve color by id, by stringified id, by name, then fallback to stable palette
         let color = undefined;
         try {
@@ -178,7 +264,27 @@ export function buildLabelOverlay({ metric, timestamps, labels, colorMap, gridIn
       }
       if (!children.length) return null;
       return { type: 'group', children };
-    },
+  };
+  const throttledRenderItem = makeThrottled(renderItemImpl, 80);
+
+  return {
+    id,
+    name: 'LabelsOverlay',
+    type: 'custom',
+    coordinateSystem: 'cartesian2d',
+    clip: true, // keep drawings inside the grid
+    gridIndex: Number.isFinite(gridIndex) ? Number(gridIndex) : undefined,
+    xAxisIndex: Number(xAxisIndex),
+    yAxisIndex: Number(yAxisIndex),
+    silent: false,
+    tooltip: { show: false },
+    renderMode: 'canvas',
+    progressive: 200,
+    progressiveThreshold: 500,
+    emphasis: { disabled: true },
+    z: 100,
+    zlevel: 100,
+    renderItem: throttledRenderItem,
     data: dataTs.map(ts => [ts])
   };
 }

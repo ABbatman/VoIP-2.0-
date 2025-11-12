@@ -349,6 +349,20 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
       }),
       graphic: graphicLabels
     };
+    // expose labelsEffective for tooltip fallback
+    try { out.__labelsEffective = labelsEffective; } catch(_) {}
+    // post-process overlay series for performance
+    try {
+      const ser = Array.isArray(out.series) ? out.series : [];
+      for (const s of ser) {
+        if (s && s.type === 'custom' && s.name === 'LabelsOverlay') {
+          s.animation = false; // no animation for overlay
+          s.animationDuration = 0;
+          s.animationEasing = 'linear';
+          s.renderMode = 'canvas';
+        }
+      }
+    } catch(_) {}
     if (!showLabels) {
       try {
         out.series = Array.isArray(out.series) ? out.series.filter(s => !(s && s.type === 'custom' && s.name === 'LabelsOverlay')) : out.series;
@@ -367,17 +381,122 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
         const getCapsuleData = ({ metric, ts }) => {
           try {
             const src = (options && options.capsuleTooltipData) || (typeof window !== 'undefined' ? window.__capsuleTooltipData : null);
-            if (!src) return null;
-            const key = metric && src[metric] ? metric : (metric && src[String(metric).toUpperCase()] ? String(metric).toUpperCase() : null);
-            const perMetric = key ? src[key] : null;
-            const byTs = perMetric ? (perMetric[ts] || perMetric[String(ts)] || perMetric[Math.floor(Number(ts)/1000)] || perMetric[String(Math.floor(Number(ts)/1000))]) : null;
-            if (!byTs) return null;
-            return {
-              time: byTs.time || new Date(Number(ts)).toISOString().replace('T',' ').replace('Z',''),
-              suppliers: Array.isArray(byTs.suppliers) ? byTs.suppliers : [],
-              customers: Array.isArray(byTs.customers) ? byTs.customers : [],
-              destinations: Array.isArray(byTs.destinations) ? byTs.destinations : [],
+            if (src) {
+              const key = metric && src[metric] ? metric : (metric && src[String(metric).toUpperCase()] ? String(metric).toUpperCase() : null);
+              const perMetric = key ? src[key] : null;
+              const byTs = perMetric ? (perMetric[ts] || perMetric[String(ts)] || perMetric[Math.floor(Number(ts)/1000)] || perMetric[String(Math.floor(Number(ts)/1000))]) : null;
+              if (byTs) {
+                let ret = {
+                  time: byTs.time || new Date(Number(ts)).toISOString().replace('T',' ').replace('Z',''),
+                  suppliers: Array.isArray(byTs.suppliers) ? byTs.suppliers : [],
+                  customers: Array.isArray(byTs.customers) ? byTs.customers : [],
+                  destinations: Array.isArray(byTs.destinations) ? byTs.destinations : [],
+                  customersBySupplier: byTs.customersBySupplier || undefined,
+                  destinationsBySupplier: byTs.destinationsBySupplier || undefined,
+                };
+                // if external source has no suppliers, try labelsEffective fallback before leaving
+                if (!ret.suppliers || ret.suppliers.length === 0) {
+                  try {
+                    const mKey = (metric === 'ASR' || metric === 'ACD') ? metric : null;
+                    const eff = option && option.__labelsEffective && option.__labelsEffective[mKey];
+                    if (mKey && eff) {
+                      const byTs2 = eff[ts] || eff[String(ts)] || eff[Math.floor(Number(ts)/1000)] || eff[String(Math.floor(Number(ts)/1000))];
+                      if (Array.isArray(byTs2) && byTs2.length) ret.suppliers = byTs2;
+                    }
+                  } catch(_) {}
+                }
+                if (ret.suppliers && ret.suppliers.length) return ret;
+                // else continue to providerRows fallback
+              }
+            }
+            // Fallback 1: use labels passed into chart (ASR/ACD only)
+            try {
+              const mKey = (metric === 'ASR' || metric === 'ACD') ? metric : null;
+              const lm = (option && option.__labelsEffective && option.__labelsEffective[mKey]) || (options && options.labels && options.labels[mKey]) || null;
+              if (mKey && lm) {
+                const byTs2 = lm[ts] || lm[String(ts)] || lm[Math.floor(Number(ts)/1000)] || lm[String(Math.floor(Number(ts)/1000))];
+                if (Array.isArray(byTs2)) {
+                  return {
+                    time: new Date(Number(ts)).toISOString().replace('T',' ').replace('Z',''),
+                    suppliers: byTs2,
+                    customers: [],
+                    destinations: [],
+                  };
+                }
+              }
+            } catch(_) {}
+            // Fallback: compute from providerRows if available
+            const rows = Array.isArray(options?.providerRows) ? options.providerRows : [];
+            if (!rows.length) return null;
+            const pKey = detectProviderKey(rows);
+            if (!pKey) return null;
+            const destCand = ['destination','Destination','dst','Dst','country','Country','prefix','Prefix','route','Route','direction','Direction'];
+            const custCand = ['customer','Customer','client','Client','account','Account','buyer','Buyer'];
+            const detectKey = (cands) => {
+              try {
+                const lowerPref = cands.map(k => k.toLowerCase());
+                for (const r of rows) {
+                  if (!r || typeof r !== 'object') continue;
+                  for (const k of Object.keys(r)) {
+                    const kl = String(k).toLowerCase();
+                    if (!lowerPref.includes(kl)) continue;
+                    const v = r[k];
+                    const s = typeof v === 'string' ? v.trim() : (typeof v === 'number' ? String(v) : '');
+                    if (s) return k;
+                  }
+                }
+              } catch(_) {}
+              return null;
             };
+            const destKey = detectKey(destCand);
+            const custKey = detectKey(custCand);
+            const bucketCenter = (t) => { const base = Math.floor(t / step) * step; return base + Math.floor(step / 2); };
+            const supAgg = new Map(); // name -> { sum, cnt }
+            const custBySup = new Map(); // name -> Set
+            const destBySup = new Map(); // name -> Map(dest->{sum,cnt})
+            for (const r of rows) {
+              const rt = parseRowTs(r.time || r.Time || r.timestamp || r.Timestamp || r.slot || r.Slot || r.hour || r.Hour || r.datetime || r.DateTime || r.ts || r.TS || r.period || r.Period || r.start || r.Start || r.start_time || r.StartTime);
+              if (!Number.isFinite(rt)) continue;
+              if (bucketCenter(rt) !== ts) continue;
+              const prov = String(r[pKey] || '').trim();
+              if (!prov) continue;
+              let v = null;
+              if (metric === 'ASR') { const vv = Number(r.ASR ?? r.asr); v = Number.isFinite(vv) ? vv : null; }
+              else if (metric === 'ACD') { const vv = Number(r.ACD ?? r.acd); v = Number.isFinite(vv) ? vv : null; }
+              else if (metric === 'Minutes') { const vv = Number(r.Min ?? r.Minutes); v = Number.isFinite(vv) ? vv : 0; }
+              else if (metric === 'TCalls') { const vv = Number(r.TCall ?? r.TCalls ?? r.total_calls); v = Number.isFinite(vv) ? vv : 0; }
+              if (metric === 'ASR' || metric === 'ACD') {
+                if (v == null) { /* skip missing */ } else { const a = supAgg.get(prov) || { sum: 0, cnt: 0 }; a.sum += v; a.cnt += 1; supAgg.set(prov, a); }
+              } else {
+                const a = supAgg.get(prov) || { sum: 0, cnt: 0 }; a.sum += (v || 0); supAgg.set(prov, a);
+              }
+              if (custKey) {
+                const c = String(r[custKey] || '').trim();
+                if (c) { let s = custBySup.get(prov); if (!s) { s = new Set(); custBySup.set(prov, s); } s.add(c); }
+              }
+              if (destKey) {
+                const d = String(r[destKey] || '').trim();
+                let m = destBySup.get(prov); if (!m) { m = new Map(); destBySup.set(prov, m); }
+                let g = m.get(d); if (!g) { g = { sum: 0, cnt: 0 }; m.set(d, g); }
+                if (metric === 'ASR' || metric === 'ACD') { if (v != null) { g.sum += v; g.cnt += 1; } }
+                else { g.sum += (v || 0); }
+              }
+            }
+            const suppliers = Array.from(supAgg.entries()).map(([name, a]) => ({ name, value: (metric === 'ASR' || metric === 'ACD') ? (a.cnt ? (a.sum / a.cnt) : null) : a.sum })).filter(s => (metric === 'ASR' || metric === 'ACD') ? Number.isFinite(s.value) : true);
+            suppliers.sort((x,y) => (Number(y.value)||0) - (Number(x.value)||0));
+            const customersBySupplier = {};
+            for (const [name, set] of custBySup.entries()) customersBySupplier[name] = Array.from(set.values());
+            const destinationsBySupplier = {};
+            for (const [name, m] of destBySup.entries()) {
+              const arr = [];
+              for (const [dest, agg] of m.entries()) {
+                const val = (metric === 'ASR' || metric === 'ACD') ? (agg.cnt ? (agg.sum / agg.cnt) : 0) : agg.sum;
+                arr.push(`${dest || '—'}: ${ (metric === 'ASR') ? `${val.toFixed(2)}%` : (metric === 'ACD' ? `${val.toFixed(2)}` : `${val}`) }`);
+              }
+              arr.sort();
+              destinationsBySupplier[name] = arr;
+            }
+            return { time: new Date(Number(ts)).toISOString().replace('T',' ').replace('Z',''), suppliers, customers: [], destinations: [], customersBySupplier, destinationsBySupplier };
           } catch(_) { return null; }
         };
         attachCapsuleTooltip(chart, { getCapsuleData, textColor: 'var(--ds-color-fg)', metricByGridIndex });
@@ -419,9 +538,14 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
       try {
         // each bar narrower to fit two slots per step and keep larger outer gap
         const each = Math.max(2, Math.floor(desired * 0.35));
+        // skip update if width did not change (prevents layout thrash)
+        if (chart.__lastBarWidth === each) return;
         const cur = chart.getOption();
         const upd = (cur.series || []).filter(s => s && s.type === 'bar').map(s => ({ id: s.id, barWidth: each }));
-        if (upd.length) chart.setOption({ series: upd }, { lazyUpdate: true });
+        if (upd.length) {
+          chart.setOption({ series: upd }, { lazyUpdate: true });
+          chart.__lastBarWidth = each;
+        }
       } catch (_) {
         // Ignore bar width update errors
       }
@@ -461,17 +585,122 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
         const getCapsuleData = ({ metric, ts }) => {
           try {
             const src = (merged && merged.capsuleTooltipData) || (options && options.capsuleTooltipData) || (typeof window !== 'undefined' ? window.__capsuleTooltipData : null);
-            if (!src) return null;
-            const key = metric && src[metric] ? metric : (metric && src[String(metric).toUpperCase()] ? String(metric).toUpperCase() : null);
-            const perMetric = key ? src[key] : null;
-            const byTs = perMetric ? (perMetric[ts] || perMetric[String(ts)] || perMetric[Math.floor(Number(ts)/1000)] || perMetric[String(Math.floor(Number(ts)/1000))]) : null;
-            if (!byTs) return null;
-            return {
-              time: byTs.time || new Date(Number(ts)).toISOString().replace('T',' ').replace('Z',''),
-              suppliers: Array.isArray(byTs.suppliers) ? byTs.suppliers : [],
-              customers: Array.isArray(byTs.customers) ? byTs.customers : [],
-              destinations: Array.isArray(byTs.destinations) ? byTs.destinations : [],
+            if (src) {
+              const key = metric && src[metric] ? metric : (metric && src[String(metric).toUpperCase()] ? String(metric).toUpperCase() : null);
+              const perMetric = key ? src[key] : null;
+              const byTs = perMetric ? (perMetric[ts] || perMetric[String(ts)] || perMetric[Math.floor(Number(ts)/1000)] || perMetric[String(Math.floor(Number(ts)/1000))]) : null;
+              if (byTs) {
+                let ret = {
+                  time: byTs.time || new Date(Number(ts)).toISOString().replace('T',' ').replace('Z',''),
+                  suppliers: Array.isArray(byTs.suppliers) ? byTs.suppliers : [],
+                  customers: Array.isArray(byTs.customers) ? byTs.customers : [],
+                  destinations: Array.isArray(byTs.destinations) ? byTs.destinations : [],
+                  customersBySupplier: byTs.customersBySupplier || undefined,
+                  destinationsBySupplier: byTs.destinationsBySupplier || undefined,
+                };
+                if (!ret.suppliers || ret.suppliers.length === 0) {
+                  try {
+                    const mKey = (metric === 'ASR' || metric === 'ACD') ? metric : null;
+                    const eff = (next && next.__labelsEffective && next.__labelsEffective[mKey]) || (merged && merged.labels && merged.labels[mKey]) || (options && options.labels && options.labels[mKey]) || null;
+                    if (mKey && eff) {
+                      const byTs2 = eff[ts] || eff[String(ts)] || eff[Math.floor(Number(ts)/1000)] || eff[String(Math.floor(Number(ts)/1000))];
+                      if (Array.isArray(byTs2) && byTs2.length) ret.suppliers = byTs2;
+                    }
+                  } catch(_) {}
+                }
+                if (ret.suppliers && ret.suppliers.length) return ret;
+                // else continue to providerRows fallback
+              }
+            }
+            // Fallback 1: use labels passed into chart (ASR/ACD only)
+            try {
+              const mKey = (metric === 'ASR' || metric === 'ACD') ? metric : null;
+              const lm = (next && next.__labelsEffective && next.__labelsEffective[mKey]) || (merged && merged.labels && merged.labels[mKey]) || (options && options.labels && options.labels[mKey]) || null;
+              if (mKey && lm) {
+                const byTs2 = lm[ts] || lm[String(ts)] || lm[Math.floor(Number(ts)/1000)] || lm[String(Math.floor(Number(ts)/1000))];
+                if (Array.isArray(byTs2)) {
+                  return {
+                    time: new Date(Number(ts)).toISOString().replace('T',' ').replace('Z',''),
+                    suppliers: byTs2,
+                    customers: [],
+                    destinations: [],
+                  };
+                }
+              }
+            } catch(_) {}
+            const rows = Array.isArray(merged?.providerRows) ? merged.providerRows : (Array.isArray(options?.providerRows) ? options.providerRows : []);
+            if (!rows.length) return null;
+            const pKey = detectProviderKey(rows);
+            if (!pKey) return null;
+            const destCand = ['destination','Destination','dst','Dst','country','Country','prefix','Prefix','route','Route','direction','Direction'];
+            const custCand = ['customer','Customer','client','Client','account','Account','buyer','Buyer'];
+            const detectKey = (cands) => {
+              try {
+                const lowerPref = cands.map(k => k.toLowerCase());
+                for (const r of rows) {
+                  if (!r || typeof r !== 'object') continue;
+                  for (const k of Object.keys(r)) {
+                    const kl = String(k).toLowerCase();
+                    if (!lowerPref.includes(kl)) continue;
+                    const v = r[k];
+                    const s = typeof v === 'string' ? v.trim() : (typeof v === 'number' ? String(v) : '');
+                    if (s) return k;
+                  }
+                }
+              } catch(_) {}
+              return null;
             };
+            const destKey = detectKey(destCand);
+            const custKey = detectKey(custCand);
+            const bucketCenter = (t) => { const base = Math.floor(t / base.stepMs) * base.stepMs; return base + Math.floor(base.stepMs / 2); };
+            const supAgg = new Map();
+            const custBySup = new Map();
+            const destBySup = new Map();
+            for (const r of rows) {
+              const rt = parseRowTs(r.time || r.Time || r.timestamp || r.Timestamp || r.slot || r.Slot || r.hour || r.Hour || r.datetime || r.DateTime || r.ts || r.TS || r.period || r.Period || r.start || r.Start || r.start_time || r.StartTime);
+              if (!Number.isFinite(rt)) continue;
+              const ctr = (() => { const s = Number(base.stepMs) || getStepMs(base.interval); const basev = Math.floor(rt / s) * s; return basev + Math.floor(s / 2); })();
+              if (ctr !== ts) continue;
+              const prov = String(r[pKey] || '').trim();
+              if (!prov) continue;
+              let v = null;
+              if (metric === 'ASR') { const vv = Number(r.ASR ?? r.asr); v = Number.isFinite(vv) ? vv : null; }
+              else if (metric === 'ACD') { const vv = Number(r.ACD ?? r.acd); v = Number.isFinite(vv) ? vv : null; }
+              else if (metric === 'Minutes') { const vv = Number(r.Min ?? r.Minutes); v = Number.isFinite(vv) ? vv : 0; }
+              else if (metric === 'TCalls') { const vv = Number(r.TCall ?? r.TCalls ?? r.total_calls); v = Number.isFinite(vv) ? vv : 0; }
+              if (metric === 'ASR' || metric === 'ACD') {
+                if (v == null) { /* skip missing */ } else { const a = supAgg.get(prov) || { sum: 0, cnt: 0 }; a.sum += v; a.cnt += 1; supAgg.set(prov, a); }
+              } else {
+                const a = supAgg.get(prov) || { sum: 0, cnt: 0 }; a.sum += (v || 0); supAgg.set(prov, a);
+              }
+              if (custKey) {
+                const c = String(r[custKey] || '').trim();
+                if (c) { let s = custBySup.get(prov); if (!s) { s = new Set(); custBySup.set(prov, s); } s.add(c); }
+              }
+              if (destKey) {
+                const d = String(r[destKey] || '').trim();
+                let m = destBySup.get(prov); if (!m) { m = new Map(); destBySup.set(prov, m); }
+                let g = m.get(d); if (!g) { g = { sum: 0, cnt: 0 }; m.set(d, g); }
+                if (metric === 'ASR' || metric === 'ACD') { if (v != null) { g.sum += v; g.cnt += 1; } }
+                else { g.sum += (v || 0); }
+              }
+            }
+            const suppliers = Array.from(supAgg.entries()).map(([name, a]) => ({ name, value: (metric === 'ASR' || metric === 'ACD') ? (a.cnt ? (a.sum / a.cnt) : null) : a.sum })).filter(s => (metric === 'ASR' || metric === 'ACD') ? Number.isFinite(s.value) : true);
+            suppliers.sort((x,y) => (Number(y.value)||0) - (Number(x.value)||0));
+            const customersBySupplier = {};
+            for (const [name, set] of custBySup.entries()) customersBySupplier[name] = Array.from(set.values());
+            const destinationsBySupplier = {};
+            for (const [name, m] of destBySup.entries()) {
+              const arr = [];
+              for (const [dest, agg] of m.entries()) {
+                const s = Number(base.stepMs) || getStepMs(base.interval);
+                const val = (metric === 'ASR' || metric === 'ACD') ? (agg.cnt ? (agg.sum / agg.cnt) : 0) : agg.sum;
+                arr.push(`${dest || '—'}: ${ (metric === 'ASR') ? `${val.toFixed(2)}%` : (metric === 'ACD' ? `${val.toFixed(2)}` : `${val}`) }`);
+              }
+              arr.sort();
+              destinationsBySupplier[name] = arr;
+            }
+            return { time: new Date(Number(ts)).toISOString().replace('T',' ').replace('Z',''), suppliers, customers: [], destinations: [], customersBySupplier, destinationsBySupplier };
           } catch(_) { return null; }
         };
         attachCapsuleTooltip(chart, { getCapsuleData, textColor: 'var(--ds-color-fg)', metricByGridIndex });

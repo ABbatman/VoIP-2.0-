@@ -33,24 +33,84 @@ function fmtBlock({ time, suppliers, customers, destinations }) { // format only
   if (Array.isArray(suppliers) && suppliers.length) {
     const sup = suppliers.slice().sort((a,b) => (Number(b?.value)||0) - (Number(a?.value)||0));
     for (const s of sup) {
-      const name = (s && (s.name ?? s.supplier ?? s.provider ?? s.id)) ?? '';
+      const name = (s && (s.name ?? s.supplier ?? s.provider ?? s.id ?? s.supplierId)) ?? '';
       const val = (s && s.value != null) ? s.value : '';
       lines.push(`${String(name)} → ${String(val)}`);
     }
   }
-  if (Array.isArray(customers)) {
+  if (Array.isArray(customers) && customers.length) {
     lines.push('Customers(s) →');
     for (const c of customers) lines.push(` - ${String(c)}`);
   }
-  if (Array.isArray(destinations)) {
+  if (Array.isArray(destinations) && destinations.length) {
     lines.push('Destination(s) →');
     for (const d of destinations) lines.push(` - ${String(d)}`);
   }
   return lines.join('\n');
 }
 
+// Try to read the numeric value printed inside the hovered capsule (text shape)
+function readHoverValueFromEvent(e) {
+  try {
+    const zrEvt = e && e.event;
+    let t = zrEvt && (zrEvt.topTarget || zrEvt.target);
+    const readText = (node) => (node && node.style && typeof node.style.text === 'string' && node.style.text) ? node.style.text : null;
+    // climb up and also probe children for a text glyph
+    while (t) {
+      const txt = readText(t);
+      if (txt) {
+        const num = Number(String(txt).replace(/[^0-9.+-]/g, ''));
+        return Number.isFinite(num) ? num : null;
+      }
+      if (Array.isArray(t.children)) {
+        for (const ch of t.children) {
+          const ctxt = readText(ch);
+          if (ctxt) {
+            const num = Number(String(ctxt).replace(/[^0-9.+-]/g, ''));
+            return Number.isFinite(num) ? num : null;
+          }
+        }
+      }
+      t = t.parent;
+    }
+  } catch(_) {}
+  return null;
+}
+
+function toTimeLabel(ts) {
+  try {
+    const d = new Date(Number(ts));
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  } catch(_) { return ''; }
+}
+
+// Filter customers/destinations arrays to a specific supplier when structure allows (best-effort)
+function narrowBySupplier(arr, supplierName) {
+  try {
+    if (!Array.isArray(arr) || !supplierName) return arr;
+    const CAND = ['supplier','provider','vendor','carrier','peer','name','supplierName','providerName'];
+    const out = [];
+    for (const it of arr) {
+      if (it && typeof it === 'object') {
+        let match = false;
+        for (const k of CAND) {
+          if (Object.prototype.hasOwnProperty.call(it, k)) {
+            const v = it[k];
+            if (v != null && String(v).trim() === String(supplierName)) { match = true; break; }
+          }
+        }
+        if (match) out.push(it);
+      }
+    }
+    return out.length ? out : arr;
+  } catch(_) { return arr; }
+}
+
 function makeHandlers(chart, { getCapsuleData, textColor, metricByGridIndex }) {
   const move = (e) => {
+    // if capsule hover active, constantly suppress default chart tooltip
+    try { if (chart.__capsuleHoverActive) chart.dispatchAction({ type: 'hideTip' }); } catch(_) {}
     if (!el || el.style.opacity === '0') return;
     const x = (e && e.event && Number.isFinite(e.event.event?.clientX)) ? e.event.event.clientX : (e?.offsetX || 0);
     const y = (e && e.event && Number.isFinite(e.event.event?.clientY)) ? e.event.event.clientY : (e?.offsetY || 0);
@@ -62,6 +122,7 @@ function makeHandlers(chart, { getCapsuleData, textColor, metricByGridIndex }) {
       if (!e || e.componentType !== 'series') return;
       // Hover over BAR series: dim others (including overlays), keep BAR tooltip intact, no capsule tooltip
       if (e.seriesType === 'bar') {
+        chart.__capsuleHoverActive = false;
         if (el) el.style.opacity = '0';
         try { chart.dispatchAction({ type: 'downplay' }); } catch(_) {}
         try { chart.dispatchAction({ type: 'highlight', seriesIndex: e.seriesIndex }); } catch(_) {}
@@ -75,14 +136,114 @@ function makeHandlers(chart, { getCapsuleData, textColor, metricByGridIndex }) {
       }
       // Hover over capsule overlay only
       if (typeof e.seriesName !== 'string' || e.seriesName !== 'LabelsOverlay') return;
+      chart.__capsuleHoverActive = true;
       const opt = chart.getOption();
       const series = Array.isArray(opt.series) ? opt.series[e.seriesIndex] : null;
       const gridIdx = Number(series?.gridIndex);
       const metric = metricByGridIndex && metricByGridIndex[gridIdx];
-      const ts = Array.isArray(e.value) ? Number(e.value[0]) : Number(e?.data?.[0]);
+      let ts = Array.isArray(e.value) ? Number(e.value[0]) : Number(e?.data?.[0]);
+      if (!Number.isFinite(ts)) {
+        try {
+          if (Number.isFinite(e.dataIndex)) {
+            const d = Array.isArray(series?.data) ? series.data[e.dataIndex] : null;
+            const val = Array.isArray(d) ? d[0] : (d && d.value ? d.value[0] : null);
+            if (Number.isFinite(Number(val))) ts = Number(val);
+          }
+        } catch(_) {}
+      }
+      if (!Number.isFinite(ts)) {
+        // last resort: convert from pixel X
+        try {
+          const px = (e && e.event && Number.isFinite(e.event.offsetX)) ? e.event.offsetX : null;
+          if (Number.isFinite(px)) {
+            const xAxisIndex = Number.isFinite(series?.xAxisIndex) ? series.xAxisIndex : 0;
+            const arr = chart.convertFromPixel({ xAxisIndex }, [px, 0]);
+            if (Array.isArray(arr) && Number.isFinite(arr[0])) ts = Number(arr[0]);
+          }
+        } catch(_) {}
+      }
       if (!Number.isFinite(ts)) return;
-      const data = (typeof getCapsuleData === 'function') ? getCapsuleData({ metric, ts }) : null;
-      if (!data) return;
+      let data = (typeof getCapsuleData === 'function') ? getCapsuleData({ metric, ts }) : null;
+      if (!data) {
+        // build minimal fallback with time only
+        try { data = { time: toTimeLabel(ts), suppliers: [], customers: [], destinations: [] }; } catch(_) { return; }
+      }
+      // If suppliers are missing, read them from option.__labelsEffective (overlay data used for drawing)
+      try {
+        if (!(Array.isArray(data.suppliers) && data.suppliers.length)) {
+          const opt = chart.getOption && chart.getOption();
+          const eff = (metric && opt && opt.__labelsEffective) ? opt.__labelsEffective[metric] : null;
+          const cand = eff ? (eff[ts] || eff[String(ts)] || eff[Math.floor(Number(ts)/1000)] || eff[String(Math.floor(Number(ts)/1000))]) : null;
+          if (Array.isArray(cand) && cand.length) {
+            data.suppliers = cand;
+          }
+        }
+      } catch(_) {}
+      // best-effort: narrow to the hovered capsule value
+      const hoverVal = readHoverValueFromEvent(e);
+      if (Number.isFinite(hoverVal) && Array.isArray(data.suppliers)) {
+        const tol = 0.11; // tolerate rounding diff with overlay text (toFixed(1))
+        let matched = data.suppliers.filter(s => Number.isFinite(Number(s?.value)) && Math.abs(Number(s.value) - hoverVal) <= tol);
+        // If nothing matched exactly, pick nearest supplier(s) by minimal difference
+        if (!matched.length) {
+          let bestDiff = Infinity;
+          for (const s of data.suppliers) {
+            const v = Number(s?.value);
+            if (!Number.isFinite(v)) continue;
+            const d = Math.abs(v - hoverVal);
+            if (d < bestDiff) bestDiff = d;
+          }
+          // accept a slightly larger tolerance to catch grouped averages
+          const widen = Math.max(tol, 0.6);
+          matched = data.suppliers.filter(s => Number.isFinite(Number(s?.value)) && Math.abs(Number(s.value) - hoverVal) <= widen && Math.abs(Number(s.value) - hoverVal) <= (bestDiff + 1e-9));
+          if (!matched.length && Number.isFinite(bestDiff) && bestDiff < Infinity) {
+            // pick single nearest
+            let pick = null; let diff = Infinity;
+            for (const s of data.suppliers) {
+              const v = Number(s?.value); if (!Number.isFinite(v)) continue;
+              const d = Math.abs(v - hoverVal); if (d < diff) { diff = d; pick = s; }
+            }
+            if (pick) matched = [pick];
+          }
+        }
+        if (matched.length) {
+          // Build customers/destinations: union across matched suppliers
+          const names = matched.map(s => (s?.name ?? s?.supplier ?? s?.provider ?? s?.id)).filter(Boolean).map(String);
+          let customers = Array.isArray(data.customers) ? [] : [];
+          let destinations = Array.isArray(data.destinations) ? [] : [];
+          const pushUniq = (arr, v) => { if (v == null) return; const s = String(v); if (!arr.includes(s)) arr.push(s); };
+          for (const n of names) {
+            try {
+              if (data.customersBySupplier && Array.isArray(data.customersBySupplier[n])) {
+                for (const c of data.customersBySupplier[n]) pushUniq(customers, c);
+              }
+            } catch(_) {}
+            try {
+              if (data.destinationsBySupplier && Array.isArray(data.destinationsBySupplier[n])) {
+                for (const d of data.destinationsBySupplier[n]) pushUniq(destinations, d);
+              }
+            } catch(_) {}
+          }
+          // Fallback: best-effort filter original arrays when per-supplier maps are not present
+          if (!customers.length) {
+            for (const n of names) {
+              const arr = narrowBySupplier(data.customers, n) || [];
+              for (const c of arr) pushUniq(customers, (typeof c === 'string') ? c : (c && (c.name || c.customer || c.client || c.account)));
+            }
+          }
+          if (!destinations.length) {
+            for (const n of names) {
+              const arr = narrowBySupplier(data.destinations, n) || [];
+              for (const d of arr) pushUniq(destinations, (typeof d === 'string') ? d : (d && (d.name || d.destination || d.country || d.route)));
+            }
+          }
+          data = { time: toTimeLabel(ts), suppliers: matched, customers, destinations };
+        } else {
+          data = { ...data, time: toTimeLabel(ts) };
+        }
+      } else {
+        data = { ...data, time: toTimeLabel(ts) };
+      }
       // hide default ECharts tooltip (separate capsule tooltip only)
       try { chart.dispatchAction({ type: 'hideTip' }); } catch(_) {}
       ensureEl(textColor);
@@ -98,6 +259,7 @@ function makeHandlers(chart, { getCapsuleData, textColor, metricByGridIndex }) {
   const out = () => {
     if (el) el.style.opacity = '0';
     try { chart.dispatchAction({ type: 'downplay' }); } catch(_) {}
+    chart.__capsuleHoverActive = false;
   };
   return { over, out, move };
 }
