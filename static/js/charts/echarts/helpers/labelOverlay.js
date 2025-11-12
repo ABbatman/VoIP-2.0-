@@ -1,6 +1,6 @@
 // static/js/charts/echarts/helpers/labelOverlay.js
 // overlay labels: customSeries on top of bars (no calc here)
-import { getStableColor } from './colors.js';
+import { getStableColor, PROVIDER_COLORS } from './colors.js';
 
 export function buildLabelOverlay({ metric, timestamps, labels, colorMap, gridIndex, xAxisIndex, yAxisIndex, secondary = false, stepMs, align = 'current' }) {
   // custom series: draw labels via renderItem only
@@ -18,6 +18,7 @@ export function buildLabelOverlay({ metric, timestamps, labels, colorMap, gridIn
     name: 'LabelsOverlay',
     type: 'custom',
     coordinateSystem: 'cartesian2d',
+    clip: true, // keep drawings inside the grid
     gridIndex: Number.isFinite(gridIndex) ? Number(gridIndex) : undefined,
     xAxisIndex: Number(xAxisIndex),
     yAxisIndex: Number(yAxisIndex),
@@ -51,15 +52,31 @@ export function buildLabelOverlay({ metric, timestamps, labels, colorMap, gridIn
       if (!entries.length) return null;
       // sort asc visually (no business calc)
       entries.sort((a,b) => a.value - b.value);
-      const children = [];
-      // debug entries
+      // group duplicates within tolerance (<= 0.1) into a single aggregated label
+      const tol = 0.1;
+      const clusters = [];
+      for (const e of entries) {
+        const last = clusters.length ? clusters[clusters.length - 1] : null;
+        if (!last) { clusters.push([e]); continue; }
+        const lastVal = last[last.length - 1].value;
+        if (Math.abs(e.value - lastVal) <= tol) last.push(e); else clusters.push([e]);
+      }
+      const grouped = clusters.map(group => {
+        // average value for display; use first for supplier identity/color
+        let sum = 0; for (const g of group) sum += Number(g.value) || 0;
+        const avg = group.length ? (sum / group.length) : (Number(group[0]?.value) || 0);
+        const first = group[0] || { supplierId: null, name: null };
+        return { supplierId: first.supplierId, name: first.name, value: avg };
+      });
       try {
         if (typeof window !== 'undefined' && window.__chartsDebug) {
-          console.debug('[overlay] entries at', new Date(ts).toISOString(), entries);
+          console.debug('[overlay] grouped.len', grouped.length, grouped.slice(0, 3));
         }
       } catch(_) {}
-      for (let i = 0; i < entries.length; i++) {
-        const { supplierId, name, value } = entries[i];
+      const children = [];
+      if (!grouped.length) return null;
+      for (let i = 0; i < grouped.length; i++) {
+        const { supplierId, name, value } = grouped[i];
         const c = api.coord([ts, value]);
         // align horizontally to a specific bar within the category band using step-based pixel shift
         let x = Math.round(c[0]);
@@ -94,7 +111,7 @@ export function buildLabelOverlay({ metric, timestamps, labels, colorMap, gridIn
         if (!color) {
           color = PROVIDER_COLORS[i % PROVIDER_COLORS.length] || '#ff7f0e';
         }
-        console.debug('[overlay] color', { supplierId, name, color });
+        try { if (typeof window !== 'undefined' && window.__chartsDebug) console.debug('[overlay] color', { supplierId, name, color }); } catch(_) {}
         children.push({
           type: 'text',
           style: {
@@ -107,6 +124,7 @@ export function buildLabelOverlay({ metric, timestamps, labels, colorMap, gridIn
             fontWeight: 600,
             fill: color,       // some themes use fill for text color
             textFill: color,   // ensure text color is applied across ECharts versions
+            color: color,      // extra safety for text color
             opacity: secondary ? 0.6 : 1, // secondary hierarchy via opacity
           },
           silent: true,
