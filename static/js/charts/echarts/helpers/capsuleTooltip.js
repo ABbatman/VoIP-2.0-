@@ -1,5 +1,6 @@
 // static/js/charts/echarts/helpers/capsuleTooltip.js
 // Responsibility: attach separate DOM tooltip for capsule labels (ECharts custom series)
+import { formatTimeRange } from './time.js';
 
 let el;
 
@@ -34,8 +35,10 @@ function fmtBlock({ time, suppliers, customers, destinations }) { // format only
     const sup = suppliers.slice().sort((a,b) => (Number(b?.value)||0) - (Number(a?.value)||0));
     for (const s of sup) {
       const name = (s && (s.name ?? s.supplier ?? s.provider ?? s.id ?? s.supplierId)) ?? '';
-      const val = (s && s.value != null) ? s.value : '';
-      lines.push(`${String(name)} → ${String(val)}`);
+      const v = (s && s.value != null) ? s.value : '';
+      const n = Number(v);
+      const val = Number.isFinite(n) ? n.toFixed(1) : String(v); // format 0.1
+      lines.push(`${String(name)} → ${val}`);
     }
   }
   if (Array.isArray(customers) && customers.length) {
@@ -163,10 +166,22 @@ function makeHandlers(chart, { getCapsuleData, textColor, metricByGridIndex }) {
         } catch(_) {}
       }
       if (!Number.isFinite(ts)) return;
+      // detect step from overlay series data (fallback 1h)
+      let stepGuess = 3600e3; // default 1h
+      try {
+        const data = Array.isArray(series?.data) ? series.data : [];
+        let prev = null;
+        for (const d of data) {
+          const t = Array.isArray(d) ? Number(d[0]) : Number(d?.value?.[0]);
+          if (!Number.isFinite(t)) continue;
+          if (prev == null) { prev = t; continue; }
+          if (t !== prev) { stepGuess = Math.abs(t - prev); break; }
+        }
+      } catch(_) { /* keep default */ }
       let data = (typeof getCapsuleData === 'function') ? getCapsuleData({ metric, ts }) : null;
       if (!data) {
         // build minimal fallback with time only
-        try { data = { time: toTimeLabel(ts), suppliers: [], customers: [], destinations: [] }; } catch(_) { return; }
+        try { data = { time: formatTimeRange(ts, stepGuess), suppliers: [], customers: [], destinations: [] }; } catch(_) { return; }
       }
       // If suppliers are missing, read them from option.__labelsEffective (overlay data used for drawing)
       try {
@@ -237,12 +252,12 @@ function makeHandlers(chart, { getCapsuleData, textColor, metricByGridIndex }) {
               for (const d of arr) pushUniq(destinations, (typeof d === 'string') ? d : (d && (d.name || d.destination || d.country || d.route)));
             }
           }
-          data = { time: toTimeLabel(ts), suppliers: matched, customers, destinations };
+          data = { time: formatTimeRange(ts, stepGuess), suppliers: matched, customers, destinations };
         } else {
-          data = { ...data, time: toTimeLabel(ts) };
+          data = { ...data, time: formatTimeRange(ts, stepGuess) };
         }
       } else {
-        data = { ...data, time: toTimeLabel(ts) };
+        data = { ...data, time: formatTimeRange(ts, stepGuess) };
       }
       // hide default ECharts tooltip (separate capsule tooltip only)
       try { chart.dispatchAction({ type: 'hideTip' }); } catch(_) {}

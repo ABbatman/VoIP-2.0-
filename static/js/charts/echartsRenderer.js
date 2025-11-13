@@ -7,6 +7,8 @@ import * as echarts from 'echarts';
 import { renderBarChartEcharts as renderBarEcharts } from './echartsBarChart.js';
 import { buildMultiOption } from './echarts/builders/MultiLineBuilder.js';
 import { attach as attachZoom, applyRange as applyZoomRange } from './echarts/services/zoomManager.js';
+import { makeBarLineLikeTooltip } from './echarts/helpers/tooltip.js';
+import { getStepMs } from './echarts/helpers/time.js';
 // Removed D3 usage; ECharts is the sole charting system.
 // Archived: stream graph is disabled and not registered.
 
@@ -47,6 +49,10 @@ export function renderMultiLineChartEcharts(container, data, options = {}) {
     noFiveMinData: !!options.noFiveMinData,
   };
   const option = buildMultiOption({ data, ...base });
+  try {
+    const step = getStepMs(base.interval, undefined);
+    option.tooltip = { ...(option.tooltip || {}), formatter: makeBarLineLikeTooltip({ chart, stepMs: step }) };
+  } catch(_) { /* keep default tooltip */ }
   chart.setOption(option, { notMerge: true, lazyUpdate: true });
   try { applyZoomRange(chart); } catch(_) {}
   try { attachZoom(chart); } catch(_) {}
@@ -54,6 +60,10 @@ export function renderMultiLineChartEcharts(container, data, options = {}) {
   function update(newData = data, newOptions = {}) {
     const merged = { ...base, ...newOptions };
     const next = buildMultiOption({ data: newData, ...merged });
+    try {
+      const step = getStepMs(merged.interval, undefined);
+      next.tooltip = { ...(next.tooltip || {}), formatter: makeBarLineLikeTooltip({ chart, stepMs: step }) };
+    } catch(_) { /* keep default tooltip */ }
     chart.setOption(next, { notMerge: true, lazyUpdate: true });
     try { applyZoomRange(chart); } catch(_) {}
   }

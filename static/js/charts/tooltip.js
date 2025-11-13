@@ -1,3 +1,4 @@
+import { formatTimeRange } from './echarts/helpers/time.js';
 export function makeStreamTooltip(state, ctx = {}) {
   const chart = ctx.chart;
   return {
@@ -185,7 +186,12 @@ export function makeBarLineLikeTooltip({ chart, stepMs }) {
     if (y == null || isNaN(y)) return null;
     return (ts - t) <= maxDelta ? Number(y) : null;
   };
-  const fmt = (v) => (v == null || isNaN(v) ? '-' : (Math.round(Number(v) * 10) / 10).toFixed(1));
+  const fmtDec = (v) => (v == null || isNaN(v) ? '-' : (Math.round(Number(v) * 10) / 10).toFixed(1));
+  const fmtMetric = (name, v) => {
+    if (v == null || isNaN(v)) return '-';
+    if (name === 'TCalls') return Math.round(Number(v)).toLocaleString();
+    return fmtDec(v);
+  };
   return (param) => {
     if (!param) return '';
     const arr = Array.isArray(param) ? param : [param];
@@ -211,11 +217,11 @@ export function makeBarLineLikeTooltip({ chart, stepMs }) {
     const bins = Object.create(null);
     for (const n of names) bins[n] = getPairs(n);
     const lines = [];
-    const header = (arr[0]?.axisValueLabel) || new Date(tsSnap).toISOString().slice(0,16).replace('T',' ');
-    lines.push(`TCalls: ${fmt(findPrevWithin(bins['TCalls'], tsSnap, half))}`);
-    lines.push(`ASR: ${fmt(findPrevWithin(bins['ASR'], tsSnap, half))}`);
-    lines.push(`Minutes: ${fmt(findPrevWithin(bins['Minutes'], tsSnap, half))}`);
-    lines.push(`ACD: ${fmt(findPrevWithin(bins['ACD'], tsSnap, half))}`);
+    const header = formatTimeRange(tsSnap, step);
+    lines.push(`TCalls: ${fmtMetric('TCalls', findPrevWithin(bins['TCalls'], tsSnap, half))}`);
+    lines.push(`ASR: ${fmtMetric('ASR', findPrevWithin(bins['ASR'], tsSnap, half))}`);
+    lines.push(`Minutes: ${fmtMetric('Minutes', findPrevWithin(bins['Minutes'], tsSnap, half))}`);
+    lines.push(`ACD: ${fmtMetric('ACD', findPrevWithin(bins['ACD'], tsSnap, half))}`);
     return [header, ...lines].join('<br/>' );
   };
 }
