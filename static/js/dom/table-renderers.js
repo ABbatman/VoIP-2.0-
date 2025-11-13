@@ -154,22 +154,9 @@ function addMetricCells(tr, rowData) {
     const tdDelta = document.createElement("td");
     if (typeof delta === "number" && delta !== 0) {
       const absDelta = Math.abs(delta);
-      const contentWrapper = document.createElement("span");
-      contentWrapper.className = "delta-cell-content";
-      const textNode = document.createTextNode(absDelta.toFixed(1));
-      const arrowSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-      arrowSvg.setAttribute("class", "delta-arrow");
-      arrowSvg.setAttribute("viewBox", "0 0 10 10");
-      arrowSvg.setAttribute("fill", "currentColor");
-      arrowSvg.innerHTML = '<polygon points="0,0 10,5 0,10" />';
-      contentWrapper.appendChild(textNode);
-      contentWrapper.appendChild(arrowSvg);
-      tdDelta.appendChild(contentWrapper);
-      if (delta > 0) {
-        tdDelta.classList.add("arrow-up");
-      } else {
-        tdDelta.classList.add("arrow-down");
-      }
+      tdDelta.textContent = absDelta.toFixed(1);
+      if (delta > 0) tdDelta.classList.add("cell-positive");
+      else tdDelta.classList.add("cell-negative");
     } else {
       tdDelta.textContent = "-";
     }
@@ -288,8 +275,8 @@ function renderMetricCellsString(rowData) {
     // delta cell
     if (typeof delta === 'number' && delta !== 0) {
       const absDelta = Math.abs(delta);
-      const dirClass = delta > 0 ? 'arrow-up' : 'arrow-down';
-      html += `<td class="${dirClass}"><span class="delta-cell-content">${absDelta.toFixed(1)}<svg class="delta-arrow" viewBox="0 0 10 10" fill="currentColor"><polygon points="0,0 10,5 0,10" /></svg></span></td>`;
+      const cls = delta > 0 ? 'cell-positive' : 'cell-negative';
+      html += `<td class="${cls}">${absDelta.toFixed(1)}</td>`;
     } else {
       html += `<td>-</td>`;
     }

@@ -117,11 +117,19 @@ export function initFilters(isStateLoaded) {
     console.warn("⚠️ Find button not found");
   }
 
-  if (summaryTableButton) {
-    summaryTableButton.addEventListener("click", handleSummaryClick);
-  } else {
-    console.warn("⚠️ Summary Table button not found");
-  }
+  // Install delegated click handler once to survive DOM re-renders
+  try {
+    const alreadyDelegated = (() => { try { return !!window.__summaryDelegationInstalled; } catch(_) { return false; } })();
+    if (!alreadyDelegated) {
+      document.addEventListener('click', (e) => {
+        const btn = e.target && (e.target.closest ? e.target.closest('#btnSummary') : null);
+        if (!btn) return;
+        try { if (typeof window !== 'undefined' && window.__summaryFetchInProgress) return; } catch(_) {}
+        handleSummaryClick(e);
+      }, false);
+      try { window.__summaryDelegationInstalled = true; } catch(_) { /* no-op */ }
+    }
+  } catch(_) { /* best-effort */ }
 
   if (reverseButton) {
     reverseButton.addEventListener("click", (e) => {
@@ -158,12 +166,12 @@ export function initFilters(isStateLoaded) {
       // Toggle global overlay only for non-interval operations (Find/Summary)
       try {
         const overlayEl = document.getElementById('loading-overlay');
-        if (overlayEl) overlayEl.classList.toggle('is-hidden', !(status === 'loading' && !isIntervalFetch));
+        if (overlayEl) overlayEl.classList.toggle('is-hidden', !(status === 'loading' && !isIntervalFetch && !isSummaryFetch));
       } catch(_) {
         // Ignore overlay toggle errors
       }
       // reinforce charts/mode controls visibility across patches
-      if (status === 'loading' || status === 'success') {
+      if ((status === 'loading' || status === 'success') && !isSummaryFetch) {
         try { setUI({ showCharts: true, showModeControls: true }); } catch(_) {
           // Ignore UI state errors
         }
@@ -175,7 +183,7 @@ export function initFilters(isStateLoaded) {
       try { if (reverseButton) reverseButton.disabled = (status === 'loading'); } catch(_) {
         // Ignore button state errors
       }
-      try { if (summaryTableButton) summaryTableButton.disabled = (status === 'loading'); } catch(_) {
+      try { if (summaryTableButton) summaryTableButton.disabled = (status === 'loading' && isSummaryFetch); } catch(_) {
         // Ignore button state errors
       }
     });
@@ -396,6 +404,7 @@ async function handleFindClick() {
   window._isManualFindInProgress = true;
 
   setAppStatus("loading");
+  try { if (typeof window !== 'undefined') window.__chartsZoomRange = null; } catch(_) {}
   // Ensure charts and mode controls remain visible across re-renders after Find
   try { setUI({ showCharts: true, showModeControls: true }); } catch(_) {
     // Ignore UI state errors
@@ -534,15 +543,14 @@ async function handleFindClick() {
 async function handleSummaryClick() {
   console.log("📊 Summary Table button clicked!");
 
-  // Set loading status
-  // Important: allow table to be shown for summary flow
+  // Summary flow should NOT affect charts or global status
+  // Mark summary-only fetch in progress (used by UI guards)
   try { if (typeof window !== 'undefined') window.__summaryFetchInProgress = true; } catch(_) {
     // Ignore global flag errors
   }
   try { window.__hideTableUntilSummary = false; } catch(_) {
     // Ignore global flag errors
   }
-  setAppStatus("loading");
 
   // Hide table while loading (temporary), flag is cleared above to allow later show
   try { setShowTable(false); } catch(_) {
@@ -552,6 +560,9 @@ async function handleSummaryClick() {
 
   // Reset virtual table state AFTER hiding, not before
   resetVirtualTableState();
+
+  // Clear all saved table column filters before building the new table
+  try { clearAllTableFilters(); } catch(_) { }
 
   try {
     // Fetch fresh data with current filter values (force-sync first)
@@ -609,11 +620,16 @@ async function handleSummaryClick() {
     }
     const data = await fetchMetrics(filterParams);
 
-    if (data) {
-      // Do NOT update global metrics data here to avoid affecting charts.
-      setAppStatus("success");
-    } else {
-      setAppStatus("error");
+    if (!data) {
+      try { renderTableHeader(); } catch(_) {}
+      try { renderTableFooter(); } catch(_) {}
+      try { showTableControls(); } catch(_) {}
+      try {
+        const tb = document.getElementById('tableBody');
+        if (tb) tb.innerHTML = '<tr><td colspan="24">Error loading data. Please try again.</td></tr>';
+      } catch(_) {}
+      try { setShowTable(true); } catch(_) {}
+      saveStateToUrl();
       alert('Error loading data. Please try again.');
       return;
     }
@@ -695,19 +711,22 @@ async function handleSummaryClick() {
           // Ignore table interactions init errors
         }
         console.log("✅ Summary Table loaded with fresh data");
-      });
+      }, { debounceMs: 0, cooldownMs: 0 });
     } else {
-      try { setShowTable(false); } catch(_) {
-        // Ignore table hide errors
-      }
-      hideTableUI();
-      alert('No data found for current filters.');
+      // Show empty state instead of hiding the table entirely
+      try { renderTableHeader(); } catch(_) {}
+      try { renderTableFooter(); } catch(_) {}
+      try { showTableControls(); } catch(_) {}
+      try {
+        const tb = document.getElementById('tableBody');
+        if (tb) tb.innerHTML = '<tr><td colspan="24">No data found for current filters.</td></tr>';
+      } catch(_) {}
+      try { setShowTable(true); } catch(_) {}
     }
 
     saveStateToUrl();
   } catch (error) {
     console.error("❌ Error fetching data for Summary Table:", error);
-    setAppStatus("error");
     alert('Error loading data. Please try again.');
   } finally {
     try { if (typeof window !== 'undefined') window.__summaryFetchInProgress = false; } catch(_) {

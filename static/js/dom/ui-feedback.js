@@ -59,8 +59,9 @@ export function initUiFeedback() {
  */
 function updateFeedbackUI(status) {
   console.log("🔍 updateFeedbackUI: Updating UI for status:", status);
-  
+  const isSummaryFetch = (() => { try { return !!window.__summaryFetchInProgress; } catch(_) { return false; } })();
   const findButton = document.getElementById("findButton");
+  const summaryButton = document.getElementById("btnSummary");
   const controlButtons = document.querySelectorAll(".btn");
   const loadingOverlay = document.getElementById("loading-overlay");
 
@@ -78,37 +79,30 @@ function updateFeedbackUI(status) {
     findButton.textContent = "Find";
   }
   controlButtons.forEach((btn) => (btn.disabled = false));
-  if (loadingOverlay) {
-    loadingOverlay.classList.add("is-hidden");
-  }
+  if (summaryButton) summaryButton.disabled = false;
+  if (loadingOverlay) loadingOverlay.classList.add("is-hidden");
 
   // Apply changes based on the new status
   switch (status) {
     case "loading":
       console.log("🔍 updateFeedbackUI: Setting loading state");
-      if (findButton) {
-        findButton.disabled = true;
-        findButton.textContent = "Finding...";
-      }
-      controlButtons.forEach((btn) => (btn.disabled = true));
-      if (loadingOverlay) {
-        loadingOverlay.classList.remove("is-hidden");
+      if (!isSummaryFetch) {
+        if (findButton) { findButton.disabled = true; findButton.textContent = "Finding..."; }
+        controlButtons.forEach((btn) => (btn.disabled = true));
+        if (loadingOverlay) loadingOverlay.classList.remove("is-hidden");
+      } else {
+        // Summary flow: do not block the whole UI or show overlay; disable only Summary button
+        if (summaryButton) summaryButton.disabled = true;
       }
       break;
 
     case "success":
       console.log("🔍 updateFeedbackUI: Setting success state");
-      if (__lastDataEmpty) {
-        showToast("No data for selected range", "error");
-      } else {
-        showToast("Metrics loaded successfully!", "success");
-      }
-      // Ensure overlay is hidden and table stays hidden until Summary is explicitly opened
-      try {
-        const loadingOverlay2 = document.getElementById("loading-overlay");
-        if (loadingOverlay2) loadingOverlay2.classList.add("is-hidden");
-      } catch(_) {
-        // Ignore overlay hide errors
+      if (!isSummaryFetch) {
+        if (__lastDataEmpty) { showToast("No data for selected range", "error"); }
+        else { showToast("Metrics loaded successfully!", "success"); }
+        // Ensure overlay is hidden and table stays hidden until Summary is explicitly opened
+        try { const loadingOverlay2 = document.getElementById("loading-overlay"); if (loadingOverlay2) loadingOverlay2.classList.add("is-hidden"); } catch(_) {}
       }
       try {
         if (typeof window !== 'undefined' && window.__hideTableUntilSummary) {

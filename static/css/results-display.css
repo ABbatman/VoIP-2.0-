@@ -668,34 +668,6 @@
   border-left: 2px solid #a9a9a9 !important;
 }
 
-.delta-cell-content {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-}
-
-.delta-arrow {
-  width: 10px;
-  height: 10px;
-  margin-left: 5px;
-}
-
-.arrow-up {
-  color: #28a745;
-}
-
-.arrow-down {
-  color: #dc3545;
-}
-
-.arrow-up .delta-arrow {
-  transform: rotate(-90deg);
-}
-
-.arrow-down .delta-arrow {
-  transform: rotate(90deg);
-}
-
 .datetime-cell-container {
   display: flex;
   justify-content: space-between;
