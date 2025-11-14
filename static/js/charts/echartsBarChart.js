@@ -309,7 +309,19 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
       grid: grids,
       xAxis: xAxes,
       yAxis: yAxes,
-      tooltip: { trigger: 'axis', axisPointer: { type: 'cross', snap: true }, confine: true, order: 'valueAsc', formatter: makeBarLineLikeTooltip({ chart, stepMs: step }) },
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'cross', snap: true },
+        confine: true,
+        order: 'valueAsc',
+        formatter: makeBarLineLikeTooltip({ chart, stepMs: step }),
+        backgroundColor: 'rgba(255,255,255,0.98)',
+        borderColor: '#e6e9ef',
+        borderWidth: 1,
+        padding: [9, 12],
+        textStyle: { color: 'var(--ds-color-fg)' },
+        extraCssText: 'border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,0.07); line-height:1.35;'
+      },
       axisPointer: { link: [{ xAxisIndex: [0,1,2,3] }] },
       dataZoom: [
         {
@@ -386,13 +398,25 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
               const perMetric = key ? src[key] : null;
               const byTs = perMetric ? (perMetric[ts] || perMetric[String(ts)] || perMetric[Math.floor(Number(ts)/1000)] || perMetric[String(Math.floor(Number(ts)/1000))]) : null;
               if (byTs) {
-                let ret = {
+                // normalize arrays from possible alt keys
+                const toArr = (v) => Array.isArray(v) ? v : (v != null ? [v] : []);
+                const customersArr = Array.isArray(byTs.customers) ? byTs.customers
+                  : Array.isArray(byTs.customer) ? byTs.customer
+                  : Array.isArray(byTs.clients) ? byTs.clients
+                  : Array.isArray(byTs.client) ? byTs.client
+                  : toArr(byTs.customers || byTs.customer || byTs.clients || byTs.client);
+                const destinationsArr = Array.isArray(byTs.destinations) ? byTs.destinations
+                  : Array.isArray(byTs.destination) ? byTs.destination
+                  : Array.isArray(byTs.directions) ? byTs.directions
+                  : Array.isArray(byTs.direction) ? byTs.direction
+                  : toArr(byTs.destinations || byTs.destination || byTs.directions || byTs.direction);
+                const ret = {
                   time: byTs.time || new Date(Number(ts)).toISOString().replace('T',' ').replace('Z',''),
                   suppliers: Array.isArray(byTs.suppliers) ? byTs.suppliers : [],
-                  customers: Array.isArray(byTs.customers) ? byTs.customers : [],
-                  destinations: Array.isArray(byTs.destinations) ? byTs.destinations : [],
-                  customersBySupplier: byTs.customersBySupplier || undefined,
-                  destinationsBySupplier: byTs.destinationsBySupplier || undefined,
+                  customers: customersArr,
+                  destinations: destinationsArr,
+                  customersBySupplier: byTs.customersBySupplier || byTs.customers_by_supplier || byTs.customersPerSupplier || byTs.customers_per_supplier || undefined,
+                  destinationsBySupplier: byTs.destinationsBySupplier || byTs.destinations_by_supplier || byTs.destinationBySupplier || byTs.destination_by_supplier || undefined,
                 };
                 // if external source has no suppliers, try labelsEffective fallback before leaving
                 if (!ret.suppliers || ret.suppliers.length === 0) {
@@ -405,6 +429,27 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
                     }
                   } catch(_) {}
                 }
+                // minimal fallback: populate arrays from maps if arrays are empty
+                try {
+                  if ((!ret.customers || ret.customers.length === 0) && ret.customersBySupplier && typeof ret.customersBySupplier === 'object') {
+                    const acc = [];
+                    for (const k of Object.keys(ret.customersBySupplier)) {
+                      const arr = ret.customersBySupplier[k];
+                      if (Array.isArray(arr) && arr.length) acc.push(String(arr[0]));
+                      if (acc.length >= 3) break;
+                    }
+                    if (acc.length) ret.customers = acc;
+                  }
+                  if ((!ret.destinations || ret.destinations.length === 0) && ret.destinationsBySupplier && typeof ret.destinationsBySupplier === 'object') {
+                    const acc = [];
+                    for (const k of Object.keys(ret.destinationsBySupplier)) {
+                      const arr = ret.destinationsBySupplier[k];
+                      if (Array.isArray(arr) && arr.length) acc.push(String(arr[0]));
+                      if (acc.length >= 3) break;
+                    }
+                    if (acc.length) ret.destinations = acc;
+                  }
+                } catch(_) {}
                 if (ret.suppliers && ret.suppliers.length) return ret;
                 // else continue to providerRows fallback
               }
@@ -416,12 +461,71 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
               if (mKey && lm) {
                 const byTs2 = lm[ts] || lm[String(ts)] || lm[Math.floor(Number(ts)/1000)] || lm[String(Math.floor(Number(ts)/1000))];
                 if (Array.isArray(byTs2)) {
-                  return {
+                  const ret = {
                     time: new Date(Number(ts)).toISOString().replace('T',' ').replace('Z',''),
                     suppliers: byTs2,
                     customers: [],
                     destinations: [],
                   };
+                  // enrich with per-supplier customers/destinations using providerRows when available (visual-only)
+                  try {
+                    const rows = Array.isArray(options?.providerRows) ? options.providerRows : [];
+                    if (rows.length) {
+                      const pKey = detectProviderKey(rows);
+                      if (pKey) {
+                        const destCand = ['destination','Destination','dst','Dst','country','Country','prefix','Prefix','route','Route','direction','Direction'];
+                        const custCand = ['customer','Customer','client','Client','account','Account','buyer','Buyer','main','Main'];
+                        const detectKey = (cands) => {
+                          try {
+                            const lowerPref = cands.map(k => k.toLowerCase());
+                            for (const r of rows) {
+                              if (!r || typeof r !== 'object') continue;
+                              for (const k of Object.keys(r)) {
+                                const kl = String(k).toLowerCase();
+                                if (!lowerPref.includes(kl)) continue;
+                                const v = r[k];
+                                const s = typeof v === 'string' ? v.trim() : (typeof v === 'number' ? String(v) : '');
+                                if (s) return k;
+                              }
+                            }
+                          } catch(_) {}
+                          return null;
+                        };
+                        const destKey = detectKey(destCand);
+                        const custKey = detectKey(custCand);
+                        const stepLocal = Number(base.stepMs) || getStepMs(base.interval);
+                        const bucketCenter = (t) => { const b = Math.floor(t / stepLocal) * stepLocal; return b + Math.floor(stepLocal / 2); };
+                        const custBySup = Object.create(null); // name -> string[]
+                        const destBySup = Object.create(null); // name -> string[]
+                        for (const r of rows) {
+                          const rt = parseRowTs(r.time || r.Time || r.timestamp || r.Timestamp || r.slot || r.Slot || r.hour || r.Hour || r.datetime || r.DateTime || r.ts || r.TS || r.period || r.Period || r.start || r.Start || r.start_time || r.StartTime);
+                          if (!Number.isFinite(rt)) continue;
+                          if (bucketCenter(rt) !== ts) continue;
+                          const prov = String(r[pKey] || '').trim();
+                          if (!prov) continue;
+                          if (custKey) {
+                            const c = String(r[custKey] || '').trim();
+                            if (c) {
+                              let arr = custBySup[prov];
+                              if (!arr) { arr = []; custBySup[prov] = arr; }
+                              if (!arr.includes(c)) arr.push(c);
+                            }
+                          }
+                          if (destKey) {
+                            const d = String(r[destKey] || '').trim();
+                            if (d) {
+                              let arr = destBySup[prov];
+                              if (!arr) { arr = []; destBySup[prov] = arr; }
+                              if (!arr.includes(d)) arr.push(d);
+                            }
+                          }
+                        }
+                        if (Object.keys(custBySup).length) ret.customersBySupplier = custBySup;
+                        if (Object.keys(destBySup).length) ret.destinationsBySupplier = destBySup;
+                      }
+                    }
+                  } catch(_) {}
+                  return ret;
                 }
               }
             } catch(_) {}
@@ -431,7 +535,7 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
             const pKey = detectProviderKey(rows);
             if (!pKey) return null;
             const destCand = ['destination','Destination','dst','Dst','country','Country','prefix','Prefix','route','Route','direction','Direction'];
-            const custCand = ['customer','Customer','client','Client','account','Account','buyer','Buyer'];
+            const custCand = ['customer','Customer','client','Client','account','Account','buyer','Buyer','main','Main'];
             const detectKey = (cands) => {
               try {
                 const lowerPref = cands.map(k => k.toLowerCase());
@@ -590,13 +694,25 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
               const perMetric = key ? src[key] : null;
               const byTs = perMetric ? (perMetric[ts] || perMetric[String(ts)] || perMetric[Math.floor(Number(ts)/1000)] || perMetric[String(Math.floor(Number(ts)/1000))]) : null;
               if (byTs) {
+                // normalize arrays from possible alt keys (singular/plural variants)
+                const toArr = (v) => Array.isArray(v) ? v : (v != null ? [v] : []);
+                const customersArr = Array.isArray(byTs.customers) ? byTs.customers
+                  : Array.isArray(byTs.customer) ? byTs.customer
+                  : Array.isArray(byTs.clients) ? byTs.clients
+                  : Array.isArray(byTs.client) ? byTs.client
+                  : toArr(byTs.customers || byTs.customer || byTs.clients || byTs.client);
+                const destinationsArr = Array.isArray(byTs.destinations) ? byTs.destinations
+                  : Array.isArray(byTs.destination) ? byTs.destination
+                  : Array.isArray(byTs.directions) ? byTs.directions
+                  : Array.isArray(byTs.direction) ? byTs.direction
+                  : toArr(byTs.destinations || byTs.destination || byTs.directions || byTs.direction);
                 let ret = {
                   time: byTs.time || new Date(Number(ts)).toISOString().replace('T',' ').replace('Z',''),
                   suppliers: Array.isArray(byTs.suppliers) ? byTs.suppliers : [],
-                  customers: Array.isArray(byTs.customers) ? byTs.customers : [],
-                  destinations: Array.isArray(byTs.destinations) ? byTs.destinations : [],
-                  customersBySupplier: byTs.customersBySupplier || undefined,
-                  destinationsBySupplier: byTs.destinationsBySupplier || undefined,
+                  customers: customersArr,
+                  destinations: destinationsArr,
+                  customersBySupplier: byTs.customersBySupplier || byTs.customers_by_supplier || byTs.customersPerSupplier || byTs.customers_per_supplier || undefined,
+                  destinationsBySupplier: byTs.destinationsBySupplier || byTs.destinations_by_supplier || byTs.destinationBySupplier || byTs.destination_by_supplier || undefined,
                 };
                 if (!ret.suppliers || ret.suppliers.length === 0) {
                   try {
@@ -608,6 +724,27 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
                     }
                   } catch(_) {}
                 }
+                // minimal fallback: populate arrays from maps if arrays are empty
+                try {
+                  if ((!ret.customers || ret.customers.length === 0) && ret.customersBySupplier && typeof ret.customersBySupplier === 'object') {
+                    const acc = [];
+                    for (const k of Object.keys(ret.customersBySupplier)) {
+                      const arr = ret.customersBySupplier[k];
+                      if (Array.isArray(arr) && arr.length) acc.push(String(arr[0]));
+                      if (acc.length >= 3) break;
+                    }
+                    if (acc.length) ret.customers = acc;
+                  }
+                  if ((!ret.destinations || ret.destinations.length === 0) && ret.destinationsBySupplier && typeof ret.destinationsBySupplier === 'object') {
+                    const acc = [];
+                    for (const k of Object.keys(ret.destinationsBySupplier)) {
+                      const arr = ret.destinationsBySupplier[k];
+                      if (Array.isArray(arr) && arr.length) acc.push(String(arr[0]));
+                      if (acc.length >= 3) break;
+                    }
+                    if (acc.length) ret.destinations = acc;
+                  }
+                } catch(_) {}
                 if (ret.suppliers && ret.suppliers.length) return ret;
                 // else continue to providerRows fallback
               }
@@ -619,12 +756,71 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
               if (mKey && lm) {
                 const byTs2 = lm[ts] || lm[String(ts)] || lm[Math.floor(Number(ts)/1000)] || lm[String(Math.floor(Number(ts)/1000))];
                 if (Array.isArray(byTs2)) {
-                  return {
+                  const ret = {
                     time: new Date(Number(ts)).toISOString().replace('T',' ').replace('Z',''),
                     suppliers: byTs2,
                     customers: [],
                     destinations: [],
                   };
+                  // enrich with per-supplier customers/destinations using providerRows when available (visual-only)
+                  try {
+                    const rowsFallback = Array.isArray(merged?.providerRows) ? merged.providerRows : (Array.isArray(options?.providerRows) ? options.providerRows : []);
+                    if (rowsFallback.length) {
+                      const pKey = detectProviderKey(rowsFallback);
+                      if (pKey) {
+                        const destCand = ['destination','Destination','dst','Dst','country','Country','prefix','Prefix','route','Route','direction','Direction'];
+                        const custCand = ['customer','Customer','client','Client','account','Account','buyer','Buyer','main','Main'];
+                        const detectKey = (cands) => {
+                          try {
+                            const lowerPref = cands.map(k => k.toLowerCase());
+                            for (const r of rowsFallback) {
+                              if (!r || typeof r !== 'object') continue;
+                              for (const k of Object.keys(r)) {
+                                const kl = String(k).toLowerCase();
+                                if (!lowerPref.includes(kl)) continue;
+                                const v = r[k];
+                                const s = typeof v === 'string' ? v.trim() : (typeof v === 'number' ? String(v) : '');
+                                if (s) return k;
+                              }
+                            }
+                          } catch(_) {}
+                          return null;
+                        };
+                        const destKey = detectKey(destCand);
+                        const custKey = detectKey(custCand);
+                        const stepLocal = Number(base.stepMs) || getStepMs(base.interval);
+                        const bucketCenter = (t) => { const b = Math.floor(t / stepLocal) * stepLocal; return b + Math.floor(stepLocal / 2); };
+                        const custBySup = Object.create(null); // name -> string[]
+                        const destBySup = Object.create(null); // name -> string[]
+                        for (const r of rowsFallback) {
+                          const rt = parseRowTs(r.time || r.Time || r.timestamp || r.Timestamp || r.slot || r.Slot || r.hour || r.Hour || r.datetime || r.DateTime || r.ts || r.TS || r.period || r.Period || r.start || r.Start || r.start_time || r.StartTime);
+                          if (!Number.isFinite(rt)) continue;
+                          if (bucketCenter(rt) !== ts) continue;
+                          const prov = String(r[pKey] || '').trim();
+                          if (!prov) continue;
+                          if (custKey) {
+                            const c = String(r[custKey] || '').trim();
+                            if (c) {
+                              let arr = custBySup[prov];
+                              if (!arr) { arr = []; custBySup[prov] = arr; }
+                              if (!arr.includes(c)) arr.push(c);
+                            }
+                          }
+                          if (destKey) {
+                            const d = String(r[destKey] || '').trim();
+                            if (d) {
+                              let arr = destBySup[prov];
+                              if (!arr) { arr = []; destBySup[prov] = arr; }
+                              if (!arr.includes(d)) arr.push(d);
+                            }
+                          }
+                        }
+                        if (Object.keys(custBySup).length) ret.customersBySupplier = custBySup;
+                        if (Object.keys(destBySup).length) ret.destinationsBySupplier = destBySup;
+                      }
+                    }
+                  } catch(_) {}
+                  return ret;
                 }
               }
             } catch(_) {}
@@ -633,7 +829,7 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
             const pKey = detectProviderKey(rows);
             if (!pKey) return null;
             const destCand = ['destination','Destination','dst','Dst','country','Country','prefix','Prefix','route','Route','direction','Direction'];
-            const custCand = ['customer','Customer','client','Client','account','Account','buyer','Buyer'];
+            const custCand = ['customer','Customer','client','Client','account','Account','buyer','Buyer','main','Main'];
             const detectKey = (cands) => {
               try {
                 const lowerPref = cands.map(k => k.toLowerCase());

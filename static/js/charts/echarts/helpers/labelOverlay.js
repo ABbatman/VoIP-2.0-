@@ -113,11 +113,18 @@ export function buildLabelOverlay({ metric, timestamps, labels, colorMap, gridIn
         if (Math.abs(e.value - lastVal) <= tol) last.push(e); else clusters.push([e]);
       }
       const grouped = clusters.map(group => {
-        // average value for display; use first for supplier identity/color
-        let sum = 0; for (const g of group) sum += Number(g.value) || 0;
-        const avg = group.length ? (sum / group.length) : (Number(group[0]?.value) || 0);
-        const first = group[0] || { supplierId: null, name: null };
-        return { supplierId: first.supplierId, name: first.name, value: avg };
+        // pick max value in cluster (visual-only)
+        let maxVal = -Infinity;
+        let pick = group[0] || { supplierId: null, name: null, value: null };
+        for (const g of group) {
+          const v = Number(g.value);
+          if (!Number.isFinite(v)) continue;
+          if (v > maxVal) { maxVal = v; pick = g; }
+        }
+        if (!Number.isFinite(maxVal)) {
+          maxVal = Number(group[0]?.value) || 0;
+        }
+        return { supplierId: pick.supplierId ?? null, name: pick.name ?? null, value: maxVal };
       });
       try {
         if (typeof window !== 'undefined' && window.__chartsDebug) {

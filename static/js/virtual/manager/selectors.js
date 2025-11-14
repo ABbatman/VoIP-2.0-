@@ -231,7 +231,10 @@ export function attachSelectors(vm) {
 
   function getPeerRowsLazy(mainGroupId) {
     const cacheKey = `${vm._filterSortKey}|${filtersKey()}|${mainGroupId}`;
-    if (vm._peerRowsCache.has(cacheKey)) return vm._peerRowsCache.get(cacheKey);
+    // If main is open, bypass cache to avoid stale filtered slice
+    let mainOpen = false;
+    try { mainOpen = !!(vm.openMainGroups && vm.openMainGroups.has && vm.openMainGroups.has(mainGroupId)); } catch(_) {}
+    if (!mainOpen && vm._peerRowsCache.has(cacheKey)) return vm._peerRowsCache.get(cacheKey);
     const peerRows = [];
 
     const peerMetas = vm.lazyData.peerIndex.filter(p => p.parentId === mainGroupId);
@@ -251,12 +254,21 @@ export function attachSelectors(vm) {
     };
     let base = uniqueByKeyFn(peerRows, peerKeyOf);
 
+    // If parent MAIN is expanded, toggles must be independent from inputs -> skip filters
+    try {
+      const isMainOpen = vm.openMainGroups && vm.openMainGroups.has && vm.openMainGroups.has(mainGroupId);
+      if (isMainOpen) {
+        const out = vm.applySortingToPeerRows(base);
+        const deduped = uniqueByKeyFn(out, peerKeyOf);
+        vm._peerRowsCache.set(cacheKey, deduped);
+        return deduped;
+      }
+    } catch (_) { /* no-op */ }
+
     try {
       const { columnFilters, globalFilterQuery } = getState();
       const globalFilter = (globalFilterQuery || '').trim().toLowerCase();
-      // Apply full filter set to peers; if a peer doesn't pass itself, include it if any hourly child passes
       const filtered = base.filter(r => {
-        // First, check all column filters present
         let ok = true;
         if (columnFilters) {
           for (const k in columnFilters) {
@@ -265,14 +277,12 @@ export function attachSelectors(vm) {
             if (!_passesColumnFilter(r[k], f)) { ok = false; break; }
           }
         }
-        // Global filter across main/peer/destination
         if (ok && globalFilter) {
           const peerText = (r.peer || '').toString().toLowerCase();
           const destinationText = (r.destination || '').toString().toLowerCase();
           const mainText = (r.main || '').toString().toLowerCase();
           if (!peerText.includes(globalFilter) && !destinationText.includes(globalFilter) && !mainText.includes(globalFilter)) ok = false;
         }
-        // Strict filter: do not include peer by hourly children (no bypass)
         return ok;
       });
       logDebug(`🔍 Peer rows after filtering: ${filtered.length}/${peerRows.length}`);
@@ -292,7 +302,10 @@ export function attachSelectors(vm) {
 
   function getHourlyRowsLazy(peerGroupId) {
     const cacheKey = `${vm._filterSortKey}|${filtersKey()}|${peerGroupId}`;
-    if (vm._hourlyRowsCache.has(cacheKey)) return vm._hourlyRowsCache.get(cacheKey);
+    // If peer is open, bypass cache to avoid stale filtered slice
+    let peerOpen = false;
+    try { peerOpen = !!(vm.openHourlyGroups && vm.openHourlyGroups.has && vm.openHourlyGroups.has(peerGroupId)); } catch(_) {}
+    if (!peerOpen && vm._hourlyRowsCache.has(cacheKey)) return vm._hourlyRowsCache.get(cacheKey);
     const hourlyRows = [];
 
     const hourlyMetas = vm.lazyData.hourlyIndex.filter(h => h.parentId === peerGroupId);
@@ -313,6 +326,17 @@ export function attachSelectors(vm) {
       return [norm(r.main), norm(r.peer), norm(r.destination), norm(r[timeKey])].join('|');
     };
     let base = uniqueByKeyFn(hourlyRows, hourKeyOf);
+
+    // If parent PEER is expanded, toggles must be independent from inputs -> skip filters
+    try {
+      const isPeerOpen = vm.openHourlyGroups && vm.openHourlyGroups.has && vm.openHourlyGroups.has(peerGroupId);
+      if (isPeerOpen) {
+        const out = vm.applySortingToHourlyRows(base);
+        const deduped = uniqueByKeyFn(out, hourKeyOf);
+        vm._hourlyRowsCache.set(cacheKey, deduped);
+        return deduped;
+      }
+    } catch (_) { /* no-op */ }
 
     try {
       const { columnFilters, globalFilterQuery } = getState();

@@ -51,7 +51,16 @@ export function renderMultiLineChartEcharts(container, data, options = {}) {
   const option = buildMultiOption({ data, ...base });
   try {
     const step = getStepMs(base.interval, undefined);
-    option.tooltip = { ...(option.tooltip || {}), formatter: makeBarLineLikeTooltip({ chart, stepMs: step }) };
+    option.tooltip = {
+      ...(option.tooltip || {}),
+      formatter: makeBarLineLikeTooltip({ chart, stepMs: step }),
+      backgroundColor: 'rgba(255,255,255,0.98)',
+      borderColor: '#e6e9ef',
+      borderWidth: 1,
+      padding: [9, 12],
+      textStyle: { color: 'var(--ds-color-fg)' },
+      extraCssText: 'border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,0.07); line-height:1.35;'
+    };
   } catch(_) { /* keep default tooltip */ }
   chart.setOption(option, { notMerge: true, lazyUpdate: true });
   try { applyZoomRange(chart); } catch(_) {}
@@ -62,7 +71,16 @@ export function renderMultiLineChartEcharts(container, data, options = {}) {
     const next = buildMultiOption({ data: newData, ...merged });
     try {
       const step = getStepMs(merged.interval, undefined);
-      next.tooltip = { ...(next.tooltip || {}), formatter: makeBarLineLikeTooltip({ chart, stepMs: step }) };
+      next.tooltip = {
+        ...(next.tooltip || {}),
+        formatter: makeBarLineLikeTooltip({ chart, stepMs: step }),
+        backgroundColor: 'rgba(255,255,255,0.98)',
+        borderColor: '#e6e9ef',
+        borderWidth: 1,
+        padding: [9, 12],
+        textStyle: { color: 'var(--ds-color-fg)' },
+        extraCssText: 'border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,0.07); line-height:1.35;'
+      };
     } catch(_) { /* keep default tooltip */ }
     chart.setOption(next, { notMerge: true, lazyUpdate: true });
     try { applyZoomRange(chart); } catch(_) {}

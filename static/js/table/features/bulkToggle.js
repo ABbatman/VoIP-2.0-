@@ -4,31 +4,23 @@
 
 import { getTableBody, getMainToggleButtons, getExpandAllButton, isVirtualModeActive } from '../../dom/selectors.js';
 import { renderCoordinator } from '../../rendering/render-coordinator.js';
+import { expandAllMain, collapseAll, buildMainGroupId } from '../../state/expansionState.js';
 
 // --- Standard mode operations ---
 export function expandAllPeersStandard() {
   const tbody = getTableBody();
   if (!tbody) return false;
-  // Collect all main group IDs from current DOM (visible mains)
-  const mains = getMainToggleButtons(tbody);
-  const mainIds = mains.map(btn => btn.dataset.targetGroup || btn.dataset.group).filter(Boolean);
-  // Persist as global openGroups so renderers honor expanded state regardless of filters
-  try {
-    const g = (window.__openGroups || { main: [], hourly: [] });
-    const uniq = Array.from(new Set([...(g.main || []), ...mainIds]));
-    window.__openGroups = { main: uniq, hourly: Array.from(new Set(g.hourly || [])) };
-  } catch(_) {
-    // Ignore bulk toggle errors
-  }
-  // Single coordinated render to materialize peers under all mains
+  // Build full list of main group IDs from processed data to expand
   renderCoordinator.requestRender('table', async () => {
     try {
-      // Render standard table directly to avoid nested coordinator in TableController
-      const mod = await import('../../dom/table.js');
       const app = await import('../../data/tableProcessor.js');
       const { getMetricsData } = await import('../../state/appState.js');
       const data = getMetricsData();
       const { pagedData } = app.getProcessedData();
+      const mainIds = Array.isArray(pagedData) ? pagedData.map(r => buildMainGroupId(r.main, r.destination)) : [];
+      expandAllMain(mainIds);
+      // Render standard table directly to avoid nested coordinator in TableController
+      const mod = await import('../../dom/table.js');
       mod.renderGroupedTable(pagedData || [], data?.peer_rows || [], data?.hourly_rows || []);
     } catch(_) {
     // Ignore bulk toggle errors
@@ -42,10 +34,8 @@ export function expandAllPeersStandard() {
 export function collapseAllPeersStandard() {
   const tbody = getTableBody();
   if (!tbody) return false;
-  // Reset global openGroups and request a single coordinated render
-  try { window.__openGroups = { main: [], hourly: [] }; } catch(_) {
-    // Ignore bulk toggle errors
-  }
+  // Reset centralized expansion state and request a single coordinated render
+  try { collapseAll(); } catch(_) {}
   renderCoordinator.requestRender('table', async () => {
     try {
       // Render standard table directly to avoid nested coordinator in TableController

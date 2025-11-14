@@ -1,14 +1,20 @@
 // static/js/virtual/manager/toggles.js
 // Layer: toggles (expand/collapse, bulk show/hide, button icons sync)
 import { getContainer, getExpandAllButton } from '../selectors/dom-selectors.js';
+import {
+  toggleMain,
+  togglePeer,
+  isMainExpanded,
+  isPeerExpanded,
+  closePeersUnderMain as collapsePeersUnderMain,
+  expandAllMain,
+  collapseAll,
+} from '../../state/expansionState.js';
 
 export function attachToggles(vm) {
   function closeHourlyGroupsUnderMain(mainGroupId) {
-    const toRemove = Array.from(vm.openHourlyGroups).filter(hourlyId =>
-      hourlyId.startsWith(`peer-${mainGroupId.replace('main-', '')}`)
-    );
-    toRemove.forEach(id => vm.openHourlyGroups.delete(id));
-    return toRemove.length;
+    // Delegate to centralized state; returns number collapsed (we can't know easily, return 0/NaN)
+    try { return collapsePeersUnderMain(mainGroupId) || 0; } catch (_) { return 0; }
   }
 
   function processQueuedExpandCollapseAll() {
@@ -19,23 +25,17 @@ export function attachToggles(vm) {
     if (!vm.lazyData || !vm.adapter) return;
     try {
       if (queued === 'expand') {
-        vm.openMainGroups.clear();
-        for (const m of vm.lazyData.mainIndex) vm.openMainGroups.add(m.groupId);
-        vm.openHourlyGroups.clear();
+        const ids = (vm.lazyData?.mainIndex || []).map(m => m.groupId);
+        expandAllMain(ids);
         const visible = vm.selectors ? vm.selectors.getLazyVisibleData() : vm.getLazyVisibleData();
         vm.adapter.setData(visible);
-        try { vm.forceImmediateRender && vm.forceImmediateRender(); } catch (e) {
-          console.error('Error forcing immediate render:', e);
-        }
+        try { vm.forceImmediateRender && vm.forceImmediateRender(); } catch (_) {}
         if (btn) { btn.textContent = 'Hide All'; btn.dataset.state = 'shown'; }
       } else if (queued === 'collapse') {
-        vm.openMainGroups.clear();
-        vm.openHourlyGroups.clear();
+        collapseAll();
         const visible = vm.selectors ? vm.selectors.getLazyVisibleData() : vm.getLazyVisibleData();
         vm.adapter.setData(visible);
-        try { vm.forceImmediateRender && vm.forceImmediateRender(); } catch (e) {
-          console.error('Error forcing immediate render:', e);
-        }
+        try { vm.forceImmediateRender && vm.forceImmediateRender(); } catch (_) {}
         if (btn) { btn.textContent = 'Show All'; btn.dataset.state = 'hidden'; }
       }
       try { vm.updateAllToggleButtons && vm.updateAllToggleButtons(); } catch (e) {
@@ -55,16 +55,6 @@ export function attachToggles(vm) {
       if (event.target.closest('.y-column-toggle-btn')) return;
       const toggleBtn = event.target.closest('.toggle-btn');
       if (!toggleBtn) return;
-      // Preserve window and container scroll to avoid jump-to-top on reflow/rerender
-      const prevX = window.pageXOffset || 0;
-      const prevY = window.pageYOffset || 0;
-      const container = getContainer();
-      const prevCX = container ? container.scrollLeft : null;
-      const prevCY = container ? container.scrollTop : null;
-      // Disable scroll anchoring during structural change
-      try { if (container) container.style.overflowAnchor = 'none'; } catch (e) {
-        console.error('Error disabling scroll anchoring:', e);
-      }
       try { if (typeof toggleBtn.blur === 'function') toggleBtn.blur(); } catch (e) {
         console.error('Error blurring toggle button:', e);
       }
@@ -75,75 +65,14 @@ export function attachToggles(vm) {
       const parentRow = toggleBtn.closest('tr');
       if (!parentRow || !groupId) return;
 
-      let isCurrentlyExpanded = false;
       if (parentRow.classList.contains('main-row')) {
-        isCurrentlyExpanded = vm.openMainGroups.has(groupId);
+        toggleMain(groupId);
       } else if (parentRow.classList.contains('peer-row')) {
-        isCurrentlyExpanded = vm.openHourlyGroups.has(groupId);
+        togglePeer(groupId);
       }
-
-      if (parentRow.classList.contains('main-row')) {
-        if (isCurrentlyExpanded) {
-          vm.openMainGroups.delete(groupId);
-          // Also close hourly under this main
-          const toRemove = Array.from(vm.openHourlyGroups).filter(h => h.startsWith(`peer-${groupId.replace('main-', '')}`));
-          toRemove.forEach(id => vm.openHourlyGroups.delete(id));
-          toggleBtn.textContent = '+';
-        } else {
-          vm.openMainGroups.add(groupId);
-          toggleBtn.textContent = '−';
-        }
-      } else if (parentRow.classList.contains('peer-row')) {
-        if (isCurrentlyExpanded) {
-          vm.openHourlyGroups.delete(groupId);
-          toggleBtn.textContent = '+';
-        } else {
-          vm.openHourlyGroups.add(groupId);
-          toggleBtn.textContent = '−';
-        }
-      }
-
-      vm.refreshVirtualTable();
-      setTimeout(() => {
-        try { vm.forceImmediateRender(); } catch (e) {
-          console.error('Error forcing immediate render:', e);
-        }
-        try { vm.updateAllToggleButtons(); } catch (e) {
-          console.error('Error updating toggle buttons:', e);
-        }
-        // Restore scroll (container first, then window) on next frames; also clear overflow-anchor
-        requestAnimationFrame(() => {
-          try {
-            if (container && prevCY != null) container.scrollTop = prevCY;
-            if (container && prevCX != null) container.scrollLeft = prevCX;
-          } catch (e) {
-            console.error('Error restoring container scroll:', e);
-          }
-          requestAnimationFrame(() => { try { window.scrollTo(prevX, prevY); } catch (e) {
-            console.error('Error restoring window scroll:', e);
-          } });
-          // Microtask + delayed fallback
-          Promise.resolve().then(() => {
-            try {
-              if (container && prevCY != null) container.scrollTop = prevCY;
-              if (container && prevCX != null) container.scrollLeft = prevCX;
-              window.scrollTo(prevX, prevY);
-            } catch (e) {
-              console.error('Error restoring scroll (microtask):', e);
-            }
-          });
-          setTimeout(() => {
-            try {
-              if (container && prevCY != null) container.scrollTop = prevCY;
-              if (container && prevCX != null) container.scrollLeft = prevCX;
-              window.scrollTo(prevX, prevY);
-              if (container) container.style.overflowAnchor = '';
-            } catch (e) {
-              console.error('Error restoring scroll (timeout):', e);
-            }
-          }, 50);
-        });
-      }, 10);
+      try { vm.refreshVirtualTable(); } catch (_) {}
+      try { vm.forceImmediateRender && vm.forceImmediateRender(); } catch (_) {}
+      try { vm.updateAllToggleButtons && vm.updateAllToggleButtons(); } catch (_) {}
     } catch (e) {
       console.error('Error handling virtual toggle:', e);
     }
@@ -160,14 +89,14 @@ export function attachToggles(vm) {
     container.querySelectorAll('.main-row .toggle-btn').forEach(btn => {
       const groupId = btn.dataset.targetGroup || btn.dataset.group;
       if (!groupId) return;
-      const newText = vm.openMainGroups.has(groupId) ? '−' : '+';
+      const newText = isMainExpanded(groupId) ? '−' : '+';
       if (btn.textContent !== newText) { btn.textContent = newText; mainUpdated++; }
     });
 
     container.querySelectorAll('.peer-row .toggle-btn').forEach(btn => {
       const groupId = btn.dataset.targetGroup || btn.dataset.group;
       if (!groupId) return;
-      const newText = vm.openHourlyGroups.has(groupId) ? '−' : '+';
+      const newText = isPeerExpanded(groupId) ? '−' : '+';
       if (btn.textContent !== newText) { btn.textContent = newText; peerUpdated++; }
     });
     if (window.DEBUG) console.log(`🔄 Updated toggle buttons: ${mainUpdated} main, ${peerUpdated} peer`);
@@ -179,9 +108,8 @@ export function attachToggles(vm) {
 
   function showAllRows() {
     if (!vm.isActive || !vm.lazyData || !vm.adapter) return;
-    vm.openMainGroups.clear();
-    for (const m of vm.lazyData.mainIndex) vm.openMainGroups.add(m.groupId);
-    vm.openHourlyGroups.clear();
+    const ids = (vm.lazyData.mainIndex || []).map(m => m.groupId);
+    expandAllMain(ids);
     const visible = vm.selectors ? vm.selectors.getLazyVisibleData() : vm.getLazyVisibleData();
     // Mark structural change so button sync won't early-return
     try { vm._lastStructuralChange = true; } catch (e) {
@@ -210,8 +138,7 @@ export function attachToggles(vm) {
 
   function hideAllRows() {
     if (!vm.isActive || !vm.lazyData || !vm.adapter) return;
-    vm.openMainGroups.clear();
-    vm.openHourlyGroups.clear();
+    collapseAll();
     const visible = vm.selectors ? vm.selectors.getLazyVisibleData() : vm.getLazyVisibleData();
     // Mark structural change so button sync won't early-return
     try { vm._lastStructuralChange = true; } catch (e) {

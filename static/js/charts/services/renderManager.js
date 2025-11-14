@@ -52,7 +52,9 @@ export async function render(type) {
   const md = getMetricsData() || {};
   const fiveRows = Array.isArray(md.five_min_rows) ? md.five_min_rows : [];
   const hourRows = Array.isArray(md.hourly_rows) ? md.hourly_rows : [];
-  const rows = (interval === '5m') ? (fiveRows.length ? fiveRows : hourRows) : (hourRows.length ? hourRows : fiveRows);
+  // Always prefer 5-minute raw rows as a single source of truth for shaping
+  // This guarantees consistent time grid and aggregation across intervals
+  const rows = fiveRows.length ? fiveRows : hourRows;
   const { data, options } = shapeChartPayload(rows || [], { type: currentType, fromTs, toTs, stepMs, height: fixedH });
   const merged = { ...options, stepMs, interval, labels: (md && md.labels) || {}, providerRows: rows || [] };
   renderer(mount, data, merged);

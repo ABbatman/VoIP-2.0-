@@ -216,12 +216,26 @@ export function makeBarLineLikeTooltip({ chart, stepMs }) {
     // Build bins per call to reflect latest series state
     const bins = Object.create(null);
     for (const n of names) bins[n] = getPairs(n);
-    const lines = [];
     const header = formatTimeRange(tsSnap, step);
-    lines.push(`TCalls: ${fmtMetric('TCalls', findPrevWithin(bins['TCalls'], tsSnap, half))}`);
-    lines.push(`ASR: ${fmtMetric('ASR', findPrevWithin(bins['ASR'], tsSnap, half))}`);
-    lines.push(`Minutes: ${fmtMetric('Minutes', findPrevWithin(bins['Minutes'], tsSnap, half))}`);
-    lines.push(`ACD: ${fmtMetric('ACD', findPrevWithin(bins['ACD'], tsSnap, half))}`);
-    return [header, ...lines].join('<br/>' );
+    const rows = [];
+    const pushRow = (name, val) => {
+      rows.push(`<li style="display:flex;justify-content:space-between;gap:12px;"><span>${name}</span><span style="font-variant-numeric: tabular-nums;">${val}</span></li>`);
+    };
+    pushRow('TCalls', fmtMetric('TCalls', findPrevWithin(bins['TCalls'], tsSnap, half)));
+    pushRow('ASR', fmtMetric('ASR', findPrevWithin(bins['ASR'], tsSnap, half)));
+    pushRow('Minutes', fmtMetric('Minutes', findPrevWithin(bins['Minutes'], tsSnap, half)));
+    pushRow('ACD', fmtMetric('ACD', findPrevWithin(bins['ACD'], tsSnap, half)));
+    const list = `<ul style="list-style:none;padding:0;margin:0;">${rows.join('')}</ul>`;
+    const timeBlock = `<div><div style="font-size:11px;color:#6b7280;">Time</div><div style="font-weight:600;">${header}</div></div>`;
+    const html = `
+      <div style="display:flex;flex-direction:column;gap:6px;min-width:200px;">
+        <div style="display:grid;grid-template-columns:1fr;row-gap:4px;">
+          ${timeBlock}
+        </div>
+        <div style="height:1px;background:#eef2f7;margin:6px 0;"></div>
+        ${list}
+      </div>
+    `;
+    return html;
   };
 }

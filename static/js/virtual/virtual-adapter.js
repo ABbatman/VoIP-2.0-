@@ -2,6 +2,7 @@
 // Localized comments in English as requested
 
 import { VirtualScroller } from './virtual-scroller.js';
+import { isMainExpanded, isPeerExpanded } from '../state/expansionState.js';
 import { getContainer, getSpacer, getTbody, getTable } from './selectors/dom-selectors.js';
 import { parseNum, computeDeltaPercent, pickDeltaDisplay, formatMetricValue, getAnomalyClass } from '../utils/metrics.js';
 
@@ -136,9 +137,8 @@ export class VirtualTableAdapter {
    */
   generateMainRowHTML(rowData) {
     const metricCells = this.generateMetricCells(rowData);
-    
-    const toggleBtn = `<button class="toggle-btn" data-target-group="${rowData.groupId}">+</button>`;
-    
+    const toggle = isMainExpanded(rowData.groupId) ? '−' : '+';
+    const toggleBtn = `<button class="toggle-btn" data-target-group="${rowData.groupId}">${toggle}</button>`;
 
     
     return [
@@ -154,9 +154,8 @@ export class VirtualTableAdapter {
    */
   generatePeerRowHTML(rowData) {
     const metricCells = this.generateMetricCells(rowData);
-    
-    // Default to '+' (collapsed), will be updated by updateAllToggleButtons
-    const toggleBtn = `<button class="toggle-btn" data-target-group="${rowData.groupId}">+</button>`;
+    const toggle = isPeerExpanded(rowData.groupId) ? '−' : '+';
+    const toggleBtn = `<button class="toggle-btn" data-target-group="${rowData.groupId}">${toggle}</button>`;
     
     return [
       `<td role="cell" class="toggle-cell"></td>`,

@@ -121,123 +121,30 @@ export function bindExpandCollapseAll(vm) {
     return;
   }
   if (vm._expandAllBound && vm._expandAllElement && vm.boundExpandAllHandler && vm._expandAllElement !== btn) {
-    try { vm._expandAllElement.removeEventListener('click', vm.boundExpandAllHandler); } catch (_) {
-      // Ignore event removal errors
-    }
+    try { vm._expandAllElement.removeEventListener('click', vm.boundExpandAllHandler); } catch (_) {}
   }
   if (!vm.boundExpandAllHandler) {
     vm.boundExpandAllHandler = async () => {
       try {
-        // Preserve scroll and disable scroll anchoring to prevent jumps
-        const prevWX = window.pageXOffset || 0;
-        const prevWY = window.pageYOffset || 0;
-        const container = document.getElementById('virtual-scroll-container');
-        const prevCX = container ? container.scrollLeft : null;
-        const prevCY = container ? container.scrollTop : null;
-        const root = document.documentElement;
-        try { if (root) root.style.overflowAnchor = 'none'; } catch(_) {
-      // Ignore event errors
-    }
-        try { if (document.body) document.body.style.overflowAnchor = 'none'; } catch(_) {
-      // Ignore event errors
-    }
-        try { if (container) container.style.overflowAnchor = 'none'; } catch(_) {
-      // Ignore event errors
-    }
         const state = btn.dataset.state || 'hidden'; // hidden -> collapsed; shown -> expanded
-        // If data not ready yet (early click after page load), retry shortly without disabling button
         if (!vm.lazyData || !vm.adapter) {
-          console.log('⚠️ Expand/Collapse All: data not ready, retrying shortly...');
-          setTimeout(() => { try { vm.boundExpandAllHandler && vm.boundExpandAllHandler(); } catch (_) {
-            // Ignore retry errors
-          } }, 50);
+          // queue intent for later when data is ready
+          vm._expandCollapseAllQueued = (state === 'hidden') ? 'expand' : 'collapse';
           return;
         }
         btn.disabled = true;
         if (state === 'hidden') {
-          // Expand all: open ONLY main groups (to show all peers). Do NOT open hourly groups.
-          vm.openMainGroups.clear();
-          for (const m of vm.lazyData.mainIndex) vm.openMainGroups.add(m.groupId);
-          // Ensure hourly groups remain collapsed
-          vm.openHourlyGroups.clear();
-          // Compute visible slice and set directly on adapter
-          console.log('🔼 Show All: main to open =', vm.openMainGroups.size);
-          // Force peers for this render regardless of openMainGroups race
-          vm._forceShowPeers = true;
-          const visible = vm.getLazyVisibleData();
-          vm.adapter.setData(visible);
-          try { vm.forceImmediateRender && vm.forceImmediateRender(); } catch (_) {
-            // Ignore render errors
-          }
-          // Reset force flag on next tick so normal toggles work
-          Promise.resolve().then(() => { try { vm._forceShowPeers = false; } catch (_) {
-            // Ignore flag reset errors
-          } });
+          // expand only main groups (peers visible), hours remain collapsed
+          vm.showAllRows && vm.showAllRows();
           btn.textContent = 'Hide All';
           btn.dataset.state = 'shown';
-          // Verify after render that groups remain open; if not, reapply once
-          setTimeout(() => {
-            try {
-              if (vm.openMainGroups && vm.openMainGroups.size === 0) {
-                console.warn('⚠️ Show All: openMainGroups empty after render, reapplying once');
-                for (const m of vm.lazyData.mainIndex) vm.openMainGroups.add(m.groupId);
-                vm.openHourlyGroups.clear();
-                const vis2 = vm.getLazyVisibleData();
-                vm.adapter.setData(vis2);
-                try { vm.forceImmediateRender && vm.forceImmediateRender(); } catch (_) {
-                  // Ignore render errors
-                }
-              }
-            } catch (_) {
-              // Ignore reapply errors
-            }
-          }, 0);
         } else {
-          // Collapse all
-          vm.openMainGroups.clear();
-          vm.openHourlyGroups.clear();
-          const visible = vm.getLazyVisibleData();
-          vm.adapter.setData(visible);
-          try { vm.forceImmediateRender && vm.forceImmediateRender(); } catch (_) {
-            // Ignore render errors
-          }
+          vm.hideAllRows && vm.hideAllRows();
           btn.textContent = 'Show All';
           btn.dataset.state = 'hidden';
         }
-        // Sync toggle icons after state change if manager provides it
-        try { vm.updateAllToggleButtons && vm.updateAllToggleButtons(); } catch (_) {
-          // Ignore toggle update errors
-        }
-        try { vm.syncExpandCollapseAllButton && vm.syncExpandCollapseAllButton(vm); } catch (_) {
-          // Ignore button sync errors
-        }
-        // Restore scroll positions on next frames
-        requestAnimationFrame(() => {
-          try { if (container && prevCY != null) container.scrollTop = prevCY; if (container && prevCX != null) container.scrollLeft = prevCX; } catch(_) {
-      // Ignore event errors
-    }
-          requestAnimationFrame(() => {
-            try { window.scrollTo(prevWX, prevWY); } catch(_) {
-      // Ignore event errors
-    }
-            try { if (root) root.style.overflowAnchor = ''; } catch(_) {
-      // Ignore event errors
-    }
-            try { if (document.body) document.body.style.overflowAnchor = ''; } catch(_) {
-      // Ignore event errors
-    }
-            try { if (container) container.style.overflowAnchor = ''; } catch(_) {
-      // Ignore event errors
-    }
-          });
-        });
-        // Fallbacks
-        Promise.resolve().then(() => { try { if (container && prevCY != null) container.scrollTop = prevCY; if (container && prevCX != null) container.scrollLeft = prevCX; window.scrollTo(prevWX, prevWY); if (root) root.style.overflowAnchor = ''; if (document.body) document.body.style.overflowAnchor = ''; if (container) container.style.overflowAnchor = ''; } catch(_) {
-      // Ignore event errors
-    } });
-        setTimeout(() => { try { if (container && prevCY != null) container.scrollTop = prevCY; if (container && prevCX != null) container.scrollLeft = prevCX; window.scrollTo(prevWX, prevWY); if (root) root.style.overflowAnchor = ''; if (document.body) document.body.style.overflowAnchor = ''; if (container) container.style.overflowAnchor = ''; } catch(_) {
-      // Ignore event errors
-    } }, 50);
+        try { vm.updateAllToggleButtons && vm.updateAllToggleButtons(); } catch (_) {}
+        try { vm.syncExpandCollapseAllButton && vm.syncExpandCollapseAllButton(vm); } catch (_) {}
       } finally {
         btn.disabled = false;
       }

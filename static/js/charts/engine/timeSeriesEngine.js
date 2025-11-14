@@ -7,6 +7,7 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 function parseRowTs(raw) {
   let t = NaN;
   if (raw instanceof Date) return raw.getTime();
+  if (typeof raw === 'number') return Number.isFinite(raw) ? raw : NaN;
   if (typeof raw === 'string') {
     try {
       let s = String(raw).trim().replace(' ', 'T');
@@ -49,13 +50,17 @@ export function computeBinsAndSeries(rows, { fromTs, toTs, stepMs }) {
     if (t < includeLo || t > includeHi) continue;
     const idx = clamp(Math.floor((t - alignedFrom) / stepMs), 0, binCount - 1);
     const tcall = Number(r.TCall ?? r.TCalls ?? r.total_calls ?? 0) || 0;
-    const asr = Number(r.ASR ?? 0) || 0;
+    const asr = Number(r.ASR ?? 0);
     const min = Number(r.Min ?? r.Minutes ?? 0) || 0;
-    const acd = Number(r.ACD ?? 0) || 0;
+    const acd = Number(r.ACD ?? 0);
+    // totals (sum)
     bins.TCalls[idx].sum += tcall; bins.TCalls[idx].count += 1;
     bins.Minutes[idx].sum += min; bins.Minutes[idx].count += 1;
-    bins.ASR[idx].sum += asr; bins.ACD[idx].sum += acd;
-    bins.ASR[idx].count += 1; bins.ACD[idx].count += 1;
+    // weighted averages
+    const asrW = tcall > 0 ? tcall : 0;
+    if (asrW > 0 && Number.isFinite(asr)) { bins.ASR[idx].sum += asr * asrW; bins.ASR[idx].count += asrW; }
+    const acdW = min > 0 ? min : 0;
+    if (acdW > 0 && Number.isFinite(acd)) { bins.ACD[idx].sum += acd * acdW; bins.ACD[idx].count += acdW; }
   }
 
   const valOf = (b, avg) => (b.count ? (avg ? (b.sum / b.count) : b.sum) : null);

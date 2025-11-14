@@ -12,6 +12,7 @@ import { attachData } from './manager/data-cache.js';
 import { attachUI } from './manager/ui-state.js';
 import { attachSubscriptions } from './manager/subscriptions.js';
 import { setCurrentManager } from './registry.js';
+import { getMainSetProxy, getPeerSetProxy } from '../state/expansionState.js';
 
 // Lightweight debug logger (controlled by window.DEBUG)
 function logDebug(...args) {
@@ -36,9 +37,9 @@ export class VirtualManager {
     this.currentData = null;
     this.rawData = { mainRows: [], peerRows: [], hourlyRows: [] };
     this.lazyData = null;
-    // Track expanded/collapsed state
-    this.openMainGroups = new Set();
-    this.openHourlyGroups = new Set();
+    // Track expanded/collapsed state (centralized proxies)
+    this.openMainGroups = getMainSetProxy();
+    this.openHourlyGroups = getPeerSetProxy();
     // Store bound handler to properly remove event listeners
     this.boundToggleHandler = null;
     // Track if headers are initialized to avoid recreating sort handlers

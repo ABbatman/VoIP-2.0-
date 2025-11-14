@@ -68,7 +68,8 @@ export function buildMultiOption({ data, fromTs, toTs, height, interval }) {
 
   const conn = false;
   const is5m = interval === '5m';
-  const samp = 'lttb';
+  // Disable sampling on 5m to avoid losing short pulses; keep LTTB for coarser steps
+  const samp = is5m ? 'none' : 'lttb';
   const smoothVal = true;
   const smoothMono = undefined;
 
