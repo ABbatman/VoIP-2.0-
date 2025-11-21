@@ -19,7 +19,7 @@ export function makeStreamTooltip(state, ctx = {}) {
       try {
         const idx = (typeof window !== 'undefined') ? window.__streamHoveredSeriesIndex : null;
         if (Number.isFinite(idx)) hoveredIdx = Number(idx);
-      } catch(_) { /* ignore */ }
+      } catch (_) { /* ignore */ }
       if (Number.isFinite(hoveredIdx)) {
         hoveredParam = arr.find(p => Number.isFinite(p?.seriesIndex) && Number(p.seriesIndex) === hoveredIdx) || null;
       }
@@ -28,7 +28,7 @@ export function makeStreamTooltip(state, ctx = {}) {
         if (!hoveredParam && hoveredName) {
           hoveredParam = arr.find(p => p && p.seriesName === hoveredName) || null;
         }
-      } catch(_) { /* ignore */ }
+      } catch (_) { /* ignore */ }
       // If still unknown: pick layer by mouse Y against stacked cumulative at current X
       if (!hoveredParam && chart) {
         try {
@@ -43,7 +43,7 @@ export function makeStreamTooltip(state, ctx = {}) {
             if (Array.isArray(pt)) yData = Number(pt[1]); else if (Number.isFinite(pt)) yData = Number(pt);
           }
           // Sort params by seriesIndex to match stacking order
-          const ordered = arr.slice().sort((a,b) => Number(a.seriesIndex) - Number(b.seriesIndex));
+          const ordered = arr.slice().sort((a, b) => Number(a.seriesIndex) - Number(b.seriesIndex));
           let acc = 0;
           for (const p of ordered) {
             const y = Number(p?.value?.[1]);
@@ -54,7 +54,7 @@ export function makeStreamTooltip(state, ctx = {}) {
             }
             acc = next;
           }
-        } catch(_) { /* ignore */ }
+        } catch (_) { /* ignore */ }
       }
       // Final fallback: choose top-most non-null value at this x (stacked order)
       if (!hoveredParam) {
@@ -93,18 +93,18 @@ export function makeStreamTooltip(state, ctx = {}) {
             if (x === ts || (Number.isFinite(step) && Math.abs(x - ts) <= Math.max(1, Math.floor(step / 2)))) { y = v; break; }
           }
           if (y != null && Number.isFinite(Number(y))) val = Number(y);
-        } catch(_) { /* ignore */ }
+        } catch (_) { /* ignore */ }
       }
       // Format value: ACD with 1 decimal, others as integer
-      const valStr = (val != null && Number.isFinite(val)) 
-        ? (state.metric === 'ACD' ? val.toFixed(1) : Math.round(val).toLocaleString()) 
+      const valStr = (val != null && Number.isFinite(val))
+        ? (state.metric === 'ACD' ? val.toFixed(1) : Math.round(val).toLocaleString())
         : 'N/A';
       // Build tooltip content
       let html = `<div style="font-weight: 600; margin-bottom: 6px;">${timeStr}</div>`;
-      html += `<div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">`+
-              `<span style="display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: ${hoveredParam.color};"></span>`+
-              `<span><strong>${hoveredParam.seriesName}</strong></span>`+
-              `</div>`;
+      html += `<div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">` +
+        `<span style="display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: ${hoveredParam.color};"></span>` +
+        `<span><strong>${hoveredParam.seriesName}</strong></span>` +
+        `</div>`;
       // Selected metric value for the hovered layer
       html += `<div style="margin-left: 16px;">${state.metric}: <strong>${valStr}</strong></div>`;
       // Derive grouping by current selections: destination/supplier -> group by Customer; customer -> group by Direction; else -> Customer
@@ -147,7 +147,7 @@ export function makeBarLineLikeTooltip({ chart, stepMs }) {
         if (Number.isFinite(t)) out.push([t, (y == null || isNaN(y)) ? null : Number(y)]);
       }
     }
-    out.sort((a,b) => a[0] - b[0]);
+    out.sort((a, b) => a[0] - b[0]);
     return out;
   };
   const getPairs = (name) => {
@@ -168,9 +168,9 @@ export function makeBarLineLikeTooltip({ chart, stepMs }) {
         const pairs = toPairs(s.data || []);
         for (const [t, y] of pairs) acc.set(t, (acc.get(t) || 0) + (y || 0));
       }
-      const out = Array.from(acc.entries()).sort((a,b) => a[0] - b[0]);
+      const out = Array.from(acc.entries()).sort((a, b) => a[0] - b[0]);
       return out;
-    } catch(_) { return []; }
+    } catch (_) { return []; }
   };
   const findPrevWithin = (pairs, ts, maxDelta) => {
     if (!Array.isArray(pairs) || pairs.length === 0) return null;
@@ -195,13 +195,15 @@ export function makeBarLineLikeTooltip({ chart, stepMs }) {
   return (param) => {
     if (!param) return '';
     const arr = Array.isArray(param) ? param : [param];
+    // Suppress global tooltip if marker hover is active (lightweight check)
+    if (chart && chart.__capsuleHoverActive) return '';
     // Hide if only grey (-24h) series are under cursor
     const hasPrimary = arr.some(p => typeof p?.seriesName === 'string' && !p.seriesName.endsWith(' -24h'));
     if (!hasPrimary) return '';
     // Prefer axisValue for timestamp (axis trigger)
     let ts = Number(arr[0]?.axisValue);
     if (!Number.isFinite(ts)) {
-      try { ts = Date.parse(arr[0]?.axisValueLabel); } catch(_) {
+      try { ts = Date.parse(arr[0]?.axisValueLabel); } catch (_) {
         // Ignore date parsing errors
       }
     }
