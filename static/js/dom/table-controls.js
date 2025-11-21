@@ -24,8 +24,8 @@ import { updateTopScrollbar } from "./top-scrollbar.js";
  * @param {Array<Object>} allMainRows - The full dataset of main rows.
  * @param {Array<Object>} allPeerRows - The full dataset of peer rows.
  */
-export function initTableControls(allMainRows, allPeerRows) {
-  setFullData(allMainRows, allPeerRows);
+export function initTableControls(allMainRows, allPeerRows, allHourlyRows = []) {
+  setFullData(allMainRows, allPeerRows, allHourlyRows);
 
   // rowsPerPage removed - no pagination needed
 
@@ -47,7 +47,7 @@ export function initTableControls(allMainRows, allPeerRows) {
   // --- REMOVED: This is now handled automatically by table-ui.js ---
   // updateColumnPlaceholders();
   updateSortArrows(); // delegated sorting handler covers clicks globally
-  
+
   // Setup automatic filter clearing
   setupAutoFilterClearing();
 }
@@ -91,13 +91,13 @@ function initExpandCollapseAll() {
 export function clearAllTableFilters() {
   // Clear all column filters
   resetAllFilters();
-  
+
   // Clear global filter input
   const globalFilterInput = document.getElementById("table-filter-input");
   if (globalFilterInput) {
     globalFilterInput.value = "";
   }
-  
+
   // Clear all column filter inputs
   const filterRow = document.getElementById("column-filters-row");
   if (filterRow) {
@@ -105,13 +105,13 @@ export function clearAllTableFilters() {
       input.value = "";
     });
   }
-  
+
   // Force table refresh after clearing all filters
   if (window.virtualManager && window.virtualManager.isActive) {
     console.log("🔄 Refreshing table after clearing all filters...");
     window.virtualManager.refreshVirtualTable();
   }
-  
+
   // Reconnect filter event handlers after clearing
   try {
     // Import connectFilterEventHandlers from table-ui.js
@@ -123,7 +123,7 @@ export function clearAllTableFilters() {
   } catch (error) {
     console.warn("⚠️ Could not reconnect filter handlers:", error);
   }
-  
+
   console.log("🧹 All table filters cleared");
 }
 
@@ -134,7 +134,7 @@ export function setupAutoFilterClearing() {
   // Note: Auto-clearing is now handled by the filter event handlers in table-ui.js
   // This function is kept for compatibility but the actual clearing logic
   // is integrated into the main filter change handlers
-  
+
   console.log("🔧 Auto filter clearing setup completed (handled by table-ui.js)");
 }
 
@@ -145,7 +145,7 @@ export function setupAutoFilterClearing() {
 export function clearColumnFilter(columnKey) {
   // Clear the filter in state
   setColumnFilter(columnKey, "");
-  
+
   // Clear the input value
   const filterRow = document.getElementById("column-filters-row");
   if (filterRow) {
@@ -154,12 +154,12 @@ export function clearColumnFilter(columnKey) {
       input.value = "";
     }
   }
-  
+
   // Force table refresh after clearing filter
   if (window.virtualManager && window.virtualManager.isActive) {
     console.log("🔄 Refreshing table after filter clear...");
     window.virtualManager.refreshVirtualTable();
   }
-  
+
   console.log(`🧹 Column filter "${columnKey}" cleared`);
 }

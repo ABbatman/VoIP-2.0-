@@ -29,16 +29,16 @@ export class TableController {
   async initialize() {
     try {
       console.log("🔍 Table Controller: Initializing...");
-      
+
       this.tableRenderer = new TableRenderer();
       const success = await this.tableRenderer.initialize();
-      
+
       if (success) {
         console.log("✅ Table Controller: Initialized with virtual capabilities");
       } else {
         console.log("✅ Table Controller: Initialized with standard rendering only");
       }
-      
+
       this.isInitialized = true;
       return true;
     } catch (error) {
@@ -62,13 +62,10 @@ export class TableController {
       }
 
       // 2. Process data
-      const { pagedData } = getProcessedData();
+      const { pagedData, peerRows, hourlyRows } = getProcessedData();
 
       // 3. Render table via RenderCoordinator (same 'table' kind as Summary)
-      this.renderTableWithData(pagedData, appData);
-
-      // 4. Update UI
-      this.updateTableUI();
+      this.renderTableWithData(pagedData, appData, peerRows, hourlyRows);
     } catch (error) {
       console.error("❌ Table Controller: Redraw error", error);
     }
@@ -100,37 +97,38 @@ export class TableController {
   /**
    * Render table with processed data
    */
-  renderTableWithData(pagedData, appData) {
+  renderTableWithData(pagedData, appData, processedPeerRows, processedHourlyRows) {
     const main_rows = pagedData || [];
-    const peer_rows = appData?.peer_rows || [];
-    let hourly_rows = appData?.hourly_rows || [];
+    // Use processed rows if available (from zoom/filter), otherwise fallback to appData
+    const peer_rows = processedPeerRows || appData?.peer_rows || [];
+    let hourly_rows = processedHourlyRows || appData?.hourly_rows || [];
     try {
       const ci = (typeof window !== 'undefined' && window.__chartsCurrentInterval) ? String(window.__chartsCurrentInterval) : '1h';
       if (ci === '5m' && Array.isArray(appData?.five_min_rows) && appData.five_min_rows.length > 0) {
         hourly_rows = appData.five_min_rows;
       }
-    } catch(_) {
+    } catch (_) {
       // Ignore table controller errors
     }
     // Use coordinator; coalesce with Summary by sharing kind 'table'
     renderCoordinator.requestRender('table', async () => {
       // Prepare
-      try { renderTableHeader(); } catch(_) {
-      // Ignore table controller errors
-    }
-      try { buildTableFooter(); } catch(_) {
-      // Ignore table controller errors
-    }
-      try { showTableControls(); } catch(_) {
-      // Ignore table controller errors
-    }
-      try { initTableControls(main_rows, peer_rows); } catch(_) {
-      // Ignore table controller errors
-    }
+      try { renderTableHeader(); } catch (_) {
+        // Ignore table controller errors
+      }
+      try { buildTableFooter(); } catch (_) {
+        // Ignore table controller errors
+      }
+      try { showTableControls(); } catch (_) {
+        // Ignore table controller errors
+      }
+      try { initTableControls(main_rows, peer_rows, hourly_rows); } catch (_) {
+        // Ignore table controller errors
+      }
       // Clear
-      try { const tb = document.getElementById('tableBody'); if (tb) tb.innerHTML = ''; } catch(_) {
-      // Ignore table controller errors
-    }
+      try { const tb = document.getElementById('tableBody'); if (tb) tb.innerHTML = ''; } catch (_) {
+        // Ignore table controller errors
+      }
       // Render
       if (this.tableRenderer && this.isInitialized) {
         await this.tableRenderer.renderTable(main_rows, peer_rows, hourly_rows);
@@ -138,21 +136,21 @@ export class TableController {
         renderGroupedTable(main_rows, peer_rows, hourly_rows);
       }
       // Post
-      try { initTableView(); } catch(_) {
-      // Ignore table controller errors
-    }
-      try { initStickyHeader(); } catch(_) {
-      // Ignore table controller errors
-    }
-      try { initStickyFooter(); } catch(_) {
-      // Ignore table controller errors
-    }
-      try { updateTableFooter(); } catch(_) {
-      // Ignore table controller errors
-    }
-      try { initTooltips(); } catch(_) {
-      // Ignore table controller errors
-    }
+      try { initTableView(); } catch (_) {
+        // Ignore table controller errors
+      }
+      try { initStickyHeader(); } catch (_) {
+        // Ignore table controller errors
+      }
+      try { initStickyFooter(); } catch (_) {
+        // Ignore table controller errors
+      }
+      try { updateTableFooter(); } catch (_) {
+        // Ignore table controller errors
+      }
+      try { initTooltips(); } catch (_) {
+        // Ignore table controller errors
+      }
     }, { debounceMs: 200 });
   }
 

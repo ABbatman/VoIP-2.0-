@@ -40,7 +40,7 @@ export function initFilters(isStateLoaded) {
     initTimeControls(); // init time popup controls
   } catch (_) { /* no-op if not available */ }
 
-// (moved below) destroyTableHard declared at module scope
+  // (moved below) destroyTableHard declared at module scope
 
   // Force UTC defaults if all inputs are still empty (covers cases with duplicate init flows)
   try {
@@ -49,9 +49,9 @@ export function initFilters(isStateLoaded) {
     const fromTime = document.getElementById("fromTime");
     const toTime = document.getElementById("toTime");
     const allEmpty = (!fromDate?.value || fromDate.value.trim() === "") &&
-                     (!toDate?.value || toDate.value.trim() === "") &&
-                     (!fromTime?.value || fromTime.value.trim() === "") &&
-                     (!toTime?.value || toTime.value.trim() === "");
+      (!toDate?.value || toDate.value.trim() === "") &&
+      (!fromTime?.value || fromTime.value.trim() === "") &&
+      (!toTime?.value || toTime.value.trim() === "");
     if (allEmpty) {
       setDefaultDateRange();
     }
@@ -63,16 +63,16 @@ export function initFilters(isStateLoaded) {
     const toDate = document.getElementById("toDate");
     const fromTime = document.getElementById("fromTime");
     const toTime = document.getElementById("toTime");
-    
+
     // Check if ALL date/time inputs are empty
-    const allEmpty = (!fromDate || !fromDate.value || fromDate.value.trim() === "") && 
-                     (!toDate || !toDate.value || toDate.value.trim() === "") && 
-                     (!fromTime || !fromTime.value || fromTime.value.trim() === "") && 
-                     (!toTime || !toTime.value || toTime.value.trim() === "");
-    
+    const allEmpty = (!fromDate || !fromDate.value || fromDate.value.trim() === "") &&
+      (!toDate || !toDate.value || toDate.value.trim() === "") &&
+      (!fromTime || !fromTime.value || fromTime.value.trim() === "") &&
+      (!toTime || !toTime.value || toTime.value.trim() === "");
+
     // Additional check: if there's state in URL, don't set default dates even if inputs appear empty
     const hasUrlState = window.location.hash && window.location.hash.startsWith("#state=");
-    
+
     console.log("🔍 initFilters: Checking if inputs are empty:", {
       fromDate: fromDate?.value,
       toDate: toDate?.value,
@@ -82,7 +82,7 @@ export function initFilters(isStateLoaded) {
       isStateLoaded,
       hasUrlState
     });
-    
+
     if (allEmpty && !hasUrlState) {
       console.log("🔍 initFilters: All inputs empty and no URL state, setting default date range");
       setDefaultDateRange();
@@ -119,17 +119,17 @@ export function initFilters(isStateLoaded) {
 
   // Install delegated click handler once to survive DOM re-renders
   try {
-    const alreadyDelegated = (() => { try { return !!window.__summaryDelegationInstalled; } catch(_) { return false; } })();
+    const alreadyDelegated = (() => { try { return !!window.__summaryDelegationInstalled; } catch (_) { return false; } })();
     if (!alreadyDelegated) {
       document.addEventListener('click', (e) => {
         const btn = e.target && (e.target.closest ? e.target.closest('#btnSummary') : null);
         if (!btn) return;
-        try { if (typeof window !== 'undefined' && window.__summaryFetchInProgress) return; } catch(_) {}
+        try { if (typeof window !== 'undefined' && window.__summaryFetchInProgress) return; } catch (_) { }
         handleSummaryClick(e);
       }, false);
-      try { window.__summaryDelegationInstalled = true; } catch(_) { /* no-op */ }
+      try { window.__summaryDelegationInstalled = true; } catch (_) { /* no-op */ }
     }
-  } catch(_) { /* best-effort */ }
+  } catch (_) { /* best-effort */ }
 
   if (reverseButton) {
     reverseButton.addEventListener("click", (e) => {
@@ -159,7 +159,7 @@ export function initFilters(isStateLoaded) {
         }
         // Enforcement from Find flow: keep hidden until Summary is clicked
         if (hideUntilSummary) setShowTable(false);
-      } catch(_) {
+      } catch (_) {
         // Ignore errors in UI update
       }
 
@@ -167,23 +167,23 @@ export function initFilters(isStateLoaded) {
       try {
         const overlayEl = document.getElementById('loading-overlay');
         if (overlayEl) overlayEl.classList.toggle('is-hidden', !(status === 'loading' && !isIntervalFetch && !isSummaryFetch));
-      } catch(_) {
+      } catch (_) {
         // Ignore overlay toggle errors
       }
       // reinforce charts/mode controls visibility across patches
       if ((status === 'loading' || status === 'success') && !isSummaryFetch) {
-        try { setUI({ showCharts: true, showModeControls: true }); } catch(_) {
+        try { setUI({ showCharts: true, showModeControls: true }); } catch (_) {
           // Ignore UI state errors
         }
       }
       // disable/enable buttons while loading
-      try { if (findButton) findButton.disabled = (status === 'loading'); } catch(_) {
+      try { if (findButton) findButton.disabled = (status === 'loading'); } catch (_) {
         // Ignore button state errors
       }
-      try { if (reverseButton) reverseButton.disabled = (status === 'loading'); } catch(_) {
+      try { if (reverseButton) reverseButton.disabled = (status === 'loading'); } catch (_) {
         // Ignore button state errors
       }
-      try { if (summaryTableButton) summaryTableButton.disabled = (status === 'loading' && isSummaryFetch); } catch(_) {
+      try { if (summaryTableButton) summaryTableButton.disabled = (status === 'loading' && isSummaryFetch); } catch (_) {
         // Ignore button state errors
       }
     });
@@ -191,10 +191,12 @@ export function initFilters(isStateLoaded) {
 
   // Auto-fetch data when user switches interval without pressing Find
   try {
-    const already = (() => { try { return !!window.__chartsIntervalFetchSubscribed; } catch(_) { return false; } })();
-    if (!already) { try { window.__chartsIntervalFetchSubscribed = true; } catch(_) {
+    const already = (() => { try { return !!window.__chartsIntervalFetchSubscribed; } catch (_) { return false; } })();
+    if (!already) {
+      try { window.__chartsIntervalFetchSubscribed = true; } catch (_) {
         // Ignore global flag errors
-      } }
+      }
+    }
     if (!already) subscribe('charts:intervalChanged', async (payload) => {
       try {
         const interval = payload && payload.interval ? String(payload.interval) : '';
@@ -204,10 +206,10 @@ export function initFilters(isStateLoaded) {
           if (getAppStatus && getAppStatus() === 'loading') return;
           if (typeof window !== 'undefined' && window.__intervalFetchInFlight) return;
           if (typeof window !== 'undefined') window.__intervalFetchInFlight = true;
-        } catch(_) {
+        } catch (_) {
           // Ignore fetch guard errors
         }
-        try { refreshFilterValues(); } catch(_) {
+        try { refreshFilterValues(); } catch (_) {
           // Ignore filter refresh errors
         }
         const base = buildFilterParams();
@@ -222,7 +224,7 @@ export function initFilters(isStateLoaded) {
           // NOTE: do NOT override fromStr/toStr for the request; requests must use base filters
         }
         if (!Number.isFinite(effFromTs) || !Number.isFinite(effToTs) || effToTs <= effFromTs) {
-          try { if (typeof window !== 'undefined') window.__intervalFetchInFlight = false; } catch(_) {
+          try { if (typeof window !== 'undefined') window.__intervalFetchInFlight = false; } catch (_) {
             // Ignore global flag errors
           }
           return;
@@ -235,13 +237,13 @@ export function initFilters(isStateLoaded) {
         const userWants1h = effInterval === '1h';
         // Enforce rule: if > 5 days, block 5m and warn (English)
         if (userWants5m && diffDays > 5.0001) {
-          try { toast('5-minute interval is available only for ranges up to 5 days. Switching to 1 hour.', { type: 'warning', duration: 3500 }); } catch(_) {
+          try { toast('5-minute interval is available only for ranges up to 5 days. Switching to 1 hour.', { type: 'warning', duration: 3500 }); } catch (_) {
             // Toast might not be available
           }
           effInterval = '1h';
         }
         // Persist chosen interval globally for backend hinting
-        try { if (typeof window !== 'undefined') window.__chartsCurrentInterval = effInterval; } catch(_) {
+        try { if (typeof window !== 'undefined') window.__chartsCurrentInterval = effInterval; } catch (_) {
           // Ignore global interval update errors
         }
         let gran = '5m';
@@ -262,7 +264,7 @@ export function initFilters(isStateLoaded) {
         if (cached) {
           setMetricsData(cached);
           setAppStatus('success');
-          try { if (typeof window !== 'undefined') window.__intervalFetchInFlight = false; } catch(_) {
+          try { if (typeof window !== 'undefined') window.__intervalFetchInFlight = false; } catch (_) {
             // Ignore global flag errors
           }
           return;
@@ -273,40 +275,40 @@ export function initFilters(isStateLoaded) {
         if (data) {
           setMetricsData(data);
           setAppStatus('success');
-          try { putCachedMetrics(params, data); } catch(_) {
+          try { putCachedMetrics(params, data); } catch (_) {
             // Ignore cache write errors
           }
         } else {
           setAppStatus('error');
         }
-        try { if (typeof window !== 'undefined') window.__intervalFetchInFlight = false; } catch(_) {
+        try { if (typeof window !== 'undefined') window.__intervalFetchInFlight = false; } catch (_) {
           // Ignore global flag errors
         }
-      } catch(_) {
+      } catch (_) {
         // Ignore interval fetch errors
       }
     });
-  } catch(_) { /* best-effort */ }
+  } catch (_) { /* best-effort */ }
 
   // While typing in filters, do NOT hide charts or controls; re-assert visibility
   try {
     subscribe('appState:filtersChanged', () => {
-      try { setUI({ showCharts: true, showModeControls: true }); } catch(_) {
+      try { setUI({ showCharts: true, showModeControls: true }); } catch (_) {
         // Ignore UI state errors
       }
     });
-  } catch(_) { /* best-effort */ }
+  } catch (_) { /* best-effort */ }
 
   // After data changes, ensure charts stay visible (toast handled centrally by ui-feedback.js)
   try {
     subscribe("appState:dataChanged", () => {
-      try { if (typeof window !== 'undefined' && window.__hideTableUntilSummary) setShowTable(false); } catch(_) {
+      try { if (typeof window !== 'undefined' && window.__hideTableUntilSummary) setShowTable(false); } catch (_) {
         // Ignore table visibility errors
       }
-      try { const overlayEl = document.getElementById('loading-overlay'); if (overlayEl) overlayEl.classList.add('is-hidden'); } catch(_) {
+      try { const overlayEl = document.getElementById('loading-overlay'); if (overlayEl) overlayEl.classList.add('is-hidden'); } catch (_) {
         // Ignore overlay errors
       }
-      try { const mount = document.getElementById('chart-area-1'); if (mount) { mount.classList.remove('chart-fade--out'); mount.classList.add('chart-fade--in'); mount.style.opacity = ''; } } catch(_) {
+      try { const mount = document.getElementById('chart-area-1'); if (mount) { mount.classList.remove('chart-fade--out'); mount.classList.add('chart-fade--in'); mount.style.opacity = ''; } } catch (_) {
         // Ignore chart animation errors
       }
     });
@@ -318,29 +320,29 @@ export function initFilters(isStateLoaded) {
       try {
         const chartsContainer = document.getElementById('charts-container');
         if (chartsContainer) chartsContainer.style.display = ui?.showCharts ? '' : 'none';
-      } catch(_) {
+      } catch (_) {
         // Ignore container visibility errors
       }
       try {
         const chartsControls = document.getElementById('charts-controls');
         if (chartsControls) chartsControls.style.display = ui?.showCharts ? '' : 'none';
-      } catch(_) {
+      } catch (_) {
         // Ignore controls visibility errors
       }
       try {
         const modeControls = document.getElementById('tableModeControls');
         if (modeControls) modeControls.style.display = ui?.showModeControls ? '' : 'none';
-      } catch(_) {
+      } catch (_) {
         // Ignore mode controls errors
       }
       try {
         const resultsContainer = document.querySelector('.results-display');
         if (resultsContainer) resultsContainer.classList.toggle('is-hidden', !ui?.showTable);
-      } catch(_) {
+      } catch (_) {
         // Ignore results display errors
       }
     });
-  } catch(_) { /* best-effort */ }
+  } catch (_) { /* best-effort */ }
 }
 
 /**
@@ -350,7 +352,7 @@ export function initFilters(isStateLoaded) {
 function destroyTableHard() {
   try {
     // Hide container immediately via UI state
-    try { setShowTable(false); } catch(_) {
+    try { setShowTable(false); } catch (_) {
       // Ignore table hide errors
     }
     // Clear virtual manager if present
@@ -363,7 +365,7 @@ function destroyTableHard() {
         if (typeof window.virtualManager.destroy === 'function') {
           window.virtualManager.destroy();
         }
-      } catch(_) {
+      } catch (_) {
         // Ignore virtual manager cleanup errors
       }
     }
@@ -375,19 +377,19 @@ function destroyTableHard() {
         vwrap.innerHTML = (
           '<div id="virtual-scroll-spacer" style="position: absolute; top: 0; left: 0; right: 0; pointer-events: none;"></div>' +
           '<table id="summaryTable" class="results-display__table" style="position: relative;">' +
-            '<thead id="tableHead"></thead>' +
-            '<tbody id="tableBody"></tbody>' +
-            '<tfoot><tr><td id="table-footer-info" colspan="24"></td></tr></tfoot>' +
+          '<thead id="tableHead"></thead>' +
+          '<tbody id="tableBody"></tbody>' +
+          '<tfoot><tr><td id="table-footer-info" colspan="24"></td></tr></tfoot>' +
           '</table>'
         );
-      } catch(_) {
+      } catch (_) {
         // Ignore DOM restore errors
       }
     }
     // Also ensure table-specific controls are hidden
     const controls = document.getElementById('table-controls');
     if (controls) controls.style.display = 'none';
-  } catch(_) {
+  } catch (_) {
     // Ignore table hard destroy errors
   }
 }
@@ -404,9 +406,9 @@ async function handleFindClick() {
   window._isManualFindInProgress = true;
 
   setAppStatus("loading");
-  try { if (typeof window !== 'undefined') window.__chartsZoomRange = null; } catch(_) {}
+  try { if (typeof window !== 'undefined') window.__chartsZoomRange = null; } catch (_) { }
   // Ensure charts and mode controls remain visible across re-renders after Find
-  try { setUI({ showCharts: true, showModeControls: true }); } catch(_) {
+  try { setUI({ showCharts: true, showModeControls: true }); } catch (_) {
     // Ignore UI state errors
   }
   // Immediately unhide charts container and controls in DOM (defensive against late subscribers)
@@ -417,15 +419,15 @@ async function handleFindClick() {
     if (ctl) ctl.style.display = '';
     const mount = document.getElementById('chart-area-1');
     if (mount) { mount.classList.remove('chart-fade--out'); mount.classList.add('chart-fade--in'); mount.style.opacity = ''; }
-  } catch(_) {
+  } catch (_) {
     // Ignore DOM manipulation errors
   }
   // Mark that charts were explicitly requested; charts module will honor this on init as well
-  try { if (typeof window !== 'undefined') window.__chartsRenderRequested = true; } catch(_) {
+  try { if (typeof window !== 'undefined') window.__chartsRenderRequested = true; } catch (_) {
     // Ignore global flag errors
   }
   // Explicitly request charts render tied to Find click
-  try { const { publish } = await import('../state/eventBus.js'); publish('charts:renderRequest'); } catch(_) {
+  try { const { publish } = await import('../state/eventBus.js'); publish('charts:renderRequest'); } catch (_) {
     // Ignore event bus errors
   }
   // Hide summary metrics while loading to avoid stale content
@@ -435,7 +437,7 @@ async function handleFindClick() {
   } catch (_) { /* intentional no-op: summary may not be present */ }
 
   // Hide UI elements immediately
-  try { window.__hideTableUntilSummary = true; } catch(_) {
+  try { window.__hideTableUntilSummary = true; } catch (_) {
     // Ignore global flag errors
   }
   destroyTableHard();
@@ -444,7 +446,7 @@ async function handleFindClick() {
   try {
     // Validate filter parameters before making API call
     // Force-sync flatpickr -> inputs to avoid stale dates
-    try { refreshFilterValues(); } catch(_) {
+    try { refreshFilterValues(); } catch (_) {
       // Ignore filter refresh errors
     }
     const validation = validateFilterParams();
@@ -467,13 +469,13 @@ async function handleFindClick() {
       const diffDays = (to - from) / (24 * 3600e3);
       if (ci === '5m' && diffDays > 5.0001) {
         fetchParams.granularity = '1h';
-        try { if (typeof window !== 'undefined') window.__chartsCurrentInterval = '1h'; } catch(_) {
+        try { if (typeof window !== 'undefined') window.__chartsCurrentInterval = '1h'; } catch (_) {
           // Ignore interval update errors
         }
       } else {
         fetchParams.granularity = (ci === '5m') ? '5m' : '1h';
       }
-    } catch(_) {
+    } catch (_) {
       // Ignore granularity calculation errors
     }
     // Preserve current chart zoom state; Find fetch uses filter inputs only
@@ -485,7 +487,7 @@ async function handleFindClick() {
     }
 
     // remember that last fetch did not use zoom
-    try { window.__chartsUsedZoomForLastFetch = false; } catch(_) {
+    try { window.__chartsUsedZoomForLastFetch = false; } catch (_) {
       // Ignore global flag errors
     }
     // Try cache before fetching
@@ -503,7 +505,7 @@ async function handleFindClick() {
       setMetricsData(data);
       setAppStatus("success");
       saveStateToUrl();
-      try { if (!cached) putCachedMetrics(cacheKeyParams, data); } catch(_) {
+      try { if (!cached) putCachedMetrics(cacheKeyParams, data); } catch (_) {
         // Ignore cache write errors
       }
       // Explicitly ensure summary metrics are visible after data arrives
@@ -512,11 +514,11 @@ async function handleFindClick() {
         if (summary) summary.classList.remove("is-hidden");
       } catch (_) { /* intentional no-op: summary may not be present */ }
       // Keep table hidden until user explicitly opens Summary
-      try { setShowTable(false); } catch(_) {
+      try { setShowTable(false); } catch (_) {
         // Ignore table state errors
       }
       // Defensive: ensure overlay is hidden
-      try { const overlayEl = document.getElementById('loading-overlay'); if (overlayEl) overlayEl.classList.add('is-hidden'); } catch(_) {
+      try { const overlayEl = document.getElementById('loading-overlay'); if (overlayEl) overlayEl.classList.add('is-hidden'); } catch (_) {
         // Ignore overlay hide errors
       }
     } else {
@@ -545,15 +547,15 @@ async function handleSummaryClick() {
 
   // Summary flow should NOT affect charts or global status
   // Mark summary-only fetch in progress (used by UI guards)
-  try { if (typeof window !== 'undefined') window.__summaryFetchInProgress = true; } catch(_) {
+  try { if (typeof window !== 'undefined') window.__summaryFetchInProgress = true; } catch (_) {
     // Ignore global flag errors
   }
-  try { window.__hideTableUntilSummary = false; } catch(_) {
+  try { window.__hideTableUntilSummary = false; } catch (_) {
     // Ignore global flag errors
   }
 
   // Hide table while loading (temporary), flag is cleared above to allow later show
-  try { setShowTable(false); } catch(_) {
+  try { setShowTable(false); } catch (_) {
     // Ignore table state errors
   }
   hideTableUI();
@@ -562,11 +564,11 @@ async function handleSummaryClick() {
   resetVirtualTableState();
 
   // Clear all saved table column filters before building the new table
-  try { clearAllTableFilters(); } catch(_) { }
+  try { clearAllTableFilters(); } catch (_) { }
 
   try {
     // Fetch fresh data with current filter values (force-sync first)
-    try { refreshFilterValues(); } catch(_) {
+    try { refreshFilterValues(); } catch (_) {
       // Ignore filter refresh errors
     }
     const filterParams = buildFilterParams();
@@ -593,13 +595,13 @@ async function handleSummaryClick() {
     } catch (_) {
       // Ignore zoom range parsing errors
     }
-    try { window.__chartsUsedZoomForLastFetch = !!usedZoom; } catch(_) {
+    try { window.__chartsUsedZoomForLastFetch = !!usedZoom; } catch (_) {
       // Ignore global flag update errors
     }
     if (!filterParams.from || !filterParams.to) {
       throw new Error("Date range is not set. Cannot fetch metrics.");
     }
-    
+
     console.log("🔍 Fetching data for Summary Table with filters:", filterParams);
     // Add API granularity hint for summary flow as well
     try {
@@ -609,26 +611,26 @@ async function handleSummaryClick() {
       const diffDays = (to - from) / (24 * 3600e3);
       if (ci === '5m' && diffDays > 5.0001) {
         filterParams.granularity = '1h';
-        try { if (typeof window !== 'undefined') window.__chartsCurrentInterval = '1h'; } catch(_) {
+        try { if (typeof window !== 'undefined') window.__chartsCurrentInterval = '1h'; } catch (_) {
           // Ignore interval update errors
         }
       } else {
         filterParams.granularity = (ci === '5m') ? '5m' : '1h';
       }
-    } catch(_) {
+    } catch (_) {
       // Ignore granularity calculation errors
     }
     const data = await fetchMetrics(filterParams);
 
     if (!data) {
-      try { renderTableHeader(); } catch(_) {}
-      try { renderTableFooter(); } catch(_) {}
-      try { showTableControls(); } catch(_) {}
+      try { renderTableHeader(); } catch (_) { }
+      try { renderTableFooter(); } catch (_) { }
+      try { showTableControls(); } catch (_) { }
       try {
         const tb = document.getElementById('tableBody');
         if (tb) tb.innerHTML = '<tr><td colspan="24">Error loading data. Please try again.</td></tr>';
-      } catch(_) {}
-      try { setShowTable(true); } catch(_) {}
+      } catch (_) { }
+      try { setShowTable(true); } catch (_) { }
       saveStateToUrl();
       alert('Error loading data. Please try again.');
       return;
@@ -646,43 +648,47 @@ async function handleSummaryClick() {
         });
         main_rows = Array.from(map.values());
         console.debug('[summary] synthesized main_rows from peer_rows:', main_rows.length);
-      } catch(_) {
+      } catch (_) {
         // Ignore main_rows synthesis errors
       }
     }
     if ((main_rows && main_rows.length) || (peer_rows && peer_rows.length)) {
       await renderCoordinator.requestRender('table', async () => {
         // Prepare
-        try { renderTableHeader(); } catch(_) {
+        try { renderTableHeader(); } catch (_) {
           // Ignore header rendering errors
         }
-        try { renderTableFooter(); } catch(_) {
+        try { renderTableFooter(); } catch (_) {
           // Ignore footer rendering errors
         }
-        try { showTableControls(); } catch(_) {
+        try { showTableControls(); } catch (_) {
           // Ignore controls display errors
         }
-        initTableControls(main_rows || [], peer_rows || []);
+        // Pass five_min_rows if available (for 5m granularity), otherwise hourly_rows
+        const detailedRows = (data && data.five_min_rows && data.five_min_rows.length > 0) ? data.five_min_rows : (hourly_rows || []);
+        initTableControls(main_rows || [], peer_rows || [], detailedRows);
         // Clear
-        try { const tb = document.getElementById('tableBody'); if (tb) tb.innerHTML = ''; } catch(_) {
+        try { const tb = document.getElementById('tableBody'); if (tb) tb.innerHTML = ''; } catch (_) {
           // Ignore table clearing errors
         }
         // Render (central renderer picks mode and clears opposite)
         const mod = await import('../rendering/table-renderer.js');
         let tr = window.tableRenderer;
-        if (!tr) { tr = new mod.TableRenderer(); try { await tr.initialize(); } catch(_) {
-          // Ignore renderer initialization errors
-        }; window.tableRenderer = tr; }
+        if (!tr) {
+          tr = new mod.TableRenderer(); try { await tr.initialize(); } catch (_) {
+            // Ignore renderer initialization errors
+          }; window.tableRenderer = tr;
+        }
         const res = await tr.renderTable(main_rows || [], peer_rows || [], hourly_rows || []);
         try {
           const tbody = document.getElementById('tableBody');
           const rowCount = tbody ? tbody.querySelectorAll('tr').length : 0;
           console.debug('[summary] TableRenderer rendered rows:', rowCount, 'mode:', res && res.mode);
-        } catch(_) {
+        } catch (_) {
           // Ignore debug logging errors
         }
         // Post
-        try { setShowTable(true); } catch(_) {
+        try { setShowTable(true); } catch (_) {
           // Ignore table show errors
         }
         try {
@@ -692,36 +698,36 @@ async function handleSummaryClick() {
           if (controls) controls.style.display = 'flex';
           const tableFooter = document.querySelector('.results-display__footer');
           if (tableFooter) tableFooter.classList.remove('is-hidden');
-        } catch(_) {
+        } catch (_) {
           // Ignore UI update errors
         }
-        try { setUI({ showTable: true }); } catch(_) {
+        try { setUI({ showTable: true }); } catch (_) {
           // Ignore UI state update errors
         }
-        try { initTableView(); } catch(_) {
+        try { initTableView(); } catch (_) {
           // Ignore table view init errors
         }
-        try { initStickyHeader(); } catch(_) {
+        try { initStickyHeader(); } catch (_) {
           // Ignore sticky header init errors
         }
-        try { initStickyFooter(); } catch(_) {
+        try { initStickyFooter(); } catch (_) {
           // Ignore sticky footer init errors
         }
-        try { initTableInteractions(); } catch(_) {
+        try { initTableInteractions(); } catch (_) {
           // Ignore table interactions init errors
         }
         console.log("✅ Summary Table loaded with fresh data");
       }, { debounceMs: 0, cooldownMs: 0 });
     } else {
       // Show empty state instead of hiding the table entirely
-      try { renderTableHeader(); } catch(_) {}
-      try { renderTableFooter(); } catch(_) {}
-      try { showTableControls(); } catch(_) {}
+      try { renderTableHeader(); } catch (_) { }
+      try { renderTableFooter(); } catch (_) { }
+      try { showTableControls(); } catch (_) { }
       try {
         const tb = document.getElementById('tableBody');
         if (tb) tb.innerHTML = '<tr><td colspan="24">No data found for current filters.</td></tr>';
-      } catch(_) {}
-      try { setShowTable(true); } catch(_) {}
+      } catch (_) { }
+      try { setShowTable(true); } catch (_) { }
     }
 
     saveStateToUrl();
@@ -729,7 +735,7 @@ async function handleSummaryClick() {
     console.error("❌ Error fetching data for Summary Table:", error);
     alert('Error loading data. Please try again.');
   } finally {
-    try { if (typeof window !== 'undefined') window.__summaryFetchInProgress = false; } catch(_) {
+    try { if (typeof window !== 'undefined') window.__summaryFetchInProgress = false; } catch (_) {
       // Ignore fetch flag cleanup errors
     }
   }
@@ -743,13 +749,13 @@ function resetVirtualTableState() {
   if (window.virtualManager && window.virtualManager.isActive) {
     window.virtualManager.openMainGroups.clear();
     window.virtualManager.openHourlyGroups.clear();
-    
+
     // Reset headers flag to allow re-initialization with fresh data
     window.virtualManager.headersInitialized = false;
-    
+
     // Reset sort handlers flag to allow re-attaching sort handlers
     window.virtualManager.sortHandlersAttached = false;
-    
+
     // Force refresh virtual table with cleared state
     window.virtualManager.refreshVirtualTable();
     window.virtualManager.forceImmediateRender();
@@ -768,18 +774,18 @@ function handleReverseClick() {
   setReverseMode(!isReverseMode());
 
   // 2. Immediately hide the table and keep charts visible
-  try { setShowTable(false); } catch(_) {
+  try { setShowTable(false); } catch (_) {
     // Ignore table hide errors
   }
-  try { setUI({ showCharts: true, showModeControls: true }); } catch(_) {
+  try { setUI({ showCharts: true, showModeControls: true }); } catch (_) {
     // Ignore UI update errors
   }
   // Ensure the flow treats table as hidden until explicit Summary click
-  try { window.__hideTableUntilSummary = true; } catch(_) {
+  try { window.__hideTableUntilSummary = true; } catch (_) {
     // Ignore global flag errors
   }
   // Clear any existing table filters so they don't eliminate rows after reverse
-  try { clearAllTableFilters(); } catch(_) {
+  try { clearAllTableFilters(); } catch (_) {
     // Ignore filter clear errors
   }
 
@@ -793,19 +799,19 @@ function handleReverseClick() {
  */
 export function clearTableFilters() {
   console.log("🧹 Clearing all table filters...");
-  
+
   // Clear all table filters
   clearAllTableFilters();
-  
+
   // Setup automatic filter clearing for future input changes
   setupAutoFilterClearing();
-  
+
   // If virtual manager is active, refresh the table to show unfiltered data
   if (window.virtualManager && window.virtualManager.isActive) {
     console.log("🔄 Refreshing table after filter clear...");
     window.virtualManager.refreshVirtualTable();
   }
-  
+
   console.log("✅ Table filters cleared and table refreshed");
 }
 
@@ -815,15 +821,15 @@ export function clearTableFilters() {
  */
 export function clearSpecificFilter(columnKey) {
   console.log(`🧹 Clearing filter for column: ${columnKey}`);
-  
+
   // Clear the specific filter
   clearColumnFilter(columnKey);
-  
+
   // If virtual manager is active, refresh the table to show updated data
   if (window.virtualManager && window.virtualManager.isActive) {
     console.log("🔄 Refreshing table after specific filter clear...");
     window.virtualManager.refreshVirtualTable();
   }
-  
+
   console.log(`✅ Filter for column "${columnKey}" cleared and table refreshed`);
 }

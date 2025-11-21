@@ -3,9 +3,12 @@ import { publish } from "./eventBus.js";
 
 // --- NEW: Separate variable for the raw data from the API ---
 // This ensures that loading a state from a URL doesn't overwrite the original dataset.
+// --- NEW: Separate variable for the raw data from the API ---
+// This ensures that loading a state from a URL doesn't overwrite the original dataset.
 const rawData = {
   mainRows: [],
   peerRows: [],
+  hourlyRows: [], // Added hourlyRows
 };
 
 const tableState = {
@@ -21,7 +24,7 @@ const tableState = {
   // Virtual Table Integration: Track rendering mode (pagination removed)
   renderingMode: 'virtual', // Always virtual now
   virtualScrollEnabled: true,
-  
+
   // NEW: Table display settings
   display: {
     compactMode: false,
@@ -31,15 +34,15 @@ const tableState = {
     rowHeight: 40,
     fontSize: 14,
   },
-  
+
   // NEW: Column management
   columns: {
     visible: [
-      "main", "peer", "destination", "calls", "duration", 
+      "main", "peer", "destination", "calls", "duration",
       "pdd", "atime", "asr", "acd", "mos"
     ],
     order: [
-      "main", "peer", "destination", "calls", "duration", 
+      "main", "peer", "destination", "calls", "duration",
       "pdd", "atime", "asr", "acd", "mos"
     ],
     widths: {
@@ -56,7 +59,7 @@ const tableState = {
     },
     frozen: ["main", "peer"], // Columns that stay visible during horizontal scroll
   },
-  
+
   // NEW: Table behavior settings
   behavior: {
     autoExpandGroups: false,
@@ -66,7 +69,7 @@ const tableState = {
     enableMultiSelection: false,
     enableDragAndDrop: false,
   },
-  
+
   // NEW: Performance settings
   performance: {
     enableVirtualization: true,
@@ -76,7 +79,7 @@ const tableState = {
     maxVisibleRows: 1000,
     renderBatchSize: 50,
   },
-  
+
   // NEW: Export and sharing settings
   export: {
     defaultFormat: "csv", // "csv", "excel", "json"
@@ -211,9 +214,10 @@ export function toggleYColumnsVisible() {
 }
 
 // --- MODIFIED: setFullData now populates the new rawData variable ---
-export function setFullData(allMainRows, allPeerRows) {
+export function setFullData(allMainRows, allPeerRows, allHourlyRows = []) {
   rawData.mainRows = allMainRows;
   rawData.peerRows = allPeerRows;
+  rawData.hourlyRows = allHourlyRows;
 
   // Reset parts of the state that depend on the data
   // currentPage removed - no pagination
@@ -418,14 +422,14 @@ export function resetToDefaults() {
     rowHeight: 40,
     fontSize: 14,
   };
-  
+
   tableState.columns = {
     visible: [
-      "main", "peer", "destination", "calls", "duration", 
+      "main", "peer", "destination", "calls", "duration",
       "pdd", "atime", "asr", "acd", "mos"
     ],
     order: [
-      "main", "peer", "destination", "calls", "duration", 
+      "main", "peer", "destination", "calls", "duration",
       "pdd", "atime", "asr", "acd", "mos"
     ],
     widths: {
@@ -434,7 +438,7 @@ export function resetToDefaults() {
     },
     frozen: ["main", "peer"],
   };
-  
+
   tableState.behavior = {
     autoExpandGroups: false,
     rememberExpandedState: true,
@@ -443,7 +447,7 @@ export function resetToDefaults() {
     enableMultiSelection: false,
     enableDragAndDrop: false,
   };
-  
+
   tableState.performance = {
     enableVirtualization: true,
     enableLazyLoading: true,
@@ -452,7 +456,7 @@ export function resetToDefaults() {
     maxVisibleRows: 1000,
     renderBatchSize: 50,
   };
-  
+
   tableState.export = {
     defaultFormat: "csv",
     includeHeaders: true,
@@ -460,13 +464,13 @@ export function resetToDefaults() {
     includeSorting: true,
     filenameTemplate: "metrics_{date}_{time}",
   };
-  
+
   // Reset sorting defaults
   tableState.multiSort = [
     { key: "destination", dir: "asc" },
     { key: "main", dir: "asc" },
   ];
-  
+
   console.log("🔄 Table state reset to defaults");
   publish("tableState:resetToDefaults");
 }
