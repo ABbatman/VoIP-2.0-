@@ -2,6 +2,7 @@
 // overlay labels: customSeries on top of bars (no calc here)
 import * as echarts from 'echarts';
 import { getStableColor, PROVIDER_COLORS } from './colors.js';
+import { calculateMarkerLayout } from '../../../visualEnhancements/adaptiveMarkers.js';
 
 // read CSS variables once
 function readCssVar(name, fallback) { // read css var
@@ -131,7 +132,7 @@ export function buildLabelOverlay({ metric, timestamps, labels, colorMap, gridIn
         console.debug('[overlay] grouped.len', grouped.length, grouped.slice(0, 3));
       }
     } catch (_) { }
-    const children = [];
+    let children = [];
     if (!grouped.length) return null;
     // measure constant capsule height using first label's text (font height is stable)
     const font = '600 11px system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
@@ -192,87 +193,26 @@ export function buildLabelOverlay({ metric, timestamps, labels, colorMap, gridIn
         yPos = grouped.map((_, i) => bottomBound - i * (h + vGap));
       }
     }
-    for (let i = 0; i < grouped.length; i++) {
-      const { supplierId, name, value } = grouped[i];
-      const c = api.coord([ts, value]);
-      // align horizontally to a specific bar within the category band using step-based pixel shift
-      let x = Math.round(c[0]);
-      try {
-        const frac = 0.18; // visual fraction of step to approximate bar center
-        const dx = Array.isArray(api.size ? api.size([Number(stepMs) * frac, 0]) : null) ? (api.size([Number(stepMs) * frac, 0])[0] || 0) : 0;
-        if (align === 'current') x = Math.round(x - dx);
-        else if (align === 'prev') x = Math.round(x + dx);
-      } catch (_) { /* keep center */ }
-      const txt = formatMetricText(metric, value);
-      const tr = (echarts && echarts.format && typeof echarts.format.getTextRect === 'function')
-        ? echarts.format.getTextRect(txt, font)
-        : { width: (String(txt).length * 7), height: 12 };
-      const w = Math.round(tr.width + padX * 2);
-      const y = Math.round(yPos[i]); // per-bar compacted/ideal position
-      // Resolve color by id, by stringified id, by name, then fallback to stable palette
-      let color = undefined;
-      try {
-        const sidStr = supplierId != null ? String(supplierId) : undefined;
-        if (colorMap) {
-          if (sidStr && colorMap[sidStr]) color = colorMap[sidStr];
-          else if (supplierId != null && colorMap[supplierId]) color = colorMap[supplierId];
-          else if (name && colorMap[name]) color = colorMap[name];
-        }
-        if (!color) {
-          // If no supplier info at all, color by index to ensure visible distinction
-          if (sidStr == null && (name == null || String(name).trim() === '')) {
-            color = PROVIDER_COLORS[i % PROVIDER_COLORS.length] || '#ff7f0e';
-          } else {
-            color = getStableColor(sidStr || String(name || 'default'));
-          }
-        }
-      } catch (_) {
-        color = getStableColor('default');
-      }
-      if (!color) { color = PROVIDER_COLORS[i % PROVIDER_COLORS.length] || '#ff7f0e'; }
-      try { if (typeof window !== 'undefined' && window.__chartsDebug) console.debug('[overlay] color', { supplierId, name, color }); } catch (_) { }
+    // ADAPTIVE MARKER LOGIC (Delegated to visualEnhancements module)
+    children = calculateMarkerLayout(api, {
+      ts,
+      value: grouped.map(g => g.value), // pass all values for group context if needed, but grouped is passed directly
+      metric,
+      stepMs,
+      align,
+      grouped,
+      yPos,
+      h,
+      secondary,
+      colorMap,
+      formatMetricText,
+      CSS_BG,
+      getStableColor,
+      PROVIDER_COLORS,
+      echarts,
+    });
 
-      const rectEl = {
-        type: 'rect',
-        shape: { x: Math.round(x - Math.floor(w / 2)), y: Math.round(y - Math.floor(h / 2)), width: w, height: h, r: 9 },
-        style: {
-          fill: CSS_BG(),
-          stroke: color,
-          lineWidth: 1,
-          shadowBlur: 8,
-          shadowColor: 'rgba(0,0,0,0.12)',
-          shadowOffsetY: 2,
-          opacity: secondary ? 0.7 : 1,
-          // Fix: attach value to rect so hit-test finds it without climbing to parent
-          text: txt,
-          textFill: 'rgba(0,0,0,0)', // invisible text for data transport
-        },
-        cursor: 'pointer',
-        enterFrom: { style: { opacity: 0 } },
-        transition: ['style', 'shape'],
-      };
-      const textEl = {
-        type: 'text',
-        style: {
-          text: txt, // visual only
-          x,
-          y,
-          align: 'center',
-          verticalAlign: 'middle',
-          font,
-          fontSize: 11,
-          fontWeight: 600,
-          fill: color,
-          textFill: color,
-          color: color,
-          opacity: secondary ? 0.9 : 1,
-        },
-        silent: false,
-        cursor: 'pointer',
-      };
-      children.push(rectEl, textEl);
-    }
-    if (!children.length) return null;
+    if (!children || !children.length) return null;
     return { type: 'group', children };
   };
   const throttledRenderItem = makeThrottled(renderItemImpl, 80);

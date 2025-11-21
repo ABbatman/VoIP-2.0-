@@ -4,6 +4,12 @@
 // --- MODIFIED: Corrected the import path ---
 import { getAnomalyClass } from "../utils/helpers.js";
 import { getColumnConfig } from "./table-ui.js";
+import { generateSparkline, generateSparkbar } from "../visualEnhancements/microCharts.js";
+import { getHeatmapStyle } from "../visualEnhancements/heatmapStyling.js";
+import { getHierarchyVisuals, getHierarchyIndent, injectHierarchyStyles } from "../visualEnhancements/hierarchyGuides.js";
+
+// Inject styles once
+try { injectHierarchyStyles(); } catch (_) { }
 
 // --- Row Creation Functions (legacy DOM creators) ---
 // deprecated: prefer string renderers (renderMainRowString/renderPeerRowString/renderHourlyRowsString)
@@ -177,7 +183,8 @@ function formatDateToKey(d) {
  */
 export function renderMainRowString(mainRow, { mainGroupId, isMainGroupOpen }) {
   const toggle = isMainGroupOpen ? '−' : '+';
-  let html = `<tr class="main-row">`;
+  const guideClass = getHierarchyVisuals('main');
+  let html = `<tr class="main-row ${guideClass}">`;
   html += `<td data-filter-value="${escapeHtml(mainRow.main)}"><button type="button" class="toggle-btn" data-target-group="${mainGroupId}">${toggle}</button> ${escapeHtml(mainRow.main)}</td>`;
   html += `<td></td>`;
   html += `<td>${escapeHtml(mainRow.destination)}</td>`;
@@ -192,11 +199,13 @@ export function renderMainRowString(mainRow, { mainGroupId, isMainGroupOpen }) {
 export function renderPeerRowString(peerRow, { mainGroupId, peerGroupId, isMainGroupOpen, isPeerGroupOpen }) {
   const toggle = isPeerGroupOpen ? '−' : '+';
   // Use class-based visibility to allow runtime toggles to work reliably
-  const rowClasses = ['peer-row'];
+  const guideClass = getHierarchyVisuals('peer');
+  const indentStyle = getHierarchyIndent('peer');
+  const rowClasses = ['peer-row', guideClass];
   if (!isMainGroupOpen) rowClasses.push('is-hidden');
   let html = `<tr class="${rowClasses.join(' ')}" data-group="${mainGroupId}">`;
   html += `<td></td>`;
-  html += `<td data-filter-value="${escapeHtml(peerRow.peer)}"><button type="button" class="toggle-btn" data-target-group="${peerGroupId}">${toggle}</button> ${escapeHtml(peerRow.peer)}</td>`;
+  html += `<td data-filter-value="${escapeHtml(peerRow.peer)}" style="${indentStyle}"><button type="button" class="toggle-btn" data-target-group="${peerGroupId}">${toggle}</button> ${escapeHtml(peerRow.peer)}</td>`;
   html += `<td data-filter-value="${escapeHtml(peerRow.destination)}">${escapeHtml(peerRow.destination)}</td>`;
   html += renderMetricCellsString(peerRow);
   html += `</tr>`;
@@ -215,25 +224,27 @@ export function renderHourlyRowsString(relevantHours, { peerGroupId, isMainGroup
   const metricColumns = getColumnConfig().slice(3);
   const visible = isMainGroupOpen && isPeerGroupOpen;
   let html = '';
-  const sorted = Array.from(new Set(times)).sort((a,b)=>a-b);
+  const sorted = Array.from(new Set(times)).sort((a, b) => a - b);
   let minDiff = Infinity;
-  for (let i = 1; i < sorted.length; i++) { const diff = sorted[i] - sorted[i-1]; if (diff > 0 && diff < minDiff) minDiff = diff; }
+  for (let i = 1; i < sorted.length; i++) { const diff = sorted[i] - sorted[i - 1]; if (diff > 0 && diff < minDiff) minDiff = diff; }
   const isFive = minDiff < 30 * 60e3;
   const stepMs = isFive ? 5 * 60e3 : 60 * 60e3;
   const formatFull = (d) => {
-    const pad = (n) => String(n).padStart(2,'0');
-    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
   };
   for (let t = minTime.getTime(); t <= maxTime.getTime(); t += stepMs) {
     const d = new Date(t);
     const key = isFive ? formatFull(d) : formatDateToKey(d);
     const rowData = hourDataMap.get(key);
     // Use class-based visibility to avoid inline style conflicts with toggles
-    const rowClasses = ['hour-row'];
-    if (!visible) rowClasses.push('is-hidden');
     const [datePart, timePart] = key.split(' ');
+    const guideClass = getHierarchyVisuals('hour');
+    const indentStyle = getHierarchyIndent('hour');
+    const rowClasses = ['hour-row', guideClass];
+    if (!visible) rowClasses.push('is-hidden');
     html += `<tr class="${rowClasses.join(' ')}" data-group="${peerGroupId}">`;
-    html += `<td data-filter-value="${escapeHtml(datePart)}"><div class="datetime-cell-container"><span class="date-part">${escapeHtml(datePart)}</span><span class="time-part">${escapeHtml(timePart)}</span></div></td>`;
+    html += `<td data-filter-value="${escapeHtml(datePart)}" style="${indentStyle}"><div class="datetime-cell-container"><span class="date-part">${escapeHtml(datePart)}</span><span class="time-part">${escapeHtml(timePart)}</span></div></td>`;
     html += `<td data-filter-value="${escapeHtml(parentPeer.peer)}">${escapeHtml(parentPeer.peer)}</td>`;
     html += `<td data-filter-value="${escapeHtml(parentPeer.destination)}">${escapeHtml(parentPeer.destination)}</td>`;
     if (rowData) {
@@ -268,8 +279,20 @@ function renderMetricCellsString(rowData) {
     // main metric cell
     const shouldDisable = (metricName === 'Min' || metricName === 'SCall' || metricName === 'TCall');
     const cls = shouldDisable ? '' : getAnomalyClass({ key: metricName, value, yesterdayValue, deltaPercent });
-    const extraASR = (metricName === 'ASR') ? ` class="${[cls,'asr-cell-hover'].filter(Boolean).join(' ').trim()}" data-pdd="${escapeHtml(rowData.PDD ?? 'N/A')}" data-atime="${escapeHtml(rowData.ATime ?? 'N/A')}"` : (cls ? ` class="${cls}"` : '');
-    html += `<td${extraASR}>${formatCellValue(metricName, value)}</td>`;
+    const extraASR = (metricName === 'ASR') ? ` class="${[cls, 'asr-cell-hover'].filter(Boolean).join(' ').trim()}" data-pdd="${escapeHtml(rowData.PDD ?? 'N/A')}" data-atime="${escapeHtml(rowData.ATime ?? 'N/A')}"` : (cls ? ` class="${cls}"` : '');
+
+    // Heatmap styling
+    const heatmapStyle = getHeatmapStyle(metricName, value);
+    const styleAttr = heatmapStyle ? ` style="${heatmapStyle}"` : '';
+
+    // Micro-chart (Sparkbar) for visual context
+    let microChart = '';
+    if (typeof value === 'number' && (metricName === 'ASR' || metricName === 'ACD')) {
+      const max = metricName === 'ASR' ? 100 : 30; // approximate max for ACD
+      microChart = generateSparkbar(value, max, { width: 24, height: 4, color: 'rgba(0,0,0,0.2)', bgColor: 'rgba(0,0,0,0.05)' });
+    }
+
+    html += `<td${extraASR}${styleAttr}>${formatCellValue(metricName, value)}${microChart}</td>`;
     // yesterday cell (Y)
     html += `<td data-y-toggleable="true">${formatCellValue(metricName, yesterdayValue)}</td>`;
     // delta cell

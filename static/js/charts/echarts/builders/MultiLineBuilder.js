@@ -74,10 +74,10 @@ export function buildMultiOption({ data, fromTs, toTs, height, interval }) {
   const smoothMono = undefined;
 
   const stepMs = (interval === '5m') ? 5 * 60e3 : (interval === '1h' ? 3600e3 : 24 * 3600e3);
-  const pairsT = toPairs(data?.TCalls).sort((a,b) => a[0]-b[0]);
-  const pairsA = toPairs(data?.ASR).sort((a,b) => a[0]-b[0]);
-  const pairsM = toPairs(data?.Minutes).sort((a,b) => a[0]-b[0]);
-  const pairsC = toPairs(data?.ACD).sort((a,b) => a[0]-b[0]);
+  const pairsT = toPairs(data?.TCalls).sort((a, b) => a[0] - b[0]);
+  const pairsA = toPairs(data?.ASR).sort((a, b) => a[0] - b[0]);
+  const pairsM = toPairs(data?.Minutes).sort((a, b) => a[0] - b[0]);
+  const pairsC = toPairs(data?.ACD).sort((a, b) => a[0] - b[0]);
 
   const tcalls = seriesLine('TCalls', pairsT, 0, 0, colors.TCalls, { area: true, smooth: smoothVal, smoothMonotone: smoothMono, connectNulls: conn, sampling: samp });
   const asr = seriesLine('ASR', pairsA, 1, 1, colors.ASR, { area: true, smooth: smoothVal, smoothMonotone: smoothMono, connectNulls: conn, sampling: samp });
@@ -114,10 +114,31 @@ export function buildMultiOption({ data, fromTs, toTs, height, interval }) {
     axisPointer: { link: [{ xAxisIndex: [0, 1, 2, 3] }], lineStyle: { color: '#999' }, snap: true },
     tooltip: { trigger: 'axis', axisPointer: { type: 'cross', snap: true }, confine: true, order: 'valueAsc' },
     dataZoom: [
-      { type: 'inside', xAxisIndex: [0,1,2,3], throttle: 80, zoomOnMouseWheel: 'shift', moveOnMouseWheel: false, moveOnMouseMove: true, brushSelect: false },
+      { type: 'inside', xAxisIndex: [0, 1, 2, 3], throttle: 80, zoomOnMouseWheel: 'shift', moveOnMouseWheel: false, moveOnMouseMove: true, brushSelect: false },
       { type: 'slider', xAxisIndex: 0, height: 32, bottom: 6, throttle: 80, showDataShadow: true, dataBackground: { lineStyle: { color: MAIN_BLUE, width: 1 }, areaStyle: { color: 'rgba(79,134,255,0.18)' } } }
     ],
     series: [tcalls, tcallsPrev, asrPrev, minutesPrev, acdPrev, asr, minutes, acd],
+    visualMap: [
+      {
+        show: false,
+        seriesIndex: 5, // ASR
+        pieces: [
+          { max: 10, color: 'rgba(255, 59, 48, 0.8)' },
+          { min: 10, max: 30, color: 'rgba(255, 149, 0, 0.8)' },
+          { min: 60, color: 'rgba(52, 199, 89, 0.8)' }
+        ],
+        outOfRange: { color: MAIN_BLUE }
+      },
+      {
+        show: false,
+        seriesIndex: 7, // ACD
+        pieces: [
+          { min: 5, color: 'rgba(0, 122, 255, 0.9)' },
+          { min: 2, max: 5, color: 'rgba(0, 122, 255, 0.7)' }
+        ],
+        outOfRange: { color: MAIN_BLUE }
+      }
+    ],
   };
 
   try {
@@ -127,7 +148,7 @@ export function buildMultiOption({ data, fromTs, toTs, height, interval }) {
       return { type: 'text', left: 6, top: y, z: 10, style: { text: name, fill: '#6e7781', font: '600 12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif' } };
     });
     option.graphic = (option.graphic || []).concat(labels);
-  } catch(_) {}
+  } catch (_) { }
 
   return option;
 }
