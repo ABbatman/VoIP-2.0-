@@ -36,10 +36,17 @@ export function renderMultiLineChartEcharts(container, data, options = {}) {
   try {
     const existing = echarts.getInstanceByDom(el);
     if (existing) existing.dispose();
-  } catch(_) {
+  } catch (_) {
     // Ignore existing chart disposal errors
   }
   const chart = echarts.init(el);
+
+  // Fix: Allow scrolling when not zooming (Shift+Wheel = Zoom, Wheel = Scroll)
+  el.addEventListener('wheel', (e) => {
+    if (!e.shiftKey) {
+      e.stopPropagation(); // Prevent ECharts from intercepting
+    }
+  }, { capture: true, passive: false });
 
   const base = {
     fromTs: options.fromTs || null,
@@ -61,10 +68,10 @@ export function renderMultiLineChartEcharts(container, data, options = {}) {
       textStyle: { color: 'var(--ds-color-fg)' },
       extraCssText: 'border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,0.07); line-height:1.35;'
     };
-  } catch(_) { /* keep default tooltip */ }
+  } catch (_) { /* keep default tooltip */ }
   chart.setOption(option, { notMerge: true, lazyUpdate: true });
-  try { applyZoomRange(chart); } catch(_) {}
-  try { attachZoom(chart); } catch(_) {}
+  try { applyZoomRange(chart); } catch (_) { }
+  try { attachZoom(chart); } catch (_) { }
 
   function update(newData = data, newOptions = {}) {
     const merged = { ...base, ...newOptions };
@@ -81,14 +88,16 @@ export function renderMultiLineChartEcharts(container, data, options = {}) {
         textStyle: { color: 'var(--ds-color-fg)' },
         extraCssText: 'border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,0.07); line-height:1.35;'
       };
-    } catch(_) { /* keep default tooltip */ }
+    } catch (_) { /* keep default tooltip */ }
     chart.setOption(next, { notMerge: true, lazyUpdate: true });
-    try { applyZoomRange(chart); } catch(_) {}
+    try { applyZoomRange(chart); } catch (_) { }
   }
 
-  function dispose() { try { chart.dispose(); } catch (_) {
-    // Chart might already be disposed
-  } }
+  function dispose() {
+    try { chart.dispose(); } catch (_) {
+      // Chart might already be disposed
+    }
+  }
   function getInstance() { return chart; }
 
   return { update, dispose, getInstance };
@@ -114,7 +123,7 @@ export function renderHybridChartEcharts(container, data = { bars: [], line: [] 
     ]
   };
   chart.setOption(option, { notMerge: true });
-  return { update: (d) => chart.setOption({ series: [ { data: (d?.bars||[]).map(x => [x.x, x.y]) }, { data: (d?.line||[]).map(x => [x.x instanceof Date ? x.x.getTime() : x.x, x.y]) } ] }, { replaceMerge: ['series'] }), dispose: () => chart.dispose(), getInstance: () => chart };
+  return { update: (d) => chart.setOption({ series: [{ data: (d?.bars || []).map(x => [x.x, x.y]) }, { data: (d?.line || []).map(x => [x.x instanceof Date ? x.x.getTime() : x.x, x.y]) }] }, { replaceMerge: ['series'] }), dispose: () => chart.dispose(), getInstance: () => chart };
 }
 
 export function renderHeatmapEcharts(container, data = [], _options = {}) {
