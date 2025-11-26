@@ -102,8 +102,8 @@ export function calculateMarkerLayout(api, {
 
             // ALWAYS align to 'current' (Blue) as per request G
             // "Markers... MUST be horizontally centered on the BLUE bar (today)"
-            // Blue is on the Right (positive offset) in our side-by-side layout
-            x = Math.round(x + dx);
+            // Blue is on the Left (negative offset) in our side-by-side layout
+            x = Math.round(x - dx);
         } catch (_) { }
 
         const y = Math.round(yPos[i]);

@@ -30,14 +30,16 @@ export function toPairs(arr) {
 export function withGapBreaks(pairs, stepMs) {
   try {
     if (!Array.isArray(pairs) || pairs.length === 0 || !Number.isFinite(stepMs)) return pairs || [];
-    const sorted = [...pairs].sort((a,b) => a[0] - b[0]);
+    const sorted = [...pairs].sort((a, b) => a[0] - b[0]);
     const out = [];
     let prevT = null;
     for (const [t, y] of sorted) {
       const is5m = stepMs <= 5 * 60e3;
       const diff = prevT == null ? 0 : (t - prevT);
       const approxHourJump = is5m && Math.abs(diff - 3600e3) <= 3 * stepMs;
-      const thr = stepMs * (is5m ? 9 : 2.2);
+      // Allow gaps up to 2h 5m (125 mins) or 2.2x the step, whichever is larger.
+      // This covers the 5m case (25 steps) and respects larger intervals like daily.
+      const thr = Math.max(stepMs * 2.2, 125 * 60 * 1000);
       if (prevT != null && !approxHourJump && diff > thr) {
         out.push([t, null]);
       }
@@ -45,7 +47,7 @@ export function withGapBreaks(pairs, stepMs) {
       prevT = t;
     }
     return out;
-  } catch(_) {
+  } catch (_) {
     return pairs || [];
   }
 }
@@ -54,7 +56,7 @@ export function shiftForwardPairs(pairs, deltaMs) {
   try {
     if (!Array.isArray(pairs) || pairs.length === 0 || !Number.isFinite(deltaMs)) return [];
     return pairs.map(([t, y]) => [Number(t) + deltaMs, y]);
-  } catch(_) {
+  } catch (_) {
     return [];
   }
 }
@@ -89,7 +91,7 @@ export function buildPairs(opts, d, srcOverride) {
     : (Array.isArray(opts.acdSeries) && opts.acdSeries.length
       ? opts.acdSeries
       : (Array.isArray(d?.ACD) ? d.ACD : (Array.isArray(d) ? d : [])));
-  let pairs = toPairs(src).sort((a,b) => a[0] - b[0]);
+  let pairs = toPairs(src).sort((a, b) => a[0] - b[0]);
   const step = Number(opts.stepMs) || getStepMs(opts.interval);
   const map = new Map();
   for (const [t, y] of pairs) {
@@ -98,7 +100,7 @@ export function buildPairs(opts, d, srcOverride) {
     if (y == null || isNaN(y)) continue;
     map.set(x, Number(y));
   }
-  pairs = Array.from(map.entries()).sort((a,b) => a[0] - b[0]);
+  pairs = Array.from(map.entries()).sort((a, b) => a[0] - b[0]);
   return pairs;
 }
 
@@ -123,14 +125,14 @@ export function detectProviderKey(rows) {
   // move logic
   if (!Array.isArray(rows) || rows.length === 0) return null;
   const CANDIDATE_PROVIDER_KEYS = [
-    'provider','Provider','supplier','Supplier','vendor','Vendor','carrier','Carrier','operator','Operator',
-    'peer','Peer','trunk','Trunk','gateway','Gateway','route','Route','partner','Partner',
-    'provider_name','supplier_name','vendor_name','carrier_name','peer_name',
-    'providerId','supplierId','vendorId','carrierId','peerId',
-    'provider_id','supplier_id','vendor_id','carrier_id','peer_id'
+    'provider', 'Provider', 'supplier', 'Supplier', 'vendor', 'Vendor', 'carrier', 'Carrier', 'operator', 'Operator',
+    'peer', 'Peer', 'trunk', 'Trunk', 'gateway', 'Gateway', 'route', 'Route', 'partner', 'Partner',
+    'provider_name', 'supplier_name', 'vendor_name', 'carrier_name', 'peer_name',
+    'providerId', 'supplierId', 'vendorId', 'carrierId', 'peerId',
+    'provider_id', 'supplier_id', 'vendor_id', 'carrier_id', 'peer_id'
   ];
-  const timeKeys = new Set(['time','Time','timestamp','Timestamp','slot','Slot','hour','Hour','date','Date']);
-  const metricKeys = new Set(['TCall','TCalls','total_calls','Min','Minutes','ASR','ACD']);
+  const timeKeys = new Set(['time', 'Time', 'timestamp', 'Timestamp', 'slot', 'Slot', 'hour', 'Hour', 'date', 'Date']);
+  const metricKeys = new Set(['TCall', 'TCalls', 'total_calls', 'Min', 'Minutes', 'ASR', 'ACD']);
   const lowerPref = CANDIDATE_PROVIDER_KEYS.map(k => k.toLowerCase());
   const candUniqs = new Map();
   for (const r of rows) {
@@ -148,7 +150,7 @@ export function detectProviderKey(rows) {
       if (set.size > 200) break;
     }
   }
-  const eligibleCand = Array.from(candUniqs.entries()).filter(([, set]) => (set?.size || 0) >= 2).sort((a,b) => b[1].size - a[1].size);
+  const eligibleCand = Array.from(candUniqs.entries()).filter(([, set]) => (set?.size || 0) >= 2).sort((a, b) => b[1].size - a[1].size);
   if (eligibleCand.length) return eligibleCand[0][0];
   const keyUniqs = new Map();
   for (const r of rows) {
@@ -167,6 +169,6 @@ export function detectProviderKey(rows) {
   }
   const eligible = Array.from(keyUniqs.entries()).filter(([, set]) => set && set.size >= 2);
   if (eligible.length === 0) return null;
-  eligible.sort((a,b) => b[1].size - a[1].size);
+  eligible.sort((a, b) => b[1].size - a[1].size);
   return eligible[0][0];
 }

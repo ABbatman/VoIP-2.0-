@@ -1,0 +1,1 @@
+{"today_metrics": {"Min": 0.0, "ACD": 0.0, "ASR": 0, "Scall": 0, "AvPDD": 0.0, "ATime": 0.0, "SCal": 0, "TCall": 0, "UCall": 0}, "yesterday_metrics": {"Min": 0.0, "ACD": 0.0, "ASR": 0, "Scall": 0, "AvPDD": 0.0, "ATime": 0.0, "SCal": 0, "TCall": 0, "UCall": 0}, "main_rows": [], "peer_rows": [], "hourly_rows": [], "five_min_rows": [], "labels": {"ASR": {}, "ACD": {}}}

@@ -86,18 +86,23 @@ export function getPointDensity(chartWidthPx, dataCount) {
  * Returns standard visual configuration for bars based on width and scale.
  */
 export function getBarVisuals(barWidth, scale) {
-    let blueOpacity = mapSmooth(barWidth, 3, 30, 0.5, 1.0);
-    let grayOpacity = mapSmooth(barWidth, 3, 30, 0.15, 0.6);
+    // User Request: "Always bright" -> Force high opacity for Blue (Current)
+    // We keep grayOpacity somewhat lower to distinguish history, but blue is always 1.0
+    let blueOpacity = 1.0;
+    let grayOpacity = mapSmooth(barWidth, 3, 30, 0.3, 0.7); // Slightly boosted gray for visibility
 
     const grayWidth = barWidth * 0.7;
     const blueWidth = barWidth * 1.0;
 
+    // Scale adjustments (optional, but if "always bright" is strict, we might skip dimming even here)
+    // Keeping slight dimming for very dense views if needed, but user said "always bright".
+    // Let's stick to 1.0 for blue as requested.
     if (scale === 'daily') {
-        blueOpacity *= 0.8;
-        grayOpacity *= 0.7;
-    } else if (scale === 'wide-range' || scale === 'mixed') { // treating mixed as wide-range for now
-        blueOpacity *= 0.6;
-        grayOpacity *= 0.5;
+        // blueOpacity *= 0.8; // Disable dimming
+        grayOpacity *= 0.8;
+    } else if (scale === 'wide-range' || scale === 'mixed') {
+        // blueOpacity *= 0.6; // Disable dimming
+        grayOpacity *= 0.6;
     }
 
     return {
@@ -129,39 +134,4 @@ export function getLineVisuals(zoomStrength, pointDensity, scale) {
         smoothStrength: clamp(smoothStrength, 0, 1)
     };
 }
-/**
- * Calculates robust percent change (zero-division safe).
- * @param {number} curr - Current value
- * @param {number} prev - Previous value
- * @returns {number} Percent change (-100 to 100+)
- */
-export function calculateTrendPercent(curr, prev) {
-    const p = Math.max(Number(prev) || 0, 0.00001);
-    const c = Number(curr) || 0;
-    const delta = c - p;
-    return (delta / p) * 100;
-}
 
-/**
- * Returns the tint color (rgba) based on trend percent.
- * @param {number} percent - Trend percent
- * @param {boolean} isGray - If true, applies gray-specific logic
- * @returns {string|null} RGBA string or null if no tint
- */
-export function getTrendTint(percent, isGray = false) {
-    const absP = Math.abs(percent);
-    if (absP < 10) return null; // Stable, no tint
-
-    // Map opacity: 10% -> 0.05, 60% -> 0.35 (max)
-    // For gray: max 0.30
-    const maxOp = isGray ? 0.30 : 0.35;
-    const opacity = clamp(mapLinear(absP, 10, 60, 0.05, maxOp), 0.05, maxOp);
-
-    if (percent > 0) {
-        // Positive (Green)
-        return `rgba(50,190,70, ${opacity.toFixed(3)})`;
-    } else {
-        // Negative (Red)
-        return `rgba(230,60,50, ${opacity.toFixed(3)})`;
-    }
-}

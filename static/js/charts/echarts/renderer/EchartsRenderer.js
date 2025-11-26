@@ -26,7 +26,7 @@ function getZoomRange(chart) {
       const toTs = Math.ceil(ext[1]);
       if (Number.isFinite(fromTs) && Number.isFinite(toTs) && toTs > fromTs) return { fromTs, toTs };
     }
-  } catch(_) {
+  } catch (_) {
     // ignore
   }
   return null;
@@ -38,16 +38,35 @@ export function initChart(container) {
   try {
     const existing = echarts.getInstanceByDom(el);
     if (existing) existing.dispose();
-  } catch(_) {}
-  return echarts.init(el);
+  } catch (_) { }
+  const chart = echarts.init(el);
+
+  // Adaptive resize observer
+  const ro = new ResizeObserver(() => {
+    try { chart.resize(); } catch (_) { }
+  });
+  ro.observe(el);
+
+  // Cleanup on dispose
+  chart.__resizeObserver = ro;
+  const originalDispose = chart.dispose;
+  chart.dispose = function () {
+    if (this.__resizeObserver) {
+      this.__resizeObserver.disconnect();
+      delete this.__resizeObserver;
+    }
+    originalDispose.call(this);
+  };
+
+  return chart;
 }
 
 export function setOptionWithZoomSync(chart, option, { onAfterSet, onDataZoom } = {}) {
   // move logic
   chart.setOption(option, { notMerge: true, lazyUpdate: true });
   // apply persisted zoom range (if exists)
-  try { applyZoomRange(chart); } catch(_) {}
+  try { applyZoomRange(chart); } catch (_) { }
   // attach unified zoom handler
-  try { attachZoom(chart, { onZoom: onDataZoom }); } catch(_) {}
-  try { if (typeof onAfterSet === 'function') onAfterSet(); } catch(_) {}
+  try { attachZoom(chart, { onZoom: onDataZoom }); } catch (_) { }
+  try { if (typeof onAfterSet === 'function') onAfterSet(); } catch (_) { }
 }

@@ -37,7 +37,7 @@ export function seriesLine(name, data, xAxisIndex, yAxisIndex, color, { area = f
   };
 }
 
-import { detectTimeScale, getLineVisuals, getZoomStrength, getPointDensity, calculateTrendPercent } from '../../../visualEnhancements/visualMapping.js';
+import { detectTimeScale, getLineVisuals, getZoomStrength, getPointDensity } from '../../../visualEnhancements/visualMapping.js';
 
 // ... (imports)
 
@@ -71,7 +71,14 @@ export function buildMultiOption({ data, fromTs, toTs, height, interval }) {
   };
 
   // 1. Scale & Adaptive Logic
-  const pairsT = toPairs(data?.TCalls).sort((a, b) => a[0] - b[0]);
+  // Filter out explicit nulls first to allow "smart connection" of small gaps
+  const cleanPairs = (p) => (p || []).filter(d => d[1] != null);
+
+  const pairsT = cleanPairs(toPairs(data?.TCalls).sort((a, b) => a[0] - b[0]));
+  const pairsA = cleanPairs(toPairs(data?.ASR).sort((a, b) => a[0] - b[0]));
+  const pairsM = cleanPairs(toPairs(data?.Minutes).sort((a, b) => a[0] - b[0]));
+  const pairsC = cleanPairs(toPairs(data?.ACD).sort((a, b) => a[0] - b[0]));
+
   // Estimate rangeMs
   let rangeMs = 24 * 3600 * 1000;
   if (minX != null && baseMaxX != null) {
@@ -116,14 +123,10 @@ export function buildMultiOption({ data, fromTs, toTs, height, interval }) {
     }
   };
 
-  const pairsA = toPairs(data?.ASR).sort((a, b) => a[0] - b[0]);
-  const pairsM = toPairs(data?.Minutes).sort((a, b) => a[0] - b[0]);
-  const pairsC = toPairs(data?.ACD).sort((a, b) => a[0] - b[0]);
-
   // Common line props
   const stepMs = (interval === '5m') ? 5 * 60e3 : (interval === '1h' ? 3600e3 : 24 * 3600e3);
   const is5m = scale === '5min';
-  const conn = false;
+  const conn = false; // Disable global connectNulls, rely on withGapBreaks
   const samp = is5m ? 'none' : 'lttb';
 
   const lineProps = {
@@ -137,10 +140,11 @@ export function buildMultiOption({ data, fromTs, toTs, height, interval }) {
     itemStyle: anomalyItemStyle
   };
 
-  const tcalls = seriesLine('TCalls', pairsT, 0, 0, colors.TCalls, { ...lineProps, area: true });
-  const asr = seriesLine('ASR', pairsA, 1, 1, colors.ASR, { ...lineProps, area: true });
-  const minutes = seriesLine('Minutes', pairsM, 2, 2, colors.Minutes, { ...lineProps, area: true });
-  const acd = seriesLine('ACD', pairsC, 3, 3, colors.ACD, { ...lineProps, area: true });
+  // Apply withGapBreaks to Blue series too (Smart Gaps)
+  const tcalls = seriesLine('TCalls', withGapBreaks(pairsT, stepMs), 0, 0, colors.TCalls, { ...lineProps, area: true });
+  const asr = seriesLine('ASR', withGapBreaks(pairsA, stepMs), 1, 1, colors.ASR, { ...lineProps, area: true });
+  const minutes = seriesLine('Minutes', withGapBreaks(pairsM, stepMs), 2, 2, colors.Minutes, { ...lineProps, area: true });
+  const acd = seriesLine('ACD', withGapBreaks(pairsC, stepMs), 3, 3, colors.ACD, { ...lineProps, area: true });
   tcalls.z = 3; asr.z = 3; minutes.z = 3; acd.z = 3;
 
   const prevColor = 'rgba(140,148,156,0.85)';
@@ -151,7 +155,7 @@ export function buildMultiOption({ data, fromTs, toTs, height, interval }) {
   const prevProps = {
     area: false,
     smooth: smoothStrength,
-    connectNulls: prevConn,
+    connectNulls: conn, // Use same logic
     showSymbol: false,
     sampling: prevSamp,
     lineStyle: { width: 1, opacity: 0.5, type: 'dashed' }
@@ -173,93 +177,6 @@ export function buildMultiOption({ data, fromTs, toTs, height, interval }) {
   minutesPrev.tooltip = { show: false }; minutesPrev.silent = true;
   acdPrev.tooltip = { show: false }; acdPrev.silent = true;
 
-  // 2. Trend-based Segment Tinting (Overlay Approach)
-  // VisualMap on custom dimension is not supported for line style in this ECharts version.
-  // We use overlay series for Green (>10%) and Red (<-10%) segments.
-
-  const buildTrendOverlays = (name, pairs, xIdx, yIdx) => {
-    const greenData = [];
-    const redData = [];
-
-    // We need continuous segments.
-    // If i-1 -> i is Green, we add i-1 and i to Green Data.
-    // To prevent connecting non-adjacent green segments, we insert nulls.
-
-    let inGreen = false;
-    let inRed = false;
-
-    for (let i = 1; i < pairs.length; i++) {
-      const prev = pairs[i - 1];
-      const curr = pairs[i];
-      const trend = calculateTrendPercent(curr[1], prev[1]);
-
-      // Green: > 10%
-      if (trend > 10) {
-        if (!inGreen) {
-          greenData.push([prev[0], prev[1]]); // Start segment
-          inGreen = true;
-        }
-        greenData.push([curr[0], curr[1]]);
-      } else {
-        if (inGreen) {
-          // If we stop being green, we need to break the line.
-          greenData.push(null); // Break
-          inGreen = false;
-        }
-      }
-
-      // Red: < -10%
-      if (trend < -10) {
-        if (!inRed) {
-          redData.push([prev[0], prev[1]]);
-          inRed = true;
-        }
-        redData.push([curr[0], curr[1]]);
-      } else {
-        if (inRed) {
-          redData.push(null);
-          inRed = false;
-        }
-      }
-    }
-
-    // Common props for overlays
-    const overlayProps = {
-      type: 'line',
-      xAxisIndex: xIdx,
-      yAxisIndex: yIdx,
-      showSymbol: false,
-      smooth: smoothStrength,
-      connectNulls: false,
-      lineStyle: { width: lineWidth + 1 }, // Slightly wider to cover base
-      z: 10,
-      silent: true,
-      animation: false,
-      tooltip: { show: false }
-    };
-
-    const gSeries = {
-      ...overlayProps,
-      name: `${name} - Trend Up`,
-      data: greenData,
-      lineStyle: { ...overlayProps.lineStyle, color: 'rgba(50,190,70, 0.5)' } // Fixed opacity for performance
-    };
-
-    const rSeries = {
-      ...overlayProps,
-      name: `${name} - Trend Down`,
-      data: redData,
-      lineStyle: { ...overlayProps.lineStyle, color: 'rgba(230,60,50, 0.5)' }
-    };
-
-    return [gSeries, rSeries];
-  };
-
-  const [tGreen, tRed] = buildTrendOverlays('TCalls', pairsT, 0, 0);
-  const [aGreen, aRed] = buildTrendOverlays('ASR', pairsA, 1, 1);
-  const [mGreen, mRed] = buildTrendOverlays('Minutes', pairsM, 2, 2);
-  const [cGreen, cRed] = buildTrendOverlays('ACD', pairsC, 3, 3);
-
   const option = {
     animation: true,
     animationDurationUpdate: 200,
@@ -274,19 +191,34 @@ export function buildMultiOption({ data, fromTs, toTs, height, interval }) {
       { type: 'inside', xAxisIndex: [0, 1, 2, 3], throttle: 80, zoomOnMouseWheel: 'shift', moveOnMouseWheel: false, moveOnMouseMove: true, brushSelect: false },
       { type: 'slider', xAxisIndex: 0, height: 32, bottom: 6, throttle: 80, showDataShadow: true, dataBackground: { lineStyle: { color: MAIN_BLUE, width: 1 }, areaStyle: { color: 'rgba(79,134,255,0.18)' } } }
     ],
-    series: [
-      tcalls, tcallsPrev, tGreen, tRed,
-      asrPrev, minutesPrev, acdPrev,
-      asr, aGreen, aRed,
-      minutes, mGreen, mRed,
-      acd, cGreen, cRed
+    series: [tcalls, tcallsPrev, asrPrev, minutesPrev, acdPrev, asr, minutes, acd],
+    visualMap: [
+      {
+        show: false,
+        seriesIndex: 5, // ASR
+        pieces: [
+          { max: 10, color: 'rgba(255, 59, 48, 0.8)' },
+          { min: 10, max: 30, color: 'rgba(255, 149, 0, 0.8)' },
+          { min: 60, color: 'rgba(52, 199, 89, 0.8)' }
+        ],
+        outOfRange: { color: MAIN_BLUE }
+      },
+      {
+        show: false,
+        seriesIndex: 7, // ACD
+        pieces: [
+          { min: 5, color: 'rgba(0, 122, 255, 0.9)' },
+          { min: 2, max: 5, color: 'rgba(0, 122, 255, 0.7)' }
+        ],
+        outOfRange: { color: MAIN_BLUE }
+      }
     ],
-    // VisualMap removed
   };
 
   try {
     const labels = axisNames.map((name, i) => {
       const isFirst = i === 0;
+      const y = isFirst ? (grids[i].top + 6) : (grids[i].top + 4);
       return { type: 'text', left: 6, top: y, z: 10, style: { text: name, fill: '#6e7781', font: '600 12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif' } };
     });
     option.graphic = (option.graphic || []).concat(labels);

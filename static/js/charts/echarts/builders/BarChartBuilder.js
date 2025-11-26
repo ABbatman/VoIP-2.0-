@@ -7,22 +7,6 @@ import { getHeatmapColor } from '../../../visualEnhancements/heatmapStyling.js';
 
 import { detectTimeScale, getBarVisuals, clamp, mapSmooth } from '../../../visualEnhancements/visualMapping.js';
 
-import { calculateTrendPercent, getTrendTint } from '../../../visualEnhancements/visualMapping.js';
-
-// Helper to mix two rgba colors
-function mixRgba(base, overlay) {
-  if (!overlay) return base;
-  // Simple parsing (assuming standard rgba/hex formats used in this project)
-  // Base is usually hex or rgba. Overlay is rgba.
-  // For "minimal changes", we'll use a canvas approach or simple string manipulation?
-  // Let's just return the overlay if it's strong, or base if weak?
-  // No, user wants "additive".
-  // Let's try to return a CSS color-mix string? ECharts might support it in newer versions.
-  // "color-mix(in srgb, base, overlay)"
-  // Let's try that. It's modern and simple.
-  return `color-mix(in srgb, ${overlay}, ${base})`;
-}
-
 export function buildBarSeries({ setsT, setsA, setsM, setsC, centers, interval, stepMs, labels, colorMap, providerRows, providerKey }) {
   // move logic: only assemble series from prepared data
   const bw = chooseBarWidthPx(interval);
@@ -80,13 +64,21 @@ export function buildBarSeries({ setsT, setsA, setsM, setsC, centers, interval, 
   };
 
   // H) Cross-Chart Focus (Hover Enhancement)
+  // User Request: "Always bright" + "Larger on hover" + "Blue outline/shadow"
   const emphasisStyle = {
-    focus: 'series',
+    focus: 'none', // Do NOT dim other bars
     blurScope: 'coordinateSystem',
-    itemStyle: { opacity: 1 }
+    itemStyle: {
+      opacity: 1,
+      borderColor: '#4f86ff', // Explicit Blue as requested
+      borderWidth: 2,
+      shadowBlur: 8,
+      shadowColor: 'rgba(79, 134, 255, 0.6)' // Blue glow instead of gray shadow
+    },
+    z: 10 // Bring to front on hover
   };
   const blurStyle = {
-    itemStyle: { opacity: 0.4 }
+    itemStyle: { opacity: 1 } // No blurring allowed
   };
 
   const prevStyle = { color: 'rgba(140,148,156,0.85)', opacity: grayOpacity };
@@ -116,47 +108,15 @@ export function buildBarSeries({ setsT, setsA, setsM, setsC, centers, interval, 
   // 2. Layered Draw Order: ALWAYS draw BLUE (Today) first, then GRAY (Yesterday)
   // This ensures strict draw order as requested.
 
-  // Helper to apply tint
-  const getTintedColor = (metric, params, isGray, sets) => {
-    const idx = params.dataIndex;
-    const val = params.value ? params.value[1] : 0;
-
-    let base = isGray ? 'rgba(140,148,156,0.85)' : colors[metric];
-    if (!isGray) base = getColorWithStatus(metric, val, base);
-
-    let percent = 0;
-    let tint = null;
-
-    if (!isGray) {
-      // Blue: vs Prev Blue
-      if (idx > 0) {
-        const prevVal = sets.curr[idx - 1] ? sets.curr[idx - 1][1] : 0;
-        percent = calculateTrendPercent(val, prevVal);
-        tint = getTrendTint(percent, false);
-      }
-    } else {
-      // Gray: Compare Today vs Yesterday (Gray)
-      // sets.prev[idx] is Yesterday (Gray)
-      // sets.curr[idx] is Today (Blue)
-      // "relation between today and yesterday" -> Today vs Yesterday
-      const todayVal = sets.curr[idx] ? sets.curr[idx][1] : 0;
-      const yesterdayVal = val;
-      percent = calculateTrendPercent(todayVal, yesterdayVal);
-      tint = getTrendTint(percent, true);
-    }
-
-    return mixRgba(base, tint);
-  };
-
   // TCalls
   list.push({
     id: 'tc', name: 'TCalls', type: 'bar', xAxisIndex: 0, yAxisIndex: 0, ...currProps,
-    itemStyle: { color: (p) => getTintedColor('TCalls', p, false, setsT), opacity: blueOpacity },
+    itemStyle: { color: colors.TCalls, opacity: blueOpacity },
     data: setsT.curr
   });
   list.push({
     id: 'tcPrev', name: 'TCalls -24h', type: 'bar', xAxisIndex: 0, yAxisIndex: 0, ...prevProps,
-    itemStyle: { color: (p) => getTintedColor('TCalls', p, true, setsT), opacity: grayOpacity },
+    itemStyle: { color: 'rgba(140,148,156,0.85)', opacity: grayOpacity },
     data: setsT.prev
   });
 
@@ -164,26 +124,26 @@ export function buildBarSeries({ setsT, setsA, setsM, setsC, centers, interval, 
   list.push({
     id: 'as', name: 'ASR', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, ...currProps,
     itemStyle: {
-      color: (p) => getTintedColor('ASR', p, false, setsA),
+      color: (params) => getColorWithStatus('ASR', params.value, colors.ASR),
       opacity: blueOpacity
     },
     data: setsA.curr
   });
   list.push({
     id: 'asPrev', name: 'ASR -24h', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, ...prevProps,
-    itemStyle: { color: (p) => getTintedColor('ASR', p, true, setsA), opacity: grayOpacity },
+    itemStyle: { color: 'rgba(140,148,156,0.85)', opacity: grayOpacity },
     data: setsA.prev
   });
 
   // Minutes
   list.push({
     id: 'mn', name: 'Minutes', type: 'bar', xAxisIndex: 2, yAxisIndex: 2, ...currProps,
-    itemStyle: { color: (p) => getTintedColor('Minutes', p, false, setsM), opacity: blueOpacity },
+    itemStyle: { color: colors.Minutes, opacity: blueOpacity },
     data: setsM.curr
   });
   list.push({
     id: 'mnPrev', name: 'Minutes -24h', type: 'bar', xAxisIndex: 2, yAxisIndex: 2, ...prevProps,
-    itemStyle: { color: (p) => getTintedColor('Minutes', p, true, setsM), opacity: grayOpacity },
+    itemStyle: { color: 'rgba(140,148,156,0.85)', opacity: grayOpacity },
     data: setsM.prev
   });
 
@@ -191,14 +151,14 @@ export function buildBarSeries({ setsT, setsA, setsM, setsC, centers, interval, 
   list.push({
     id: 'ac', name: 'ACD', type: 'bar', xAxisIndex: 3, yAxisIndex: 3, ...currProps,
     itemStyle: {
-      color: (p) => getTintedColor('ACD', p, false, setsC),
+      color: (params) => getColorWithStatus('ACD', params.value, colors.ACD),
       opacity: blueOpacity
     },
     data: setsC.curr
   });
   list.push({
     id: 'acPrev', name: 'ACD -24h', type: 'bar', xAxisIndex: 3, yAxisIndex: 3, ...prevProps,
-    itemStyle: { color: (p) => getTintedColor('ACD', p, true, setsC), opacity: grayOpacity },
+    itemStyle: { color: 'rgba(140,148,156,0.85)', opacity: grayOpacity },
     data: setsC.prev
   });
 

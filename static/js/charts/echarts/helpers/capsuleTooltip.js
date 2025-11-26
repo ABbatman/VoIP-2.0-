@@ -41,18 +41,18 @@ function fmtBlock({ time, suppliers, customers, destinations, metric, customersB
         // accept wide set of possible field names
         const cand = [
           'name',
-          'customer','customername','customer_name',
-          'client','clientname','client_name',
-          'account','buyer',
-          'destination','destinationname','destination_name',
-          'direction','route','route_name',
-          'country','country_name',
-          'dst','dst_name','prefix','prefix_name',
-          'peer','peername','peer_name',
-          'provider','providername','provider_name',
-          'supplier','suppliername','supplier_name',
-          'vendor','vendorname','vendor_name',
-          'carrier','carriername','carrier_name'
+          'customer', 'customername', 'customer_name',
+          'client', 'clientname', 'client_name',
+          'account', 'buyer',
+          'destination', 'destinationname', 'destination_name',
+          'direction', 'route', 'route_name',
+          'country', 'country_name',
+          'dst', 'dst_name', 'prefix', 'prefix_name',
+          'peer', 'peername', 'peer_name',
+          'provider', 'providername', 'provider_name',
+          'supplier', 'suppliername', 'supplier_name',
+          'vendor', 'vendorname', 'vendor_name',
+          'carrier', 'carriername', 'carrier_name'
         ];
         // try direct keys
         for (const k of cand) {
@@ -73,18 +73,18 @@ function fmtBlock({ time, suppliers, customers, destinations, metric, customersB
               if (s) return s;
             }
           }
-        } catch(_) {}
+        } catch (_) { }
         return '—';
       }
       return 'Multiple';
-    } catch(_) { return '—'; }
+    } catch (_) { return '—'; }
   };
   // normalize any iterable to array
   const toArr = (v) => {
     try {
       if (Array.isArray(v)) return v;
       if (v && typeof v !== 'string' && typeof v[Symbol.iterator] === 'function') return Array.from(v);
-    } catch(_) {}
+    } catch (_) { }
     return Array.isArray(v) ? v : [];
   };
   // get first value-array from map-like by target key or first entry
@@ -112,18 +112,18 @@ function fmtBlock({ time, suppliers, customers, destinations, metric, customersB
           if (list != null) return toArr(list);
         }
       }
-    } catch(_) {}
+    } catch (_) { }
     return null;
   };
   // pick top supplier name for targeted lookup
   const topSupplierName = (() => {
     try {
       if (!Array.isArray(suppliers) || !suppliers.length) return null;
-      const sup = suppliers.slice().sort((a,b) => (Number(b?.value)||0) - (Number(a?.value)||0));
+      const sup = suppliers.slice().sort((a, b) => (Number(b?.value) || 0) - (Number(a?.value) || 0));
       const s = sup[0] || {};
       const name = (s.name ?? s.supplier ?? s.provider ?? s.id ?? s.supplierId);
       return name != null ? String(name) : null;
-    } catch(_) { return null; }
+    } catch (_) { return null; }
   })();
   // derive top destination/customer with fallback to per-supplier maps
   let custTop = (() => {
@@ -135,16 +135,16 @@ function fmtBlock({ time, suppliers, customers, destinations, metric, customersB
           return pickName([arr[0]]);
         }
       }
-    } catch(_) {}
+    } catch (_) { }
     // 2) original array
     try {
       const arr = toArr(customers);
       if (arr && arr.length) return pickName(arr);
-    } catch(_) {}
+    } catch (_) { }
     try {
       const arr = firstFromMapLike(customersBySupplier, null);
       if (arr && arr.length) return pickName([arr[0]]);
-    } catch(_) {}
+    } catch (_) { }
     return '—';
   })();
   let destTop = (() => {
@@ -160,12 +160,12 @@ function fmtBlock({ time, suppliers, customers, destinations, metric, customersB
         }
         if (first != null) return pickName([first]);
       }
-    } catch(_) {}
+    } catch (_) { }
     // 2) original array
     try {
       const arr = toArr(destinations);
       if (arr && arr.length) return pickName(arr);
-    } catch(_) {}
+    } catch (_) { }
     try {
       const arr = firstFromMapLike(destinationsBySupplier, null);
       if (arr && arr.length) {
@@ -177,14 +177,14 @@ function fmtBlock({ time, suppliers, customers, destinations, metric, customersB
         }
         return pickName([first]);
       }
-    } catch(_) {}
+    } catch (_) { }
     return '—';
   })();
   // 3) final fallback: read from supplier items
   try {
     if (custTop === '—' && Array.isArray(suppliers) && suppliers.length) {
-      const sup = suppliers.slice().sort((a,b) => (Number(b?.value)||0) - (Number(a?.value)||0));
-      const keys = ['customer','client','account','buyer','customerName','customer_name'];
+      const sup = suppliers.slice().sort((a, b) => (Number(b?.value) || 0) - (Number(a?.value) || 0));
+      const keys = ['customer', 'client', 'account', 'buyer', 'customerName', 'customer_name'];
       for (const s of sup) {
         for (const k of keys) {
           if (s && s[k] != null) { const v = String(s[k]).trim(); if (v) { custTop = v; break; } }
@@ -192,28 +192,30 @@ function fmtBlock({ time, suppliers, customers, destinations, metric, customersB
         if (custTop !== '—') break;
       }
     }
-  } catch(_) {}
+  } catch (_) { }
   try {
     if (destTop === '—' && Array.isArray(suppliers) && suppliers.length) {
-      const sup = suppliers.slice().sort((a,b) => (Number(b?.value)||0) - (Number(a?.value)||0));
-      const keys = ['destination','direction','country','route','dst','prefix','destinationName','destination_name'];
+      const sup = suppliers.slice().sort((a, b) => (Number(b?.value) || 0) - (Number(a?.value) || 0));
+      const keys = ['destination', 'direction', 'country', 'route', 'dst', 'prefix', 'destinationName', 'destination_name'];
       for (const s of sup) {
         for (const k of keys) {
-          if (s && s[k] != null) { const v = String(s[k]).trim(); if (v) {
-            // strip any trailing value part like "name: 12.3"
-            const name = v.includes(':') ? v.split(':')[0].trim() : v;
-            destTop = name || destTop; break; }
+          if (s && s[k] != null) {
+            const v = String(s[k]).trim(); if (v) {
+              // strip any trailing value part like "name: 12.3"
+              const name = v.includes(':') ? v.split(':')[0].trim() : v;
+              destTop = name || destTop; break;
+            }
           }
         }
         if (destTop !== '—') break;
       }
     }
-  } catch(_) {}
+  } catch (_) { }
   const metricTop = metric ? String(metric) : '—';
 
   const supRows = (() => {
     if (!Array.isArray(suppliers) || !suppliers.length) return '';
-    const sup = suppliers.slice().sort((a,b) => (Number(b?.value)||0) - (Number(a?.value)||0));
+    const sup = suppliers.slice().sort((a, b) => (Number(b?.value) || 0) - (Number(a?.value) || 0));
     const items = [];
     for (const s of sup) {
       const name = (s && (s.name ?? s.supplier ?? s.provider ?? s.id ?? s.supplierId)) ?? '';
@@ -310,7 +312,7 @@ function readHoverValueFromEvent(e) {
       }
       t = t.parent;
     }
-  } catch(_) {}
+  } catch (_) { }
   return null;
 }
 
@@ -318,15 +320,15 @@ function toTimeLabel(ts) {
   try {
     const d = new Date(Number(ts));
     const pad = (n) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  } catch(_) { return ''; }
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  } catch (_) { return ''; }
 }
 
 // Filter customers/destinations arrays to a specific supplier when structure allows (best-effort)
 function narrowBySupplier(arr, supplierName) {
   try {
     if (!Array.isArray(arr) || !supplierName) return arr;
-    const CAND = ['supplier','provider','vendor','carrier','peer','name','supplierName','providerName'];
+    const CAND = ['supplier', 'provider', 'vendor', 'carrier', 'peer', 'name', 'supplierName', 'providerName'];
     const out = [];
     for (const it of arr) {
       if (it && typeof it === 'object') {
@@ -341,13 +343,13 @@ function narrowBySupplier(arr, supplierName) {
       }
     }
     return out.length ? out : arr;
-  } catch(_) { return arr; }
+  } catch (_) { return arr; }
 }
 
 function makeHandlers(chart, { getCapsuleData, textColor, metricByGridIndex }) {
   const move = (e) => {
     // if capsule hover active, constantly suppress default chart tooltip
-    try { if (chart.__capsuleHoverActive) chart.dispatchAction({ type: 'hideTip' }); } catch(_) {}
+    try { if (chart.__capsuleHoverActive) chart.dispatchAction({ type: 'hideTip' }); } catch (_) { }
     if (!el || el.style.opacity === '0') return;
     const x = (e && e.event && Number.isFinite(e.event.event?.clientX)) ? e.event.event.clientX : (e?.offsetX || 0);
     const y = (e && e.event && Number.isFinite(e.event.event?.clientY)) ? e.event.event.clientY : (e?.offsetY || 0);
@@ -360,18 +362,12 @@ function makeHandlers(chart, { getCapsuleData, textColor, metricByGridIndex }) {
       // Hover over BAR series: when capsule hover is active, suppress bar tooltip entirely
       if (e.seriesType === 'bar') {
         if (chart.__capsuleHoverActive) {
-          try { chart.dispatchAction({ type: 'hideTip' }); } catch(_) {}
+          try { chart.dispatchAction({ type: 'hideTip' }); } catch (_) { }
           return;
         }
         if (el) el.style.opacity = '0';
-        try { chart.dispatchAction({ type: 'downplay' }); } catch(_) {}
-        try { chart.dispatchAction({ type: 'highlight', seriesIndex: e.seriesIndex }); } catch(_) {}
-        // downplay overlays too to match spec
-        try {
-          const opt = chart.getOption();
-          const series = Array.isArray(opt.series) ? opt.series : [];
-          series.forEach((s, idx) => { if (s && s.type === 'custom' && s.name === 'LabelsOverlay') { try { chart.dispatchAction({ type: 'downplay', seriesIndex: idx }); } catch(_) {} } });
-        } catch(_) {}
+        // User Request: Let native ECharts handle highlight (trigger: 'item')
+        // Removed manual downplay/highlight here to avoid forcing series-level highlight
         return;
       }
       // Hover over capsule overlay only
@@ -389,7 +385,7 @@ function makeHandlers(chart, { getCapsuleData, textColor, metricByGridIndex }) {
             const val = Array.isArray(d) ? d[0] : (d && d.value ? d.value[0] : null);
             if (Number.isFinite(Number(val))) ts = Number(val);
           }
-        } catch(_) {}
+        } catch (_) { }
       }
       if (!Number.isFinite(ts)) {
         // last resort: convert from pixel X
@@ -400,7 +396,7 @@ function makeHandlers(chart, { getCapsuleData, textColor, metricByGridIndex }) {
             const arr = chart.convertFromPixel({ xAxisIndex }, [px, 0]);
             if (Array.isArray(arr) && Number.isFinite(arr[0])) ts = Number(arr[0]);
           }
-        } catch(_) {}
+        } catch (_) { }
       }
       if (!Number.isFinite(ts)) return;
       // detect step from overlay series data (fallback 1h)
@@ -414,23 +410,23 @@ function makeHandlers(chart, { getCapsuleData, textColor, metricByGridIndex }) {
           if (prev == null) { prev = t; continue; }
           if (t !== prev) { stepGuess = Math.abs(t - prev); break; }
         }
-      } catch(_) { /* keep default */ }
+      } catch (_) { /* keep default */ }
       let data = (typeof getCapsuleData === 'function') ? getCapsuleData({ metric, ts }) : null;
       if (!data) {
         // build minimal fallback with time only
-        try { data = { time: formatTimeRange(ts, stepGuess), suppliers: [], customers: [], destinations: [] }; } catch(_) { return; }
+        try { data = { time: formatTimeRange(ts, stepGuess), suppliers: [], customers: [], destinations: [] }; } catch (_) { return; }
       }
       // If suppliers are missing, read them from option.__labelsEffective (overlay data used for drawing)
       try {
         if (!(Array.isArray(data.suppliers) && data.suppliers.length)) {
           const opt = chart.getOption && chart.getOption();
           const eff = (metric && opt && opt.__labelsEffective) ? opt.__labelsEffective[metric] : null;
-          const cand = eff ? (eff[ts] || eff[String(ts)] || eff[Math.floor(Number(ts)/1000)] || eff[String(Math.floor(Number(ts)/1000))]) : null;
+          const cand = eff ? (eff[ts] || eff[String(ts)] || eff[Math.floor(Number(ts) / 1000)] || eff[String(Math.floor(Number(ts) / 1000))]) : null;
           if (Array.isArray(cand) && cand.length) {
             data.suppliers = cand;
           }
         }
-      } catch(_) {}
+      } catch (_) { }
       // best-effort: narrow to the hovered capsule value
       let hoverVal = readHoverValueFromEvent(e);
       if (!Number.isFinite(hoverVal)) {
@@ -447,7 +443,7 @@ function makeHandlers(chart, { getCapsuleData, textColor, metricByGridIndex }) {
               hoverVal = Number(pt[1]);
             }
           }
-        } catch(_) {}
+        } catch (_) { }
       }
       if (Number.isFinite(hoverVal) && Array.isArray(data.suppliers)) {
         const tol = 0.11; // tolerate rounding diff with overlay text (toFixed(1))
@@ -492,12 +488,12 @@ function makeHandlers(chart, { getCapsuleData, textColor, metricByGridIndex }) {
               if (data.customersBySupplier && Array.isArray(data.customersBySupplier[n])) {
                 for (const c of data.customersBySupplier[n]) pushUniq(customers, c);
               }
-            } catch(_) {}
+            } catch (_) { }
             try {
               if (data.destinationsBySupplier && Array.isArray(data.destinationsBySupplier[n])) {
                 for (const d of data.destinationsBySupplier[n]) pushUniq(destinations, d);
               }
-            } catch(_) {}
+            } catch (_) { }
           }
           // Fallback: best-effort filter original arrays when per-supplier maps are not present
           if (!customers.length) {
@@ -520,20 +516,20 @@ function makeHandlers(chart, { getCapsuleData, textColor, metricByGridIndex }) {
         data = { ...data, time: formatTimeRange(ts, stepGuess) };
       }
       // hide default ECharts tooltip (separate capsule tooltip only)
-      try { chart.dispatchAction({ type: 'hideTip' }); } catch(_) {}
+      try { chart.dispatchAction({ type: 'hideTip' }); } catch (_) { }
       ensureEl(textColor);
       el.innerHTML = fmtBlock({ ...data, metric });
       el.style.opacity = '1';
       move(e);
       // blur all; capsule overlay stays visible
-      try { chart.dispatchAction({ type: 'downplay' }); } catch(_) {}
+      try { chart.dispatchAction({ type: 'downplay' }); } catch (_) { }
       // highlight overlay series, optionally by dataIndex if available
-      try { chart.dispatchAction({ type: 'highlight', seriesIndex: e.seriesIndex, dataIndex: e.dataIndex }); } catch(_) {}
-    } catch(_) {}
+      try { chart.dispatchAction({ type: 'highlight', seriesIndex: e.seriesIndex, dataIndex: e.dataIndex }); } catch (_) { }
+    } catch (_) { }
   };
   const out = () => {
     if (el) el.style.opacity = '0';
-    try { chart.dispatchAction({ type: 'downplay' }); } catch(_) {}
+    try { chart.dispatchAction({ type: 'downplay' }); } catch (_) { }
     chart.__capsuleHoverActive = false;
   };
   return { over, out, move };
@@ -551,10 +547,10 @@ export function attachCapsuleTooltip(chart, { getCapsuleData, textColor = 'var(-
 export function detachCapsuleTooltip(chart) { // cleanup
   const h = chart && chart.__capsuleTooltip;
   if (!h) return;
-  try { chart.off('mouseover', h.over); } catch(_) {}
-  try { chart.off('mouseout', h.out); } catch(_) {}
-  try { chart.off('globalout', h.out); } catch(_) {}
-  try { chart.off('mousemove', h.move); } catch(_) {}
-  try { delete chart.__capsuleTooltip; } catch(_) {}
+  try { chart.off('mouseover', h.over); } catch (_) { }
+  try { chart.off('mouseout', h.out); } catch (_) { }
+  try { chart.off('globalout', h.out); } catch (_) { }
+  try { chart.off('mousemove', h.move); } catch (_) { }
+  try { delete chart.__capsuleTooltip; } catch (_) { }
   if (el) el.style.opacity = '0';
 }

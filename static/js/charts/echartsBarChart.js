@@ -202,7 +202,7 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
       axisLine: (i === 4 ? { show: false } : { lineStyle: { color: '#888' } }),
       axisTick: (i === 4 ? { show: false } : { alignWithLabel: true, length: 6 }),
       splitLine: (i === 4 ? { show: false } : { show: true, lineStyle: { color: '#eaeef2' } }),
-      axisPointer: (i === 4 ? { show: false } : { show: true, snap: true, triggerTooltip: true })
+      axisPointer: { show: false } // User Request: Disable axis pointer to prevent group highlight
     }));
     const yAxes = grids.map((g, i) => ({ type: 'value', gridIndex: i, axisLabel: { show: false }, splitLine: { show: false }, axisLine: (i === 4 ? { show: false } : { lineStyle: { color: '#000' } }) }));
 
@@ -327,8 +327,8 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
         splitLine: { show: false }
       })),
       tooltip: {
-        trigger: 'axis',
-        axisPointer: { type: 'cross', snap: true, label: { show: false } },
+        trigger: 'item', // User Request: Highlight ONLY the specific bar under mouse
+        // axisPointer removed as it applies to axis trigger
         confine: true,
         order: 'valueAsc',
         formatter: makeBarLineLikeTooltip({ chart, stepMs: step }),
@@ -339,7 +339,7 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
         textStyle: { color: 'var(--ds-color-fg)' },
         extraCssText: 'border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,0.07); line-height:1.35;'
       },
-      axisPointer: { link: [{ xAxisIndex: [0, 1, 2, 3] }] },
+      // axisPointer: { link: [{ xAxisIndex: [0, 1, 2, 3] }] }, // Removed to prevent group highlight
       dataZoom: [
         {
           type: 'inside',
