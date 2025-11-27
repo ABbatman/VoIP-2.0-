@@ -27,12 +27,13 @@
 
 /* Fluid adaptive container */
 .charts-container {
-    width: 100%;
-    max-width: 2000px;
-    margin: 1rem auto;
-    /* center on large screens */
-    padding: clamp(6px, 1vw, 16px);
-    /* adaptive padding */
+    width: 99%;
+    /* Используем всё пространство */
+    max-width: none;
+    /* Убираем ограничения ширины */
+    margin: 0 auto;
+    padding: 4px;
+    /* Компактные отступы */
     border: 1px dashed #bbb;
     border-radius: 6px;
     background: repeating-linear-gradient(45deg,
@@ -44,11 +45,32 @@
 
 #chart-area-1 {
     width: 100%;
-    /* always fill container */
-    height: clamp(320px, 40vh, 750px);
-    /* adaptive height */
-    min-height: 320px;
-    /* ensure minimum usability */
+    /* Увеличиваем до 75vh для больших экранов (вернуть "как было") */
+    height: 75vh;
+    min-height: 600px;
+    /* Гарантируем, что график не будет слишком мелким */
+    max-height: 1200px;
+}
+
+.chart-slider {
+    width: 99%;
+    height: 48px;
+    /* Fixed height for slider */
+    margin: 4px auto;
+    /* Small gap from chart area */
+    background: transparent;
+    position: relative;
+    z-index: 10;
+}
+
+/* Корректировка для маленьких экранов (13" ноутбуки) */
+@media (max-width: 1500px) {
+
+    /* Increase specificity to ensure override */
+    .charts-container #chart-area-1 {
+        height: 50vh !important;
+        /* Увеличиваем с 40vh до 50vh */
+    }
 }
 
 /* Smooth fade for chart transitions */

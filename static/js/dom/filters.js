@@ -330,6 +330,12 @@ export function initFilters(isStateLoaded) {
         // Ignore controls visibility errors
       }
       try {
+        const chartSlider = document.getElementById('chart-slider');
+        if (chartSlider) chartSlider.style.display = ui?.showCharts ? '' : 'none';
+      } catch (_) {
+        // Ignore slider visibility errors
+      }
+      try {
         const modeControls = document.getElementById('tableModeControls');
         if (modeControls) modeControls.style.display = ui?.showModeControls ? '' : 'none';
       } catch (_) {

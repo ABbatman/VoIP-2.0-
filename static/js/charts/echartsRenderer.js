@@ -40,6 +40,20 @@ export function renderMultiLineChartEcharts(container, data, options = {}) {
     // Ignore existing chart disposal errors
   }
   const chart = echarts.init(el);
+  const sliderEl = document.getElementById('chart-slider');
+  let sliderChart = null;
+  if (sliderEl) {
+    try {
+      const existingSlider = echarts.getInstanceByDom(sliderEl);
+      if (existingSlider) existingSlider.dispose();
+    } catch (_) { }
+    sliderChart = echarts.init(sliderEl);
+  }
+
+  // Connect charts for synchronization
+  if (chart && sliderChart) {
+    echarts.connect([chart, sliderChart]);
+  }
 
   // Fix: Allow scrolling when not zooming (Shift+Wheel = Zoom, Wheel = Scroll)
   el.addEventListener('wheel', (e) => {
@@ -55,7 +69,7 @@ export function renderMultiLineChartEcharts(container, data, options = {}) {
     interval: options.interval || (options.stepMs === 5 * 60e3 ? '5m' : (options.stepMs === 3600e3 ? '1h' : undefined)),
     noFiveMinData: !!options.noFiveMinData,
   };
-  const option = buildMultiOption({ data, ...base });
+  const { main, slider } = buildMultiOption({ data, ...base });
   try {
     const step = getStepMs(base.interval, undefined);
     option.tooltip = {
@@ -69,17 +83,20 @@ export function renderMultiLineChartEcharts(container, data, options = {}) {
       extraCssText: 'border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,0.07); line-height:1.35;'
     };
   } catch (_) { /* keep default tooltip */ }
-  chart.setOption(option, { notMerge: true, lazyUpdate: true });
+  chart.setOption(main, { notMerge: true, lazyUpdate: true });
+  if (sliderChart && slider) {
+    sliderChart.setOption(slider, { notMerge: true, lazyUpdate: true });
+  }
   try { applyZoomRange(chart); } catch (_) { }
   try { attachZoom(chart); } catch (_) { }
 
   function update(newData = data, newOptions = {}) {
     const merged = { ...base, ...newOptions };
-    const next = buildMultiOption({ data: newData, ...merged });
+    const { main: nextMain, slider: nextSlider } = buildMultiOption({ data: newData, ...merged });
     try {
       const step = getStepMs(merged.interval, undefined);
-      next.tooltip = {
-        ...(next.tooltip || {}),
+      nextMain.tooltip = {
+        ...(nextMain.tooltip || {}),
         formatter: makeBarLineLikeTooltip({ chart, stepMs: step }),
         backgroundColor: 'rgba(255,255,255,0.98)',
         borderColor: '#e6e9ef',
@@ -89,14 +106,16 @@ export function renderMultiLineChartEcharts(container, data, options = {}) {
         extraCssText: 'border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,0.07); line-height:1.35;'
       };
     } catch (_) { /* keep default tooltip */ }
-    chart.setOption(next, { notMerge: true, lazyUpdate: true });
+    chart.setOption(nextMain, { notMerge: true, lazyUpdate: true });
+    if (sliderChart && nextSlider) {
+      sliderChart.setOption(nextSlider, { notMerge: true, lazyUpdate: true });
+    }
     try { applyZoomRange(chart); } catch (_) { }
   }
 
   function dispose() {
-    try { chart.dispose(); } catch (_) {
-      // Chart might already be disposed
-    }
+    try { chart.dispose(); } catch (_) { }
+    try { if (sliderChart) sliderChart.dispose(); } catch (_) { }
   }
   function getInstance() { return chart; }
 

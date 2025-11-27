@@ -89,16 +89,16 @@ export class DashboardRenderer {
     try {
       // Import and initialize flatpickr and time controls
       const { initFlatpickr, initTimeControls } = await import('./ui-widgets.js');
-      
+
       // Initialize flatpickr for date inputs
       initFlatpickr();
-      
+
       // Initialize time controls
       initTimeControls();
-      
+
       // Set default date range if no dates are set
       this._setDefaultDatesIfEmpty();
-      
+
     } catch (error) {
       console.error('❌ Dashboard Renderer: Failed to initialize UI components', error);
     }
@@ -133,13 +133,13 @@ export class DashboardRenderer {
         } else {
           fromDate.value = fromDateValue;
         }
-        
+
         if (toDate._flatpickr) {
           toDate._flatpickr.setDate(toDateValue, false);
         } else {
           toDate.value = toDateValue;
         }
-        
+
         fromTime.value = fromTimeValue;
         toTime.value = toTimeValue;
       }
@@ -199,7 +199,7 @@ export class DashboardRenderer {
     const dashboardView = appState.dashboardView || {};
     const ui = getUI();
     const showModeControls = !!ui.showModeControls;
-    
+
     // candidate for pure renderer components composition
     return `
       <div id="filters-block" class="filters-panel">
@@ -210,12 +210,12 @@ export class DashboardRenderer {
         
         <div id="reverse-button-item" class="filters-panel__item">
           ${renderButton({
-            id: 'btnReverse',
-            // design system button
-            className: 'btn btn--icon',
-            title: 'Reverse Customer/Supplier',
-            icon: `<svg class="filters-panel__icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>`
-          })}
+      id: 'btnReverse',
+      // design system button
+      className: 'btn btn--icon',
+      title: 'Reverse Customer/Supplier',
+      icon: `<svg class="filters-panel__icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>`
+    })}
         </div>
         
         <div id="supplier-filter-item" class="filters-panel__item">
@@ -296,6 +296,7 @@ export class DashboardRenderer {
       <div id="charts-container" class="charts-container" style="${showCharts ? '' : 'display:none'}">
         <div id="chart-area-1"></div>
       </div>
+      <div id="chart-slider" class="chart-slider" style="${showCharts ? '' : 'display:none'}"></div>
       <div id="charts-controls" class="charts-toolbar" style="${showCharts ? '' : 'display:none'}"></div>
     `;
   }
@@ -371,7 +372,7 @@ export class DashboardRenderer {
    */
   _updateFilters(appState) {
     const filters = appState.filters || {};
-    
+
     // Helper: update input defensively (do not override user typing)
     const safeSetValue = (input, next) => {
       if (!input) return;
@@ -421,11 +422,11 @@ export class DashboardRenderer {
    */
   _updateDashboardView(appState) {
     const dashboardView = appState.dashboardView || {};
-    
+
     // Update mode buttons
     const btnSummary = document.getElementById('btnSummary');
     const btnCDR = document.getElementById('btnCDR');
-    
+
     if (btnSummary) btnSummary.classList.toggle('active', dashboardView.currentMode === 'summary');
     if (btnCDR) btnCDR.classList.toggle('active', dashboardView.currentMode === 'cdr');
   }
@@ -445,7 +446,7 @@ export class DashboardRenderer {
    */
   _applyStateStyling(appState) {
     const preferences = appState.preferences || {};
-    
+
     // Apply theme
     if (preferences.theme) {
       document.body.className = `theme-${preferences.theme}`;
@@ -494,9 +495,9 @@ export class DashboardRenderer {
    * @returns {Object|null} An object containing current filter values, or null if not found
    */
   _saveCurrentFilterValues(container) {
-    
+
     const filtersBlock = container.querySelector('#filters-block');
-    
+
     if (!filtersBlock) {
       return null;
     }
@@ -531,9 +532,9 @@ export class DashboardRenderer {
    * @param {Object} values - An object containing filter values to restore
    */
   _restoreFilterValues(container, values) {
-    
+
     const filtersBlock = container.querySelector('#filters-block');
-    
+
     if (!filtersBlock) {
       return;
     }
@@ -555,30 +556,30 @@ export class DashboardRenderer {
     if (customerGroupInput) customerGroupInput.value = values.customerGroup || '';
     if (supplierGroupInput) supplierGroupInput.value = values.supplierGroup || '';
     if (destinationGroupInput) destinationGroupInput.value = values.destinationGroup || '';
-    
+
     if (fromDateInput && values.from) {
       const [fromDate, fromTime] = values.from.split(" ");
-      
+
       if (fromDateInput._flatpickr) {
         fromDateInput._flatpickr.setDate(fromDate, false);
       } else {
         fromDateInput.value = fromDate || '';
       }
-      
+
       if (fromTimeInput) {
         fromTimeInput.value = fromTime || '';
       }
     }
-    
+
     if (toDateInput && values.to) {
       const [toDate, toTime] = values.to.split(" ");
-      
+
       if (toDateInput._flatpickr) {
         toDateInput._flatpickr.setDate(toDate, false);
       } else {
         toDateInput.value = toDate || '';
       }
-      
+
       if (toTimeInput) {
         toTimeInput.value = toTime || '';
       }

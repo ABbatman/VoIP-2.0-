@@ -5,7 +5,7 @@ import { MAIN_BLUE } from '../helpers/colors.js';
 
 function computeGrids(heightPx) {
   const topPad = 8;
-  const bottomPad = 76; // space for slider dataZoom
+  const bottomPad = 20; // Reverted to small padding as slider is external
   const gap = 8;
   const usable = Math.max(160, (heightPx || 600) - topPad - bottomPad - gap * 3);
   const h = Math.floor(usable / 4);
@@ -16,6 +16,10 @@ function computeGrids(heightPx) {
     height: h,
   }));
   return grids;
+}
+
+function computeSliderGrid() {
+  return { left: 40, right: 16, top: 4, bottom: 4, height: 40 };
 }
 
 export function seriesLine(name, data, xAxisIndex, yAxisIndex, color, { area = false, smooth = true, smoothMonotone = undefined, connectNulls = false, sampling = 'lttb' } = {}) {
@@ -224,5 +228,58 @@ export function buildMultiOption({ data, fromTs, toTs, height, interval }) {
     option.graphic = (option.graphic || []).concat(labels);
   } catch (_) { }
 
-  return option;
+  // Slider Option
+  const sliderGrid = computeSliderGrid();
+  const sliderXAxis = {
+    type: 'time', gridIndex: 0, min: minX, max: maxX,
+    axisLabel: { show: false }, axisLine: { show: false }, axisTick: { show: false }, splitLine: { show: false }
+  };
+  const sliderYAxis = { type: 'value', gridIndex: 0, axisLabel: { show: false }, splitLine: { show: false }, axisLine: { show: false } };
+
+  const sliderOption = {
+    animation: false,
+    grid: [sliderGrid],
+    xAxis: [sliderXAxis],
+    yAxis: [sliderYAxis],
+    dataZoom: [
+      {
+        type: 'slider',
+        xAxisIndex: 0,
+        height: 32,
+        bottom: 8,
+        throttle: 80,
+        backgroundColor: 'rgba(0,0,0,0)',
+        fillerColor: 'rgba(79,134,255,0.12)',
+        showDataShadow: true,
+        dataBackground: { lineStyle: { color: MAIN_BLUE, width: 1 }, areaStyle: { color: 'rgba(79,134,255,0.18)' } }
+      },
+      {
+        type: 'inside',
+        xAxisIndex: 0,
+        zoomOnMouseWheel: 'shift',
+        moveOnMouseWheel: false,
+        moveOnMouseMove: true
+      }
+    ],
+    series: [
+      {
+        type: 'line',
+        data: pairsT, // Use TCalls for background
+        xAxisIndex: 0,
+        yAxisIndex: 0,
+        showSymbol: false,
+        lineStyle: { width: 1, color: '#ddd' },
+        areaStyle: { color: '#eee' },
+        silent: true,
+        animation: false
+      }
+    ]
+  };
+
+  // Cleanup main option dataZoom
+  option.dataZoom = [
+    { type: 'inside', xAxisIndex: [0, 1, 2, 3], throttle: 80, zoomOnMouseWheel: 'shift', moveOnMouseWheel: false, moveOnMouseMove: true, brushSelect: false }
+  ];
+
+  return { main: option, slider: sliderOption };
 }

@@ -24,14 +24,15 @@ export function ensureFixedChartHeight(host, mount) {
   try {
     if (host) {
       // Ensure host expands to accommodate mount height
-      host.style.minHeight = `${fixed + controlsH + 8}px`;
+      // Ensure host expands to accommodate mount height
+      // host.style.minHeight = `${fixed + controlsH + 8}px`;
     }
     if (mount) {
-      mount.style.height = `${fixed}px`;
-      mount.style.minHeight = `${fixed}px`;
+      // mount.style.height = `${fixed}px`;
+      // mount.style.minHeight = `${fixed}px`;
       mount.dataset.fixedHeight = String(fixed);
     }
-  } catch(_) {
+  } catch (_) {
     // ignore
   }
   return fixed;

@@ -31,6 +31,20 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
     // Ignore error if chart instance doesn't exist
   }
   const chart = initChart(el);
+  const sliderEl = document.getElementById('chart-slider');
+  let sliderChart = null;
+  if (sliderEl) {
+    try {
+      const existingSlider = echarts.getInstanceByDom(sliderEl);
+      if (existingSlider) existingSlider.dispose();
+    } catch (_) { }
+    sliderChart = initChart(sliderEl);
+  }
+
+  // Connect charts for synchronization
+  if (chart && sliderChart) {
+    echarts.connect([chart, sliderChart]);
+  }
 
   // Fix: Allow scrolling when not zooming (Shift+Wheel = Zoom, Wheel = Scroll)
   el.addEventListener('wheel', (e) => {
@@ -184,27 +198,23 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
     }
 
     // compute 4 grids
-    const topPad = 8;
-    const bottomPad = 76;
-    const gap = 8;
-    const usable = Math.max(160, (opts.height || el.clientHeight || 600) - topPad - bottomPad - gap * 3);
-    const h = Math.floor(usable / 4);
     const grids = Array.from({ length: 4 }, (_, i) => ({ left: 40, right: 16, top: topPad + i * (h + gap), height: h }));
-    // A thin preview grid positioned inside the slider track area (drawn underneath the slider)
-    const sliderBottom = 8;
-    const sliderHeight = 32;
-    const previewInset = 4;
-    const previewGrid = { left: 40, right: 16, bottom: sliderBottom + previewInset, height: sliderHeight - 2 * previewInset };
-    grids.push(previewGrid);
+    // Slider grid (for separate instance)
+    const sliderGrid = { left: 40, right: 16, top: 4, bottom: 4, height: 40 }; // Full height in slider container
     const xAxes = grids.map((g, i) => ({
       type: 'time', gridIndex: i, min: Number.isFinite(fromTs) ? fromTs : null, max: Number.isFinite(toTs) ? toTs : null,
-      axisLabel: (i === 4 ? { show: false } : { color: '#6e7781' }),
-      axisLine: (i === 4 ? { show: false } : { lineStyle: { color: '#888' } }),
-      axisTick: (i === 4 ? { show: false } : { alignWithLabel: true, length: 6 }),
-      splitLine: (i === 4 ? { show: false } : { show: true, lineStyle: { color: '#eaeef2' } }),
-      axisPointer: { show: false } // User Request: Disable axis pointer to prevent group highlight
+      axisLabel: { color: '#6e7781' },
+      axisLine: { lineStyle: { color: '#888' } },
+      axisTick: { alignWithLabel: true, length: 6 },
+      splitLine: { show: true, lineStyle: { color: '#eaeef2' } },
+      axisPointer: { show: false }
     }));
-    const yAxes = grids.map((g, i) => ({ type: 'value', gridIndex: i, axisLabel: { show: false }, splitLine: { show: false }, axisLine: (i === 4 ? { show: false } : { lineStyle: { color: '#000' } }) }));
+    const sliderXAxis = {
+      type: 'time', gridIndex: 0, min: Number.isFinite(fromTs) ? fromTs : null, max: Number.isFinite(toTs) ? toTs : null,
+      axisLabel: { show: false }, axisLine: { show: false }, axisTick: { show: false }, splitLine: { show: false }
+    };
+    const yAxes = grids.map((g, i) => ({ type: 'value', gridIndex: i, axisLabel: { show: false }, splitLine: { show: false }, axisLine: { lineStyle: { color: '#000' } } }));
+    const sliderYAxis = { type: 'value', gridIndex: 0, axisLabel: { show: false }, splitLine: { show: false }, axisLine: { show: false } };
 
     const colorMain = '#4f86ff';
     const colors = { TCalls: colorMain, ASR: colorMain, Minutes: colorMain, ACD: colorMain };
@@ -343,27 +353,13 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
       dataZoom: [
         {
           type: 'inside',
-          xAxisIndex: [0, 1, 2, 3, 4],
+          xAxisIndex: [0, 1, 2, 3],
           startValue: startVal,
           endValue: endVal,
           throttle: 80,
           zoomOnMouseWheel: 'shift',
           moveOnMouseWheel: false,
           moveOnMouseMove: true,
-        },
-        {
-          type: 'slider',
-          xAxisIndex: [0, 4],
-          startValue: startVal,
-          endValue: endVal,
-          height: 32,
-          bottom: 8,
-          throttle: 80,
-          // Keep the slider visuals translucent to reveal preview bars underneath
-          backgroundColor: 'rgba(0,0,0,0)',
-          fillerColor: 'rgba(79,134,255,0.12)',
-          showDataShadow: false,
-          dataBackground: { lineStyle: { color: 'rgba(0,0,0,0)' }, areaStyle: { color: 'rgba(0,0,0,0)' } }
         }
       ],
       series: buildBarSeries({
@@ -377,6 +373,50 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
         providerKey: (() => { try { return detectProviderKey(Array.isArray(options?.providerRows) ? options.providerRows : []); } catch (_) { return null; } })()
       }),
       graphic: graphicLabels
+    };
+
+    // Slider Option
+    const sliderOption = {
+      animation: false,
+      grid: [sliderGrid],
+      xAxis: [sliderXAxis],
+      yAxis: [sliderYAxis],
+      dataZoom: [
+        {
+          type: 'slider',
+          xAxisIndex: 0,
+          startValue: startVal,
+          endValue: endVal,
+          height: 32,
+          bottom: 8,
+          throttle: 80,
+          backgroundColor: 'rgba(0,0,0,0)',
+          fillerColor: 'rgba(79,134,255,0.12)',
+          showDataShadow: true, // Show shadow in slider
+          dataBackground: { lineStyle: { color: '#4f86ff', width: 1 }, areaStyle: { color: 'rgba(79,134,255,0.18)' } }
+        },
+        {
+          type: 'inside',
+          xAxisIndex: 0,
+          startValue: startVal,
+          endValue: endVal,
+          zoomOnMouseWheel: 'shift',
+          moveOnMouseWheel: false,
+          moveOnMouseMove: true
+        }
+      ],
+      series: [
+        // Dummy series for background preview (using TCalls data)
+        {
+          type: 'bar',
+          data: setsT.map(d => [d.time, d.value]),
+          xAxisIndex: 0,
+          yAxisIndex: 0,
+          itemStyle: { color: '#ddd' },
+          silent: true,
+          animation: false
+        }
+      ]
     };
     // expose labelsEffective for tooltip fallback
     try { out.__labelsEffective = labelsEffective; } catch (_) { }
@@ -397,11 +437,13 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
         out.series = Array.isArray(out.series) ? out.series.filter(s => !(s && s.type === 'custom' && s.name === 'LabelsOverlay')) : out.series;
       } catch (_) {/* keep series */ }
     }
-    return out;
+    return { main: out, slider: sliderOption };
   };
 
-  const option = buildOption(base, data);
-  setOptionWithZoomSync(chart, option, {
+  const { main, slider } = buildOption(base, data);
+
+  // Render Main Chart
+  setOptionWithZoomSync(chart, main, {
     onAfterSet: () => {
       try { requestAnimationFrame(() => setTimeout(applyDynamicBarWidth, 0)); } catch (_) { }
       // attach capsule tooltip once
@@ -440,7 +482,7 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
                   if (!ret.suppliers || ret.suppliers.length === 0) {
                     try {
                       const mKey = (metric === 'ASR' || metric === 'ACD') ? metric : null;
-                      const eff = option && option.__labelsEffective && option.__labelsEffective[mKey];
+                      const eff = main && main.__labelsEffective && main.__labelsEffective[mKey];
                       if (mKey && eff) {
                         const byTs2 = eff[ts] || eff[String(ts)] || eff[Math.floor(Number(ts) / 1000)] || eff[String(Math.floor(Number(ts) / 1000))];
                         if (Array.isArray(byTs2) && byTs2.length) ret.suppliers = byTs2;
@@ -475,7 +517,7 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
               // Fallback 1: use labels passed into chart (ASR/ACD only)
               try {
                 const mKey = (metric === 'ASR' || metric === 'ACD') ? metric : null;
-                const lm = (option && option.__labelsEffective && option.__labelsEffective[mKey]) || (options && options.labels && options.labels[mKey]) || null;
+                const lm = (main && main.__labelsEffective && main.__labelsEffective[mKey]) || (options && options.labels && options.labels[mKey]) || null;
                 if (mKey && lm) {
                   const byTs2 = lm[ts] || lm[String(ts)] || lm[Math.floor(Number(ts) / 1000)] || lm[String(Math.floor(Number(ts) / 1000))];
                   if (Array.isArray(byTs2)) {
@@ -628,10 +670,19 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
     }
   });
 
+  // Render Slider Chart
+  if (sliderChart && slider) {
+    setOptionWithZoomSync(sliderChart, slider);
+  }
+
   // react to Suppliers checkbox toggle: re-render overlay labels visibility
   try {
     unsubscribeToggle = subscribe('charts:bar:perProviderChanged', () => {
-      try { const next = buildOption(base, data); setOptionWithZoomSync(chart, next); } catch (_) { }
+      try {
+        const { main: nextMain, slider: nextSlider } = buildOption(base, data);
+        setOptionWithZoomSync(chart, nextMain);
+        if (sliderChart) setOptionWithZoomSync(sliderChart, nextSlider);
+      } catch (_) { }
     });
   } catch (_) { /* ignore subscription errors */ }
 
@@ -640,7 +691,7 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
       const step = Number(base.stepMs) || getStepMs(base.interval);
       // prefer current zoom start; else fromTs; else first data point
       const zr = (typeof window !== 'undefined') ? window.__chartsZoomRange : null;
-      const ref = (zr && Number.isFinite(zr.fromTs)) ? zr.fromTs : (Number(base.fromTs) || (Array.isArray(option.series?.[0]?.data) ? option.series[0].data[0]?.[0] : null));
+      const ref = (zr && Number.isFinite(zr.fromTs)) ? zr.fromTs : (Number(base.fromTs) || (Array.isArray(main.series?.[0]?.data) ? main.series[0].data[0]?.[0] : null));
       if (!Number.isFinite(ref) || !Number.isFinite(step) || step <= 0) return null;
       const p0 = chart.convertToPixel({ xAxisIndex: 0 }, ref);
       const p1 = chart.convertToPixel({ xAxisIndex: 0 }, ref + step);
@@ -698,8 +749,8 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
     } catch (_) {
       // Ignore base update errors
     }
-    const next = buildOption(merged, newData);
-    setOptionWithZoomSync(chart, next, {
+    const { main: nextMain, slider: nextSlider } = buildOption(merged, newData);
+    setOptionWithZoomSync(chart, nextMain, {
       onAfterSet: () => {
         try { applyDynamicBarWidth(); } catch (_) { }
         // reattach capsule tooltip to reflect updated data source if provided
@@ -737,7 +788,7 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
                   if (!ret.suppliers || ret.suppliers.length === 0) {
                     try {
                       const mKey = (metric === 'ASR' || metric === 'ACD') ? metric : null;
-                      const eff = (next && next.__labelsEffective && next.__labelsEffective[mKey]) || (merged && merged.labels && merged.labels[mKey]) || (options && options.labels && options.labels[mKey]) || null;
+                      const eff = (nextMain && nextMain.__labelsEffective && nextMain.__labelsEffective[mKey]) || (merged && merged.labels && merged.labels[mKey]) || (options && options.labels && options.labels[mKey]) || null;
                       if (mKey && eff) {
                         const byTs2 = eff[ts] || eff[String(ts)] || eff[Math.floor(Number(ts) / 1000)] || eff[String(Math.floor(Number(ts) / 1000))];
                         if (Array.isArray(byTs2) && byTs2.length) ret.suppliers = byTs2;
@@ -772,7 +823,7 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
               // Fallback 1: use labels passed into chart (ASR/ACD only)
               try {
                 const mKey = (metric === 'ASR' || metric === 'ACD') ? metric : null;
-                const lm = (next && next.__labelsEffective && next.__labelsEffective[mKey]) || (merged && merged.labels && merged.labels[mKey]) || (options && options.labels && options.labels[mKey]) || null;
+                const lm = (nextMain && nextMain.__labelsEffective && nextMain.__labelsEffective[mKey]) || (merged && merged.labels && merged.labels[mKey]) || (options && options.labels && options.labels[mKey]) || null;
                 if (mKey && lm) {
                   const byTs2 = lm[ts] || lm[String(ts)] || lm[Math.floor(Number(ts) / 1000)] || lm[String(Math.floor(Number(ts) / 1000))];
                   if (Array.isArray(byTs2)) {
@@ -921,18 +972,28 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
           };
           attachCapsuleTooltip(chart, { getCapsuleData, textColor: 'var(--ds-color-fg)', metricByGridIndex });
           capsuleTooltipAttached = true;
+
         } catch (_) { /* ignore tooltip attach errors */ }
       }
     });
+
+    // Render Slider Chart
+    if (sliderChart && nextSlider) {
+      setOptionWithZoomSync(sliderChart, nextSlider);
+    }
+
     try {
+      const zr = (typeof window !== 'undefined') ? window.__chartsZoomRange : null;
       const baseLo = Number(merged.fromTs);
       const baseHi = Number(merged.toTs);
-      const zr = (typeof window !== 'undefined') ? window.__chartsZoomRange : null;
       const clamp = (v) => (Number.isFinite(baseLo) && Number.isFinite(baseHi)) ? Math.max(baseLo, Math.min(baseHi, v)) : v;
       let sv = Number.isFinite(zr?.fromTs) ? clamp(Number(zr.fromTs)) : baseLo;
       let ev = Number.isFinite(zr?.toTs) ? clamp(Number(zr.toTs)) : baseHi;
       if (Number.isFinite(sv) && Number.isFinite(ev) && ev > sv) {
-        chart.setOption({ dataZoom: [{ startValue: sv, endValue: ev }, { startValue: sv, endValue: ev }] }, { lazyUpdate: true });
+        chart.setOption({ dataZoom: [{ startValue: sv, endValue: ev }] }, { lazyUpdate: true });
+        if (sliderChart) {
+          sliderChart.setOption({ dataZoom: [{ startValue: sv, endValue: ev }, { startValue: sv, endValue: ev }] }, { lazyUpdate: true });
+        }
       }
     } catch (_) {
       // Ignore zoom update errors
