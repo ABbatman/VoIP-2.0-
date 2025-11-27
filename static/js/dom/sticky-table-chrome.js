@@ -448,15 +448,28 @@ function bindFooterInputs() {
 function proxyFooterInput(floatingInput) {
   const key = floatingInput.dataset.filterKey;
   if (!key) return;
+  
+  // Save cursor position before any sync
+  const cursorPos = floatingInput.selectionStart;
+  const cursorEnd = floatingInput.selectionEnd;
+  
   const real = document.querySelector(`#summaryTable tfoot input[data-filter-key="${key}"]`);
   if (!real) return;
   if (real.value !== floatingInput.value) {
     real.value = floatingInput.value;
-    // Dispatch input/change as CustomEvents with a marker so handlers can restore focus to floating input
-    const detail = { fromFloating: true };
+    // Dispatch with marker for floating origin
+    const detail = { fromFloating: true, cursorPosition: cursorPos };
     real.dispatchEvent(new CustomEvent('input', { bubbles: true, detail }));
     real.dispatchEvent(new CustomEvent('change', { bubbles: true, detail }));
   }
+  
+  // Restore cursor position immediately (prevent jump)
+  requestAnimationFrame(() => {
+    if (document.activeElement === floatingInput && typeof floatingInput.setSelectionRange === 'function') {
+      const maxPos = floatingInput.value.length;
+      floatingInput.setSelectionRange(Math.min(cursorPos, maxPos), Math.min(cursorEnd, maxPos));
+    }
+  });
 }
 
 

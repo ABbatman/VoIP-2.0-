@@ -29,19 +29,22 @@ function isVirtual() {
 export async function applySortSafe(key) {
   const { multiSort, textFields } = getState();
   const next = computeNextMultiSort(multiSort, key, textFields || []);
-  // Для обоих режимов запускаем через координатор 'table':
-  // 1) сначала применяем setMultiSort(next),
-  // 2) затем один раз выполняем соответствующий рендер.
-  // Так __renderingInProgress уже активен на момент публикации tableState:changed.
+  
+  // Save scroll position before sort
+  const scrollContainer = document.getElementById('virtual-scroll-container') || 
+                          document.querySelector('.results-display__table-wrapper');
+  const savedScrollTop = scrollContainer ? scrollContainer.scrollTop : 0;
+  
   await renderCoordinator.requestRender('table', async () => {
     try {
       setMultiSort(next);
       if (isVirtual()) {
-        // Виртуальный режим: один гарантированный refresh внутри координатора
-        try { const tb = document.getElementById('tableBody'); if (tb) tb.innerHTML = ''; } catch(_) {
-    // Ignore sort errors
-  }
+        // Virtual mode: refresh without clearing innerHTML to prevent jump
         window.virtualManager.refreshVirtualTable();
+        // Restore scroll position after render
+        requestAnimationFrame(() => {
+          if (scrollContainer) scrollContainer.scrollTop = savedScrollTop;
+        });
       } else {
         // Стандартный режим: рендерим напрямую (без вложенного координатора контроллера)
         // Если виртуальный менеджер активен — корректно завершить его, чтобы не было дублей слоёв

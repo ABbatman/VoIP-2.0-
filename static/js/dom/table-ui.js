@@ -100,11 +100,11 @@ function initDelegatedSortHandlers() {
     if (!inHeader) return;
     const key = arrow.dataset.sortKey;
     if (!key) return;
+    // Prevent scroll jump immediately
+    e.preventDefault();
+    e.stopPropagation();
     try {
-      // Централизованно и безопасно применяем сортировку
       applySortSafe(key);
-      e.preventDefault();
-      e.stopPropagation();
     } catch (err) {
       if (DEBUG) console.warn('Delegated sort handler error', err);
     }
@@ -638,14 +638,16 @@ function handleColumnFilterChange(event) {
     }, 50);
   };
 
-  // Save focus state
+  // Save focus state - use detail.cursorPosition if from floating proxy
   const wasFocused = document.activeElement === inputElement;
-  const cursorPosition = inputElement.selectionStart;
+  const cursorPosition = event?.detail?.cursorPosition ?? inputElement.selectionStart ?? inputElement.value.length;
+  const cursorEnd = inputElement.selectionEnd ?? cursorPosition;
   const fromFloating = Boolean(event?.detail?.fromFloating) || !!inputElement.closest('.floating-table-footer');
+  const inputValue = inputElement.value; // save current value
 
   // Global pending focus (prevents race with async re-renders)
   try {
-    window._pendingFilterFocus = { key, fromFloating, cursorPosition };
+    window._pendingFilterFocus = { key, fromFloating, cursorPosition, cursorEnd, inputValue };
   } catch (_) { /* noop */ }
   
   // Import setColumnFilter dynamically to avoid circular imports
@@ -671,43 +673,33 @@ function handleColumnFilterChange(event) {
       });
       
       // Restore focus after table refresh
-      if (wasFocused) {
+      if (wasFocused || fromFloating) {
         // Use requestAnimationFrame for better timing
         requestAnimationFrame(() => {
           const selector = `input[data-filter-key="${key}"]`;
-          const container = fromFloating
+          const cont = fromFloating
             ? document.querySelector('.floating-table-footer tfoot')
             : document.querySelector('#summaryTable tfoot');
-          const newInput = container ? container.querySelector(selector) : document.querySelector(selector);
+          const newInput = cont ? cont.querySelector(selector) : document.querySelector(selector);
           if (newInput) {
-            newInput.focus();
-            // Ensure cursor position is within bounds
-            const maxPosition = Math.min(cursorPosition ?? newInput.value.length, newInput.value.length);
-            if (typeof newInput.setSelectionRange === 'function') {
-              newInput.setSelectionRange(maxPosition, maxPosition);
+            // Restore value if it changed during async refresh
+            if (newInput.value !== inputValue) {
+              newInput.value = inputValue;
             }
-            if (DEBUG) console.log(`🔧 Restored focus to ${fromFloating ? 'floating' : 'footer'} column filter input: ${key}`);
+            if (document.activeElement !== newInput) {
+              newInput.focus();
+            }
+            // Restore cursor position
+            const maxPos = newInput.value.length;
+            const pos = Math.min(cursorPosition, maxPos);
+            const end = Math.min(cursorEnd, maxPos);
+            if (typeof newInput.setSelectionRange === 'function') {
+              newInput.setSelectionRange(pos, end);
+            }
+            if (DEBUG) console.log(`🔧 Restored focus to ${fromFloating ? 'floating' : 'footer'} filter: ${key}`);
           }
-          // Restore scroll again after focus placement
           restoreScroll();
         });
-        // Double-check restore on next macrotask to beat races
-        setTimeout(() => {
-          if (!document.activeElement || document.activeElement.dataset?.filterKey !== key) {
-            const selector = `input[data-filter-key="${key}"]`;
-            const cont = fromFloating
-              ? document.querySelector('.floating-table-footer tfoot')
-              : document.querySelector('#summaryTable tfoot');
-            const inp = cont ? cont.querySelector(selector) : document.querySelector(selector);
-            if (inp) {
-              inp.focus();
-              const pos = Math.min(cursorPosition ?? inp.value.length, inp.value.length);
-              if (typeof inp.setSelectionRange === 'function') inp.setSelectionRange(pos, pos);
-            }
-          }
-          // Final scroll restore attempt after async reflows
-          restoreScroll();
-        }, 0);
       }
     }
   });
@@ -719,20 +711,28 @@ try {
     window.restoreFilterFocusIfPending = function restoreFilterFocusIfPending() {
       const pending = window._pendingFilterFocus;
       if (!pending || !pending.key) return;
-      const { key, fromFloating, cursorPosition } = pending;
+      const { key, fromFloating, cursorPosition, cursorEnd, inputValue } = pending;
       const selector = `input[data-filter-key="${key}"]`;
       const container = fromFloating
         ? document.querySelector('.floating-table-footer tfoot')
         : document.querySelector('#summaryTable tfoot');
       const target = container ? container.querySelector(selector) : document.querySelector(selector);
       if (target) {
-        requestAnimationFrame(() => {
+        // Restore value if needed (prevent value loss during async refresh)
+        if (inputValue !== undefined && target.value !== inputValue) {
+          target.value = inputValue;
+        }
+        // Restore cursor position
+        const pos = Math.min(cursorPosition ?? target.value.length, target.value.length);
+        const end = Math.min(cursorEnd ?? pos, target.value.length);
+        if (document.activeElement !== target) {
           target.focus();
-          const pos = Math.min(cursorPosition ?? target.value.length, target.value.length);
-          if (typeof target.setSelectionRange === 'function') target.setSelectionRange(pos, pos);
-          // Clear after successful restore
-          try { window._pendingFilterFocus = null; } catch (_) { /* intentional no-op */ }
-        });
+        }
+        if (typeof target.setSelectionRange === 'function') {
+          target.setSelectionRange(pos, end);
+        }
+        // Clear after successful restore
+        try { window._pendingFilterFocus = null; } catch (_) { /* intentional no-op */ }
       }
     };
   }

@@ -47,37 +47,33 @@ export function attachRender(vm) {
     if (!vm.lazyData || !vm.adapter) return;
 
     try {
-      // Preserve only container scroll to avoid window jumps/flicker
+      // Preserve container and window scroll to avoid jumps
       const container = document.getElementById('virtual-scroll-container');
       const prevCX = container ? container.scrollLeft : null;
       const prevCY = container ? container.scrollTop : null;
-      try { if (container) container.style.overflowAnchor = 'none'; } catch(_) {
-      // Ignore render errors
-    }
+      const prevWinY = window.scrollY;
+      const prevWinX = window.scrollX;
+      try { if (container) container.style.overflowAnchor = 'none'; } catch(_) {}
 
       const visibleData = vm.selectors ? vm.selectors.getLazyVisibleData() : vm.getLazyVisibleData();
       const ok = vm.adapter.setData(visibleData);
       if (ok) {
-        try { vm.syncExpandCollapseAllButtonLabel && vm.syncExpandCollapseAllButtonLabel(); } catch (_) {
-          // Ignore button label sync errors
-        }
+        try { vm.syncExpandCollapseAllButtonLabel && vm.syncExpandCollapseAllButtonLabel(); } catch (_) {}
       }
-      // Restore container scroll on the very next frame only (no window.scrollTo)
-      requestAnimationFrame(() => {
+      
+      // Restore scroll positions immediately and on next frame
+      const restore = () => {
         try {
           if (container && prevCY != null) container.scrollTop = prevCY;
           if (container && prevCX != null) container.scrollLeft = prevCX;
-        } catch(_) {
-      // Ignore render errors
-    }
-        try { if (container) container.style.overflowAnchor = ''; } catch(_) {
-      // Ignore render errors
-    }
-      });
-      // Microtask fallback
-      Promise.resolve().then(() => { try { if (container && prevCY != null) container.scrollTop = prevCY; if (container && prevCX != null) container.scrollLeft = prevCX; if (container) container.style.overflowAnchor = ''; } catch(_) {
-      // Ignore render errors
-    } });
+          if (window.scrollY !== prevWinY || window.scrollX !== prevWinX) {
+            window.scrollTo(prevWinX, prevWinY);
+          }
+          if (container) container.style.overflowAnchor = '';
+        } catch(_) {}
+      };
+      restore();
+      requestAnimationFrame(restore);
     } catch (e) {
       console.warn('render.refreshVirtualTable error', e);
     }
