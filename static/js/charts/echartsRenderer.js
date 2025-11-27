@@ -62,18 +62,20 @@ export function renderMultiLineChartEcharts(container, data, options = {}) {
     }
   }, { capture: true, passive: false });
 
+  // use real container height for consistent grid layout
+  const realHeight = el.clientHeight || el.getBoundingClientRect().height || options.height || 520;
   const base = {
     fromTs: options.fromTs || null,
     toTs: options.toTs || null,
-    height: options.height || (el.clientHeight || 600),
+    height: realHeight,
     interval: options.interval || (options.stepMs === 5 * 60e3 ? '5m' : (options.stepMs === 3600e3 ? '1h' : undefined)),
     noFiveMinData: !!options.noFiveMinData,
   };
   const { main, slider } = buildMultiOption({ data, ...base });
   try {
     const step = getStepMs(base.interval, undefined);
-    option.tooltip = {
-      ...(option.tooltip || {}),
+    main.tooltip = {
+      ...(main.tooltip || {}),
       formatter: makeBarLineLikeTooltip({ chart, stepMs: step }),
       backgroundColor: 'rgba(255,255,255,0.98)',
       borderColor: '#e6e9ef',
@@ -88,10 +90,13 @@ export function renderMultiLineChartEcharts(container, data, options = {}) {
     sliderChart.setOption(slider, { notMerge: true, lazyUpdate: true });
   }
   try { applyZoomRange(chart); } catch (_) { }
+  try { if (sliderChart) applyZoomRange(sliderChart); } catch (_) { }
   try { attachZoom(chart); } catch (_) { }
 
   function update(newData = data, newOptions = {}) {
-    const merged = { ...base, ...newOptions };
+    // use current container height for grid calculation
+    const currentHeight = el.clientHeight || el.getBoundingClientRect().height || base.height;
+    const merged = { ...base, ...newOptions, height: currentHeight };
     const { main: nextMain, slider: nextSlider } = buildMultiOption({ data: newData, ...merged });
     try {
       const step = getStepMs(merged.interval, undefined);
@@ -111,6 +116,7 @@ export function renderMultiLineChartEcharts(container, data, options = {}) {
       sliderChart.setOption(nextSlider, { notMerge: true, lazyUpdate: true });
     }
     try { applyZoomRange(chart); } catch (_) { }
+    try { if (sliderChart) applyZoomRange(sliderChart); } catch (_) { }
   }
 
   function dispose() {

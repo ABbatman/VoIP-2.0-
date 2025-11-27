@@ -41,9 +41,13 @@ export function initChart(container) {
   } catch (_) { }
   const chart = echarts.init(el);
 
-  // Adaptive resize observer
+  // Adaptive resize observer with debounce to avoid resize during init
+  let resizeTimeout = null;
   const ro = new ResizeObserver(() => {
-    try { chart.resize(); } catch (_) { }
+    if (resizeTimeout) clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(() => {
+      try { chart.resize(); } catch (_) { }
+    }, 100);
   });
   ro.observe(el);
 

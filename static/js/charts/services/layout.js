@@ -1,39 +1,52 @@
 // static/js/charts/services/layout.js
 // layout utils for charts
 
+// Unified grid layout for 4 charts - each gets exactly 25% of usable height
+export function computeChartGrids(heightPx) {
+  const topPad = 8;
+  const bottomPad = 8;
+  const gap = 8;
+  const totalHeight = Math.max(200, heightPx || 520);
+  // usable = total - top padding - bottom padding - 3 gaps between 4 charts
+  const usable = totalHeight - topPad - bottomPad - gap * 3;
+  // each chart gets exactly 25% of usable space
+  const h = Math.floor(usable / 4);
+  const grids = Array.from({ length: 4 }, (_, i) => ({
+    left: 40,
+    right: 16,
+    top: topPad + i * (h + gap),
+    height: h,
+  }));
+  return grids;
+}
+
 export function ensureFixedChartHeight(host, mount) {
-  // Keep charts a uniform, smaller height (fixed 260px)
+  // use actual mount height on large screens
   const fallback = 520;
-  const controlsEl = document.getElementById('charts-controls');
-  const controlsH = controlsEl ? (controlsEl.clientHeight || controlsEl.getBoundingClientRect().height || 0) : 0;
-  // Container height may be too small immediately after show; fallback to viewport
-  const containerRect = host?.getBoundingClientRect?.() || { top: 0, height: 0 };
-  const containerH = Number(host?.clientHeight || containerRect.height || 0);
+  const mountEl = mount || document.getElementById('chart-area-1');
+  const mountH = mountEl ? (mountEl.clientHeight || mountEl.getBoundingClientRect().height || 0) : 0;
+  
+  // large screen: use actual container height
+  if (mountH > 600) {
+    try {
+      if (mountEl) mountEl.dataset.fixedHeight = String(mountH);
+    } catch (_) {}
+    return mountH;
+  }
+  
+  // fallback for small screens or when height not yet computed
   const viewportH = Math.max(
     Number(window?.innerHeight || 0),
     Number(document?.documentElement?.clientHeight || 0),
     fallback
   );
-  const top = Number(containerRect.top || 0);
-  let base = containerH;
-  if (!base || base < 300) {
-    // Estimate available space from viewport bottom to container top
-    base = Math.max(fallback, viewportH - top - 24);
-  }
-  const fixed = 850; // px
+  const hostRect = host?.getBoundingClientRect?.() || { top: 0 };
+  const top = Number(hostRect.top || 0);
+  const computed = Math.max(fallback, viewportH - top - 100);
+  const result = Math.min(computed, 850);
+  
   try {
-    if (host) {
-      // Ensure host expands to accommodate mount height
-      // Ensure host expands to accommodate mount height
-      // host.style.minHeight = `${fixed + controlsH + 8}px`;
-    }
-    if (mount) {
-      // mount.style.height = `${fixed}px`;
-      // mount.style.minHeight = `${fixed}px`;
-      mount.dataset.fixedHeight = String(fixed);
-    }
-  } catch (_) {
-    // ignore
-  }
-  return fixed;
+    if (mountEl) mountEl.dataset.fixedHeight = String(result);
+  } catch (_) {}
+  return result;
 }

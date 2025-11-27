@@ -26,11 +26,16 @@ export function setRange(range) {
 }
 
 export function applyRange(chart) {
-  // apply global zoom range to chart dataZoom components, if any
+  // apply global zoom range to existing dataZoom components only (do not add new ones)
   try {
     const zr = getRange();
     if (!zr || !Number.isFinite(zr.fromTs) || !Number.isFinite(zr.toTs) || zr.toTs <= zr.fromTs) return;
-    chart.setOption({ dataZoom: [ { startValue: zr.fromTs, endValue: zr.toTs }, { startValue: zr.fromTs, endValue: zr.toTs } ] }, { lazyUpdate: true });
+    const opt = chart.getOption();
+    const existing = opt && opt.dataZoom;
+    if (!Array.isArray(existing) || existing.length === 0) return;
+    // update only existing dataZoom components
+    const updates = existing.map(() => ({ startValue: zr.fromTs, endValue: zr.toTs }));
+    chart.setOption({ dataZoom: updates }, { lazyUpdate: true });
   } catch(_) {}
 }
 

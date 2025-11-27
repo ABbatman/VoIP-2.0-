@@ -19,6 +19,7 @@ from app.db.base import metadata as target_metadata  # shared MetaData
 from app.db.base import ASYNC_DATABASE_URL
 # Ensure tables are registered on metadata
 from app.models import metrics_table  # noqa: F401
+from app.models import shared_state_table  # noqa: F401
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

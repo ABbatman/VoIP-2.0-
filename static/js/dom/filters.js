@@ -70,8 +70,11 @@ export function initFilters(isStateLoaded) {
       (!fromTime || !fromTime.value || fromTime.value.trim() === "") &&
       (!toTime || !toTime.value || toTime.value.trim() === "");
 
-    // Additional check: if there's state in URL, don't set default dates even if inputs appear empty
-    const hasUrlState = window.location.hash && window.location.hash.startsWith("#state=");
+    // Additional check: if there's state in URL (short link or legacy hash), don't set default dates
+    const urlParams = new URLSearchParams(window.location.search);
+    const hasShortLink = !!urlParams.get("s");
+    const hasLegacyHash = window.location.hash && window.location.hash.startsWith("#state=");
+    const hasUrlState = hasShortLink || hasLegacyHash;
 
     console.log("🔍 initFilters: Checking if inputs are empty:", {
       fromDate: fromDate?.value,

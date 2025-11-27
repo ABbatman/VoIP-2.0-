@@ -11,7 +11,8 @@ import { initEllipsisTooltip } from "../dom/ellipsis-tooltip.js";
 import { initYColumnToggle } from "../dom/hideYColumns.js";
 import { initTopScrollbar } from "../dom/top-scrollbar.js";
 import { initLayoutSync, updateReverseButtonState } from "../dom/layout.js";
-import { initUrlStateSync, loadStateFromUrl } from "../state/urlState.js";
+import { initUrlStateSync, loadStateFromUrl, hasUrlState } from "../state/urlState.js";
+import { hasShortLinkId, loadStateFromShortLink } from "../state/shortLinkState.js";
 import { isReverseMode } from "../state/appState.js";
 import { subscribe } from "../state/eventBus.js";
 import { initStickyFooter } from "../dom/sticky-table-chrome.js";
@@ -67,10 +68,19 @@ export class AppInitializer {
   }
 
   /**
-   * Load initial state from URL
+   * Load initial state from URL (short link or legacy hash)
    */
   loadInitialState() {
     console.log("📥 App Initializer: Loading state from URL...");
+    
+    // Check for short link first (async loading)
+    if (hasShortLinkId()) {
+      console.log("🔗 App Initializer: Short link detected, loading async...");
+      // Return marker; actual state will be loaded async
+      return { _loadingFromShortLink: true };
+    }
+    
+    // Legacy hash loading (sync)
     const loadedState = loadStateFromUrl();
     
     if (loadedState) {
@@ -204,50 +214,73 @@ export class AppInitializer {
    * Auto-trigger find if state was loaded from URL
    */
   autoTriggerIfNeeded(loadedState) {
+    // Handle short link async loading
+    if (loadedState && loadedState._loadingFromShortLink) {
+      console.log('🔗 App Initializer: Waiting for short link state to load...');
+      
+      // Load state from short link and then trigger Find
+      loadStateFromShortLink().then((state) => {
+        if (state) {
+          console.log('🔗 App Initializer: Short link state loaded, triggering Find...');
+          this._triggerFindAfterDelay();
+        } else {
+          console.log('🔗 App Initializer: No state from short link, using defaults');
+        }
+      }).catch((e) => {
+        console.error('🔗 App Initializer: Failed to load short link state:', e);
+      });
+      return;
+    }
+
     if (loadedState) {
       console.log('▶️ App Initializer: Auto-triggering "Find" for loaded URL state...');
-
-      // Add delay to ensure filters are restored from URL state
-      setTimeout(() => {
-        console.log('▶️ App Initializer: Executing auto-trigger "Find" after delay...');
-
-        // Check if a manual find is already in progress (prevents duplicate triggers)
-        if (window._isManualFindInProgress) {
-          console.log('▶️ App Initializer: Manual find in progress, skipping auto-trigger');
-          return;
-        }
-
-        // Check if filters are actually populated before triggering Find
-        const fromDateInput = document.getElementById("fromDate");
-        const toDateInput = document.getElementById("toDate");
-        const fromTimeInput = document.getElementById("fromTime");
-        const toTimeInput = document.getElementById("toTime");
-
-        const filtersPopulated = fromDateInput?.value && toDateInput?.value &&
-                                 fromTimeInput?.value && toTimeInput?.value;
-
-        console.log('▶️ App Initializer: Filters populated check:', {
-          fromDate: fromDateInput?.value,
-          toDate: toDateInput?.value,
-          fromTime: fromTimeInput?.value,
-          toTime: toTimeInput?.value,
-          filtersPopulated,
-          isManualFindInProgress: window._isManualFindInProgress
-        });
-
-        if (filtersPopulated) {
-          console.log('▶️ App Initializer: Filters are populated, triggering Find...');
-          const findButton = document.getElementById("findButton");
-          if (findButton) {
-            findButton.click();
-          } else {
-            console.warn("⚠️ App Initializer: Find button not found");
-          }
-        } else {
-          console.warn('⚠️ App Initializer: Filters are not populated, skipping auto-trigger Find');
-        }
-      }, 500); // Wait 500ms for filters to be restored
+      this._triggerFindAfterDelay();
     }
+  }
+
+  /**
+   * Trigger Find button after delay (shared logic)
+   */
+  _triggerFindAfterDelay() {
+    setTimeout(() => {
+      console.log('▶️ App Initializer: Executing auto-trigger "Find" after delay...');
+
+      // Check if a manual find is already in progress
+      if (window._isManualFindInProgress) {
+        console.log('▶️ App Initializer: Manual find in progress, skipping auto-trigger');
+        return;
+      }
+
+      // Check if filters are actually populated
+      const fromDateInput = document.getElementById("fromDate");
+      const toDateInput = document.getElementById("toDate");
+      const fromTimeInput = document.getElementById("fromTime");
+      const toTimeInput = document.getElementById("toTime");
+
+      const filtersPopulated = fromDateInput?.value && toDateInput?.value &&
+                               fromTimeInput?.value && toTimeInput?.value;
+
+      console.log('▶️ App Initializer: Filters populated check:', {
+        fromDate: fromDateInput?.value,
+        toDate: toDateInput?.value,
+        fromTime: fromTimeInput?.value,
+        toTime: toTimeInput?.value,
+        filtersPopulated,
+        isManualFindInProgress: window._isManualFindInProgress
+      });
+
+      if (filtersPopulated) {
+        console.log('▶️ App Initializer: Filters are populated, triggering Find...');
+        const findButton = document.getElementById("findButton");
+        if (findButton) {
+          findButton.click();
+        } else {
+          console.warn("⚠️ App Initializer: Find button not found");
+        }
+      } else {
+        console.warn('⚠️ App Initializer: Filters are not populated, skipping auto-trigger Find');
+      }
+    }, 500); // Wait 500ms for filters to be restored
   }
 
   /**

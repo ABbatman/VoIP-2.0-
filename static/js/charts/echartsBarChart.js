@@ -9,6 +9,8 @@ import { buildBarSeries } from './echarts/builders/BarChartBuilder.js';
 import { subscribe } from '../state/eventBus.js';
 import { attachCapsuleTooltip, detachCapsuleTooltip } from './echarts/helpers/capsuleTooltip.js';
 import { initChart, setOptionWithZoomSync } from './echarts/renderer/EchartsRenderer.js';
+import { getRange } from './echarts/services/zoomManager.js';
+import { computeChartGrids } from './services/layout.js';
 
 function ensureContainer(container) {
   if (typeof container === 'string') {
@@ -168,6 +170,10 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
     const step = Number(opts.stepMs) || getStepMs(opts.interval);
     const dayMs = 24 * 3600e3;
 
+    // use real container height for grid calculation
+    const realHeight = el.clientHeight || el.getBoundingClientRect().height || opts.height || 520;
+    const grids = computeChartGrids(realHeight);
+
     const centers = buildCenters(fromTs, toTs, step);
 
     const setsT = makePairSets(opts, d, (Array.isArray(opts.tCallsSeries) && opts.tCallsSeries.length) ? opts.tCallsSeries : (Array.isArray(d?.TCalls) ? d.TCalls : []), centers);
@@ -197,10 +203,8 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
       // Ignore zoom range init errors
     }
 
-    // compute 4 grids
-    const grids = Array.from({ length: 4 }, (_, i) => ({ left: 40, right: 16, top: topPad + i * (h + gap), height: h }));
     // Slider grid (for separate instance)
-    const sliderGrid = { left: 40, right: 16, top: 4, bottom: 4, height: 40 }; // Full height in slider container
+    const sliderGrid = { left: 40, right: 16, top: 4, bottom: 4, height: 40 };
     const xAxes = grids.map((g, i) => ({
       type: 'time', gridIndex: i, min: Number.isFinite(fromTs) ? fromTs : null, max: Number.isFinite(toTs) ? toTs : null,
       axisLabel: { color: '#6e7781' },
@@ -392,8 +396,9 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
           throttle: 80,
           backgroundColor: 'rgba(0,0,0,0)',
           fillerColor: 'rgba(79,134,255,0.12)',
-          showDataShadow: true, // Show shadow in slider
-          dataBackground: { lineStyle: { color: '#4f86ff', width: 1 }, areaStyle: { color: 'rgba(79,134,255,0.18)' } }
+          showDataShadow: false,
+          dataBackground: { lineStyle: { opacity: 0 }, areaStyle: { opacity: 0 } },
+          selectedDataBackground: { lineStyle: { opacity: 0 }, areaStyle: { opacity: 0 } }
         },
         {
           type: 'inside',
@@ -406,13 +411,14 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
         }
       ],
       series: [
-        // Dummy series for background preview (using TCalls data)
+        // TCalls only - no prev data, only current
         {
           type: 'bar',
-          data: setsT.map(d => [d.time, d.value]),
+          data: (setsT.curr || []).filter(d => d && d[1] != null),
           xAxisIndex: 0,
           yAxisIndex: 0,
-          itemStyle: { color: '#ddd' },
+          barWidth: 3,
+          itemStyle: { color: colorMain },
           silent: true,
           animation: false
         }
@@ -675,6 +681,17 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
     setOptionWithZoomSync(sliderChart, slider);
   }
 
+  // sync both charts with current zoom range
+  try {
+    const zr = getRange();
+    if (zr && Number.isFinite(zr.fromTs) && Number.isFinite(zr.toTs)) {
+      chart.setOption({ dataZoom: [{ startValue: zr.fromTs, endValue: zr.toTs }] }, { lazyUpdate: true });
+      if (sliderChart) {
+        sliderChart.setOption({ dataZoom: [{ startValue: zr.fromTs, endValue: zr.toTs }, { startValue: zr.fromTs, endValue: zr.toTs }] }, { lazyUpdate: true });
+      }
+    }
+  } catch (_) { }
+
   // react to Suppliers checkbox toggle: re-render overlay labels visibility
   try {
     unsubscribeToggle = subscribe('charts:bar:perProviderChanged', () => {
@@ -688,6 +705,8 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
 
   const computeStepWidthPx = () => {
     try {
+      // skip if chart is disposed
+      if (chart.isDisposed && chart.isDisposed()) return null;
       const step = Number(base.stepMs) || getStepMs(base.interval);
       // prefer current zoom start; else fromTs; else first data point
       const zr = (typeof window !== 'undefined') ? window.__chartsZoomRange : null;
@@ -705,6 +724,8 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
   };
 
   const applyDynamicBarWidth = () => {
+    // skip if chart is disposed
+    if (chart.isDisposed && chart.isDisposed()) return;
     const w = computeStepWidthPx();
     if (Number.isFinite(w)) {
       // leave a small gap between bars (~8%)

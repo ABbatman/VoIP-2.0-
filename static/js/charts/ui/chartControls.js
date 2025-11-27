@@ -133,7 +133,9 @@ export function initChartTypeDropdown() {
   const controls = ensureControls();
   // types
   let available = listTypes();
-  if (!available || available.length === 0) available = ['line', 'bar', 'stream'];
+  if (!available || available.length === 0) available = ['line', 'bar'];
+  // filter out archived stream type
+  available = available.filter(t => t !== 'stream');
   const typeItems = available.map(t => ({ value: t, label: t.charAt(0).toUpperCase() + t.slice(1) }));
   // interval
   const stepItems = [ { value: '5m', label: '5m' }, { value: '1h', label: '1h' }, { value: '1d', label: '1d' } ];

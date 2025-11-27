@@ -162,8 +162,7 @@ export function buildBarSeries({ setsT, setsA, setsM, setsC, centers, interval, 
     data: setsC.prev
   });
 
-  // preview (slider) before overlays
-  list.push({ id: 'preview', name: 'Preview', type: 'bar', xAxisIndex: 4, yAxisIndex: 4, large: true, largeThreshold: 300, label: { show: false, formatter: (item) => { /* no label for missing */ if (item.value === undefined || item.value === null || item.value === '') { return ''; } return Number(item.value).toFixed(1); } }, silent: true, barWidth: Math.max(1, Math.floor(bw * 0.66)), itemStyle: { color: '#4f86ff', opacity: 0.45 }, emphasis: { disabled: true }, tooltip: { show: false }, data: setsT.curr });
+  // preview series removed - slider has its own chart instance
   // overlay labels (single call per metric) appended last
   try {
     const labelsASR = (labels && labels.ASR) || {};

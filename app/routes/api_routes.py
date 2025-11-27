@@ -5,6 +5,7 @@ from app import config
 from app.handlers.metrics_handler import MetricsHandler, Metrics5mHandler, Metrics1hHandler
 from app.handlers.suggest_handler import SuggestHandler
 from app.handlers.main_handler import MainHandler
+from app.handlers.shared_state_handler import SharedStateSaveHandler, SharedStateLoadHandler
 from app.utils.vite import vite_script_tag
 from app.observability.metrics import PrometheusMetricsHandler, instrument_tornado
 from markupsafe import Markup
@@ -48,6 +49,9 @@ def make_app():
         (r"/api/metrics/1h", Metrics1hHandler),
         # Suggest endpoints for typeahead (prefix filter by kind)
         (r"/api/suggest/(customer|supplier|destination)", SuggestHandler),
+        # Shared state endpoints (short links)
+        (r"/api/state", SharedStateSaveHandler),
+        (r"/api/state/([a-zA-Z0-9]+)", SharedStateLoadHandler),
         # expose /metrics for Prometheus
         (r"/metrics", PrometheusMetricsHandler),
         (

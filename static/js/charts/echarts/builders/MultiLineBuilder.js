@@ -1,21 +1,12 @@
 // static/js/charts/echarts/builders/MultiLineBuilder.js
 // Build option for multi-line ECharts chart (no zoom policy, no tooltip formatter)
 import { toPairs, withGapBreaks, shiftForwardPairs } from '../helpers/dataTransform.js';
+import { getStepMs } from '../helpers/time.js';
 import { MAIN_BLUE } from '../helpers/colors.js';
+import { computeChartGrids } from '../../services/layout.js';
 
 function computeGrids(heightPx) {
-  const topPad = 8;
-  const bottomPad = 20; // Reverted to small padding as slider is external
-  const gap = 8;
-  const usable = Math.max(160, (heightPx || 600) - topPad - bottomPad - gap * 3);
-  const h = Math.floor(usable / 4);
-  const grids = Array.from({ length: 4 }, (_, i) => ({
-    left: 40,
-    right: 16,
-    top: topPad + i * (h + gap),
-    height: h,
-  }));
-  return grids;
+  return computeChartGrids(heightPx);
 }
 
 function computeSliderGrid() {
@@ -30,14 +21,19 @@ export function seriesLine(name, data, xAxisIndex, yAxisIndex, color, { area = f
     yAxisIndex,
     showSymbol: false,
     ...(sampling && sampling !== 'none' ? { sampling } : {}),
-    symbolSize: 0,
+    symbolSize: 6,
     connectNulls: !!connectNulls,
     smooth: (typeof smooth === 'number' ? smooth : !!smooth),
     ...(smoothMonotone ? { smoothMonotone } : {}),
     lineStyle: { width: 1.8, color },
+    itemStyle: { color },
     areaStyle: area ? { opacity: 0.15, color } : undefined,
     data,
-    emphasis: { focus: 'series' },
+    emphasis: {
+      focus: 'series',
+      itemStyle: { color: '#ff3b30', borderColor: '#fff', borderWidth: 2 },
+      symbolSize: 10
+    },
   };
 }
 
@@ -192,8 +188,7 @@ export function buildMultiOption({ data, fromTs, toTs, height, interval }) {
     axisPointer: { link: [{ xAxisIndex: [0, 1, 2, 3] }], lineStyle: { color: '#999' }, snap: true, label: { show: false } },
     tooltip: { trigger: 'axis', axisPointer: { type: 'cross', snap: true, label: { show: false } }, confine: true, order: 'valueAsc' },
     dataZoom: [
-      { type: 'inside', xAxisIndex: [0, 1, 2, 3], throttle: 80, zoomOnMouseWheel: 'shift', moveOnMouseWheel: false, moveOnMouseMove: true, brushSelect: false },
-      { type: 'slider', xAxisIndex: 0, height: 32, bottom: 6, throttle: 80, showDataShadow: true, dataBackground: { lineStyle: { color: MAIN_BLUE, width: 1 }, areaStyle: { color: 'rgba(79,134,255,0.18)' } } }
+      { type: 'inside', xAxisIndex: [0, 1, 2, 3], throttle: 80, zoomOnMouseWheel: 'shift', moveOnMouseWheel: false, moveOnMouseMove: true, brushSelect: false }
     ],
     series: [tcalls, tcallsPrev, asrPrev, minutesPrev, acdPrev, asr, minutes, acd],
     visualMap: [
@@ -250,8 +245,9 @@ export function buildMultiOption({ data, fromTs, toTs, height, interval }) {
         throttle: 80,
         backgroundColor: 'rgba(0,0,0,0)',
         fillerColor: 'rgba(79,134,255,0.12)',
-        showDataShadow: true,
-        dataBackground: { lineStyle: { color: MAIN_BLUE, width: 1 }, areaStyle: { color: 'rgba(79,134,255,0.18)' } }
+        showDataShadow: false,
+        dataBackground: { lineStyle: { opacity: 0 }, areaStyle: { opacity: 0 } },
+        selectedDataBackground: { lineStyle: { opacity: 0 }, areaStyle: { opacity: 0 } }
       },
       {
         type: 'inside',
@@ -262,14 +258,16 @@ export function buildMultiOption({ data, fromTs, toTs, height, interval }) {
       }
     ],
     series: [
+      // TCalls only - with gap breaks to avoid connecting empty regions
       {
         type: 'line',
-        data: pairsT, // Use TCalls for background
+        data: withGapBreaks(pairsT, getStepMs(interval)),
         xAxisIndex: 0,
         yAxisIndex: 0,
         showSymbol: false,
-        lineStyle: { width: 1, color: '#ddd' },
-        areaStyle: { color: '#eee' },
+        connectNulls: false,
+        lineStyle: { width: 1, color: MAIN_BLUE },
+        areaStyle: { color: 'rgba(79,134,255,0.15)' },
         silent: true,
         animation: false
       }
