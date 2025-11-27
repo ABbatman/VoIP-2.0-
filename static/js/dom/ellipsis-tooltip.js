@@ -13,34 +13,45 @@ export function initEllipsisTooltip() {
     document.body.appendChild(tooltipEl);
   }
 
+  // Bind to virtual scroll container (covers all table rows)
+  const virtualContainer = document.getElementById('virtual-scroll-container');
+  if (virtualContainer && !virtualContainer._ellipsisBound) {
+    virtualContainer.addEventListener('mouseover', onOver, { passive: true });
+    virtualContainer.addEventListener('mouseout', onOut, { passive: true });
+    virtualContainer.addEventListener('mousemove', onMove, { passive: true });
+    virtualContainer._ellipsisBound = true;
+  }
+
+  // Fallback: bind to tableBody if virtual container not found
   const tableBody = document.getElementById('tableBody');
-  const tableHead = document.querySelector('#summaryTable thead');
-  const tableFoot = document.querySelector('#summaryTable tfoot');
-  if (tableBody) {
+  if (tableBody && !tableBody._ellipsisBound && !virtualContainer) {
     tableBody.addEventListener('mouseover', onOver, { passive: true });
     tableBody.addEventListener('mouseout', onOut, { passive: true });
     tableBody.addEventListener('mousemove', onMove, { passive: true });
-  }
-  if (tableHead) {
-    tableHead.addEventListener('mouseover', onOver, { passive: true });
-    tableHead.addEventListener('mouseout', onOut, { passive: true });
-    tableHead.addEventListener('mousemove', onMove, { passive: true });
-  }
-  if (tableFoot) {
-    tableFoot.addEventListener('mouseover', onOver, { passive: true });
-    tableFoot.addEventListener('mouseout', onOut, { passive: true });
-    tableFoot.addEventListener('mousemove', onMove, { passive: true });
+    tableBody._ellipsisBound = true;
   }
 
-  // Also bind to floating header container if present, and observe for future insertions
+  // Bind to floating elements
   bindFloatingHeaderIfPresent();
   observeFloatingHeader();
-  // And floating footer
   bindFloatingFooterIfPresent();
   observeFloatingFooter();
-  // Update floating footer when Y visibility changes
-  const rebinder = () => { bindFloatingFooterIfPresent(); };
-  window.addEventListener('tableState:yVisibilityChanged', rebinder);
+
+  // Re-bind when table becomes visible (virtual container may be created later)
+  observeVirtualContainer();
+}
+
+function observeVirtualContainer() {
+  const observer = new MutationObserver(() => {
+    const vc = document.getElementById('virtual-scroll-container');
+    if (vc && !vc._ellipsisBound) {
+      vc.addEventListener('mouseover', onOver, { passive: true });
+      vc.addEventListener('mouseout', onOut, { passive: true });
+      vc.addEventListener('mousemove', onMove, { passive: true });
+      vc._ellipsisBound = true;
+    }
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
 }
 
 function bindFloatingHeaderIfPresent() {
@@ -78,42 +89,25 @@ function observeFloatingFooter() {
 }
 
 function onOver(e) {
-  // Don't interfere with existing ASR tooltip in body
+  // Don't interfere with existing ASR tooltip
   if (e.target.closest('.asr-cell-hover')) return;
-  // Ignore clicks over controls in header
-  if (e.target.closest('.y-column-toggle-btn, .sort-arrow')) return;
-  // Ignore inputs (user typing) in footer
-  if (e.target.closest('input')) return;
+  // Ignore controls
+  if (e.target.closest('.y-column-toggle-btn, .sort-arrow, .toggle-btn, input')) return;
 
-  // Detect context: body td or header label
   const td = e.target.closest('td');
-  const thLabel = e.target.closest('.th-label');
-  const th = thLabel ? thLabel.closest('th') : e.target.closest('th');
+  if (!td) return;
 
-  let clampTarget = null;
-  let text = '';
+  // Get full text from data attribute
+  const fullText = td.getAttribute('data-full-text') || td.getAttribute('data-filter-value') || '';
+  if (!fullText) return;
 
-  if (td) {
-    clampTarget = findEllipsisTarget(e.target) || td;
-    if (clampTarget && isEllipsisActive(clampTarget) && isActuallyTruncated(clampTarget)) {
-      text = (
-        td.getAttribute('data-full-text') ||
-        td.getAttribute('data-filter-value') ||
-        clampTarget.getAttribute('data-full-text') ||
-        ''
-      ).trim() || (clampTarget.textContent || '').trim();
-    }
-  } else if (th && thLabel) {
-    clampTarget = findEllipsisTarget(thLabel) || thLabel;
-    if (clampTarget && isEllipsisActive(clampTarget) && isActuallyTruncated(clampTarget)) {
-      text = (thLabel.getAttribute('data-full-text') || thLabel.textContent || '').trim();
-    }
-  }
+  // Check if text is truncated (overflow)
+  const isTruncated = td.scrollWidth > td.clientWidth + 2;
+  if (!isTruncated) return;
 
-  if (text) {
-    tooltipEl.textContent = text;
-    tooltipEl.classList.remove('is-hidden');
-  }
+  // Show tooltip
+  tooltipEl.textContent = fullText;
+  tooltipEl.classList.remove('is-hidden');
 }
 
 function onOut() {
@@ -127,31 +121,3 @@ function onMove(e) {
   tooltipEl.style.left = `${x}px`;
   tooltipEl.style.top = `${y}px`;
 }
-
-function findEllipsisTarget(start) {
-  let node = start;
-  const limit = 5; // don't traverse too far
-  let steps = 0;
-  while (node && steps < limit) {
-    const cs = window.getComputedStyle(node);
-    if (cs && cs.textOverflow === 'ellipsis') return node;
-    node = node.parentElement;
-    steps += 1;
-  }
-  return null;
-}
-
-function isEllipsisActive(el) {
-  const cs = window.getComputedStyle(el);
-  return cs && cs.overflow === 'hidden' && cs.textOverflow === 'ellipsis' && cs.whiteSpace === 'nowrap';
-}
-
-function isActuallyTruncated(el) {
-  // Prefer the element itself; if it has a single child text wrapper, compare that too
-  if (el.scrollWidth > el.clientWidth + 1) return true;
-  const child = el.firstElementChild;
-  if (child && child.scrollWidth > el.clientWidth + 1) return true;
-  return false;
-}
-
-

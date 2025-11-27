@@ -142,9 +142,9 @@ export class VirtualTableAdapter {
 
     
     return [
-      `<td role="cell" class="main-cell" data-filter-value="${rowData.main || ''}">${toggleBtn} ${rowData.main || ''}</td>`,
-      `<td role="cell" class="peer-cell" data-filter-value=""></td>`, // Empty for main rows
-      `<td role="cell" class="destination-cell" data-filter-value="${rowData.destination || ''}">${rowData.destination || ''}</td>`,
+      `<td role="cell" class="main-cell" data-filter-value="${rowData.main || ''}" data-full-text="${rowData.main || ''}">${toggleBtn} ${rowData.main || ''}</td>`,
+      `<td role="cell" class="peer-cell" data-filter-value=""></td>`,
+      `<td role="cell" class="destination-cell" data-filter-value="${rowData.destination || ''}" data-full-text="${rowData.destination || ''}">${rowData.destination || ''}</td>`,
       ...metricCells
     ].join('');
   }
@@ -159,8 +159,8 @@ export class VirtualTableAdapter {
     
     return [
       `<td role="cell" class="toggle-cell"></td>`,
-      `<td role="cell" class="peer-cell" data-filter-value="${rowData.peer || ''}">${toggleBtn} ${rowData.peer || ''}</td>`,
-      `<td role="cell" class="destination-cell" data-filter-value="${rowData.destination || ''}">${rowData.destination || ''}</td>`,
+      `<td role="cell" class="peer-cell" data-filter-value="${rowData.peer || ''}" data-full-text="${rowData.peer || ''}">${toggleBtn} ${rowData.peer || ''}</td>`,
+      `<td role="cell" class="destination-cell" data-filter-value="${rowData.destination || ''}" data-full-text="${rowData.destination || ''}">${rowData.destination || ''}</td>`,
       ...metricCells
     ].join('');
   }
@@ -179,9 +179,9 @@ export class VirtualTableAdapter {
           <span class="date-part">${dateKey}</span>
           <span class="time-part">${timeKey}</span>
         </div>
-      </td>`, // Date left, time right in same cell (wrapped to prevent overflow)
-      `<td role="cell" class="peer-cell" data-filter-value="${rowData.peer || ''}">${rowData.peer || ''}</td>`, // ✅ Show peer name in hourly rows
-      `<td role="cell" class="destination-cell" data-filter-value="${rowData.destination || ''}">${rowData.destination || ''}</td>`,
+      </td>`,
+      `<td role="cell" class="peer-cell" data-filter-value="${rowData.peer || ''}" data-full-text="${rowData.peer || ''}">${rowData.peer || ''}</td>`,
+      `<td role="cell" class="destination-cell" data-filter-value="${rowData.destination || ''}" data-full-text="${rowData.destination || ''}">${rowData.destination || ''}</td>`,
       ...metricCells
     ].join('');
   }

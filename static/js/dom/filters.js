@@ -10,6 +10,7 @@ import {
   setFilters,
   setUI,
   setShowTable,
+  getUI,
 } from "../state/appState.js";
 import { subscribe } from "../state/eventBus.js";
 import { saveStateToUrl } from "../state/urlState.js";
@@ -545,31 +546,36 @@ async function handleFindClick() {
 }
 
 /**
- * Handles the "Summary Table" button click. Shows the detailed table.
- * CONTRACT:
- * - Table is a consumer and must NOT affect charts.
- * - If a zoom is active, override ONLY request params here; do not update inputs or app state.
- * - Do not call setMetricsData() here to avoid influencing charts.
+ * Handles the "Summary Table" button click.
+ * Toggle table visibility. If showing, rebuild with current reverse state.
+ * Does NOT affect charts.
  */
 async function handleSummaryClick() {
   console.log("📊 Summary Table button clicked!");
 
-  // Summary flow should NOT affect charts or global status
-  // Mark summary-only fetch in progress (used by UI guards)
-  try { if (typeof window !== 'undefined') window.__summaryFetchInProgress = true; } catch (_) {
-    // Ignore global flag errors
-  }
-  try { window.__hideTableUntilSummary = false; } catch (_) {
-    // Ignore global flag errors
+  // Check current table visibility
+  const ui = getUI();
+  const isTableVisible = ui && ui.showTable;
+
+  // If table is visible -> hide it (simple toggle)
+  if (isTableVisible) {
+    console.log("📊 Table visible, hiding...");
+    try {
+      const resultsContainer = document.querySelector('.results-display');
+      if (resultsContainer) resultsContainer.classList.add('is-hidden');
+    } catch (_) { }
+    try { setShowTable(false); } catch (_) { }
+    return; // done, no fetch needed
   }
 
-  // Hide table while loading (temporary), flag is cleared above to allow later show
-  try { setShowTable(false); } catch (_) {
-    // Ignore table state errors
-  }
-  hideTableUI();
+  // Table is hidden -> show it (fetch data with current reverse state)
+  console.log("📊 Table hidden, showing with reverse=" + isReverseMode());
 
-  // Reset virtual table state AFTER hiding, not before
+  // Mark summary-only fetch in progress
+  try { if (typeof window !== 'undefined') window.__summaryFetchInProgress = true; } catch (_) { }
+  try { window.__hideTableUntilSummary = false; } catch (_) { }
+
+  // Reset virtual table state
   resetVirtualTableState();
 
   // Clear all saved table column filters before building the new table
@@ -773,34 +779,32 @@ function resetVirtualTableState() {
 
 /**
  * Handles the reverse mode toggle.
+ * Only toggles flag and hides table - no chart redraw, no data refetch.
  */
 function handleReverseClick() {
-  console.log(
-    "🔄 Reverse button clicked. Toggling state and re-fetching data in background."
-  );
+  console.log("🔄 Reverse button clicked. Toggling state only.");
 
-  // 1. Toggle the reverse mode state.
+  // 1. Toggle the reverse mode state
   setReverseMode(!isReverseMode());
 
-  // 2. Immediately hide the table and keep charts visible
-  try { setShowTable(false); } catch (_) {
-    // Ignore table hide errors
-  }
-  try { setUI({ showCharts: true, showModeControls: true }); } catch (_) {
-    // Ignore UI update errors
-  }
-  // Ensure the flow treats table as hidden until explicit Summary click
-  try { window.__hideTableUntilSummary = true; } catch (_) {
-    // Ignore global flag errors
-  }
-  // Clear any existing table filters so they don't eliminate rows after reverse
-  try { clearAllTableFilters(); } catch (_) {
-    // Ignore filter clear errors
-  }
+  // 2. Hide table via CSS class (no DOM rebuild, no chart touch)
+  try {
+    const resultsContainer = document.querySelector('.results-display');
+    if (resultsContainer) resultsContainer.classList.add('is-hidden');
+  } catch (_) { }
+  try { setShowTable(false); } catch (_) { }
 
-  // 3. Trigger a new "Find" operation using current input filters (no zoom override)
-  // The user will see "Finding..." and summary metrics will update. Charts remain visible.
-  handleFindClick();
+  // 3. Mark table as needing rebuild on next Summary click
+  try { window.__tableNeedsRebuild = true; } catch (_) { }
+
+  // 4. Animate button (rotation)
+  try {
+    const btn = document.getElementById('btnReverse');
+    if (btn) {
+      btn.classList.add('reverse-spin');
+      setTimeout(() => btn.classList.remove('reverse-spin'), 300);
+    }
+  } catch (_) { }
 }
 
 /**

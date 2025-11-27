@@ -57,3 +57,13 @@
   color: #fff;
   border-color: #5a6268;
 }
+
+/* Reverse button spin animation on click */
+#btnReverse.reverse-spin {
+  animation: reverse-rotate 0.3s ease-out;
+}
+
+@keyframes reverse-rotate {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(180deg); }
+}

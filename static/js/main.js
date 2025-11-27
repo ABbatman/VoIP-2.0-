@@ -10,6 +10,7 @@ import '/css/hideYColumns.css';
 import '/css/feedback.css';
 import '/css/virtual.css';
 import '/css/renderer.css'; // NEW: Dashboard renderer styles
+import '/css/unified-style.css'; // unified minimal refinements
 import 'flatpickr/dist/flatpickr.min.css';
 import flatpickr from 'flatpickr';
 import morphdom from 'morphdom'; // NEW: DOM patching library

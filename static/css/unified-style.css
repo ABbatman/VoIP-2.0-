@@ -1,0 +1,287 @@
+/* static/css/unified-style.css */
+/* Unified minimal style refinements - clean, professional, cohesive */
+
+/* ===================================================================
+   DESIGN TOKENS EXTENSIONS
+   =================================================================== */
+:root {
+  /* unified border radius */
+  --ds-radius-sm: 4px;
+  --ds-radius-md: 6px;
+  --ds-radius-lg: 8px;
+  --ds-radius-pill: 999px;
+
+  /* unified shadows */
+  --ds-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --ds-shadow-md: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --ds-shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.08);
+
+  /* unified borders */
+  --ds-border-light: #e5e7eb;
+  --ds-border-medium: #d1d5db;
+  --ds-border-strong: #9ca3af;
+
+  /* unified backgrounds */
+  --ds-bg-subtle: #f9fafb;
+  --ds-bg-muted: #f3f4f6;
+  --ds-bg-hover: #f0f1f3;
+
+  /* unified accent (neutral) */
+  --ds-accent-subtle: #6b7280;
+}
+
+/* ===================================================================
+   CHARTS CONTAINER - Remove debug appearance
+   =================================================================== */
+.charts-container {
+  border: 1px solid var(--ds-border-light);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-color-bg, #fff);
+  box-shadow: var(--ds-shadow-sm);
+}
+
+/* ===================================================================
+   TABLE REFINEMENTS - Softer separators
+   =================================================================== */
+
+/* softer metric group borders */
+.results-display__table th:nth-child(3),
+.results-display__table td:nth-child(3) {
+  border-right: 1px solid var(--ds-border-medium) !important;
+}
+
+.results-display__table th:nth-child(4),
+.results-display__table td:nth-child(4),
+.results-display__table th:nth-child(7),
+.results-display__table td:nth-child(7),
+.results-display__table th:nth-child(10),
+.results-display__table td:nth-child(10),
+.results-display__table th:nth-child(13),
+.results-display__table td:nth-child(13),
+.results-display__table th:nth-child(16),
+.results-display__table td:nth-child(16) {
+  border-left: 1px solid var(--ds-border-medium) !important;
+}
+
+/* unified row separator */
+.results-display__table tbody tr {
+  border-bottom: 1px solid var(--ds-border-light);
+}
+
+/* softer hover */
+.results-display__table tbody tr:hover {
+  background-color: var(--ds-bg-hover);
+}
+
+/* softer selected row */
+.results-display__table tr.row-selected td {
+  background-color: #e8f0fe;
+}
+
+/* softer row types */
+.results-display__table .peer-row {
+  background-color: var(--ds-bg-subtle);
+}
+
+.results-display__table .hour-row {
+  background-color: #f5f8fc;
+}
+
+/* ===================================================================
+   TABLE HEADER - Refined
+   =================================================================== */
+.results-display__table th {
+  background-color: var(--ds-bg-muted);
+  border-bottom: 1px solid var(--ds-border-medium);
+}
+
+.results-display__table th::after {
+  box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.04);
+}
+
+.results-display__table thead {
+  border-bottom: 1px solid var(--ds-border-medium);
+}
+
+/* ===================================================================
+   BUTTONS - Unified neutral style
+   =================================================================== */
+
+/* neutral scroll-to-top button */
+.scroll-top-btn,
+.btn.scroll-top-btn {
+  background-color: var(--ds-bg-muted) !important;
+  border-color: var(--ds-border-medium) !important;
+  color: var(--ds-accent-subtle) !important;
+}
+
+.scroll-top-btn:hover,
+.btn.scroll-top-btn:hover {
+  background-color: var(--ds-bg-hover) !important;
+  border-color: var(--ds-border-strong) !important;
+  color: var(--ds-color-fg, #333) !important;
+}
+
+/* toggle button refinement */
+.toggle-btn {
+  border-color: var(--ds-border-light);
+  border-radius: var(--ds-radius-sm);
+}
+
+.toggle-btn:hover {
+  background-color: var(--ds-bg-hover);
+  border-color: var(--ds-border-medium);
+}
+
+/* ===================================================================
+   DROPDOWNS - Unified radius and shadow
+   =================================================================== */
+.charts-dd__button {
+  border-radius: var(--ds-radius-md);
+  border-color: var(--ds-border-light);
+}
+
+.charts-dd__button:hover {
+  border-color: var(--ds-border-medium);
+  box-shadow: var(--ds-shadow-sm);
+}
+
+.charts-dd__menu {
+  border-radius: var(--ds-radius-md);
+  border-color: var(--ds-border-light);
+  box-shadow: var(--ds-shadow-lg);
+}
+
+.charts-dd__item {
+  border-radius: var(--ds-radius-sm);
+}
+
+.charts-dd__item:hover {
+  background: var(--ds-bg-hover);
+}
+
+/* ===================================================================
+   INPUTS - Unified styling
+   =================================================================== */
+.results-display__column-filters input,
+.results-display__filter input,
+.results-display__pagination select {
+  border: 1px solid var(--ds-border-light);
+  border-radius: var(--ds-radius-sm);
+  background: var(--ds-color-bg, #fff);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.results-display__column-filters input:focus,
+.results-display__filter input:focus,
+.results-display__pagination select:focus {
+  outline: none;
+  border-color: var(--ds-color-primary, #2563eb);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+}
+
+/* ===================================================================
+   TOOLTIPS - Unified style is defined in results-display.css
+   =================================================================== */
+
+/* ===================================================================
+   CELL HIGHLIGHTS - Softer colors
+   =================================================================== */
+.cell-positive {
+  background-color: #ecfdf5 !important;
+}
+
+.cell-negative {
+  background-color: #fef2f2 !important;
+}
+
+.cell-critical {
+  background-color: #fee2e2 !important;
+}
+
+/* ===================================================================
+   SORT ARROWS - Refined
+   =================================================================== */
+.sort-arrow {
+  border-radius: var(--ds-radius-sm);
+}
+
+.sort-arrow.active {
+  background: #eef2f7;
+  color: #4b5563;
+  box-shadow: none;
+}
+
+.sort-arrow:hover {
+  background: var(--ds-bg-hover);
+  color: #374151;
+}
+
+/* ===================================================================
+   CHART SLIDER - Clean look
+   =================================================================== */
+.chart-slider {
+  background: transparent;
+}
+
+/* ===================================================================
+   LOADING OVERLAY - Softer
+   =================================================================== */
+.loading-overlay {
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.loading-overlay .spinner {
+  border-color: var(--ds-border-light);
+  border-top-color: var(--ds-color-primary, #2563eb);
+}
+
+/* ===================================================================
+   SUMMARY DISPLAY - Unified
+   =================================================================== */
+.summary-display .metric-item {
+  background: var(--ds-bg-muted);
+  border-radius: var(--ds-radius-md);
+  border: 1px solid var(--ds-border-light);
+}
+
+/* ===================================================================
+   TABLE WRAPPER - Clean border
+   =================================================================== */
+.results-display__table-wrapper {
+  border: 1px solid var(--ds-border-light);
+  border-radius: var(--ds-radius-md);
+  box-shadow: var(--ds-shadow-sm);
+}
+
+/* ===================================================================
+   FILTERS FOOTER - Unified bg
+   =================================================================== */
+.results-display__column-filters td,
+.results-display__aggregates td {
+  background-color: var(--ds-bg-subtle);
+}
+
+/* ===================================================================
+   Y-COLUMN TOGGLE - Refined
+   =================================================================== */
+.y-column-toggle-btn {
+  border-radius: var(--ds-radius-sm);
+  color: var(--ds-accent-subtle);
+}
+
+.y-column-toggle-btn:hover {
+  background-color: var(--ds-bg-hover);
+  color: var(--ds-color-fg, #212529);
+}
+
+/* ===================================================================
+   FLOATING HEADERS/FOOTERS - Clean shadows
+   =================================================================== */
+.floating-table-header {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+}
+
+.floating-table-footer {
+  box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.04);
+}
