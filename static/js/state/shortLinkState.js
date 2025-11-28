@@ -1,6 +1,7 @@
 // static/js/state/shortLinkState.js
 // Module for short link state persistence (replaces long URL hash encoding)
 import { logError, ErrorCategory } from '../utils/errorLogger.js';
+import { getDateManuallyCommittedAt } from './runtimeFlags.js';
 
 import {
   setFullState as setTableState,
@@ -197,8 +198,9 @@ export async function loadStateFromShortLink() {
 
   // skip if manual date commit was recent
   try {
-    if (window._dateManuallyCommittedAt) {
-      const age = Date.now() - window._dateManuallyCommittedAt;
+    const committedAt = getDateManuallyCommittedAt();
+    if (committedAt) {
+      const age = Date.now() - committedAt;
       if (age >= 0 && age < 5000) {
         console.log("⏳ loadStateFromShortLink: Skip due to recent manual commit");
         return null;

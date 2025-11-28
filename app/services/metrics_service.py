@@ -119,7 +119,9 @@ class MetricsService:
         time_from_dt: datetime,
         time_to_dt: datetime,
     ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-        """Fetch rows for period and same period minus one day.
+        """
+        Fetch rows for period and same period minus one day.
+        Optimized: Uses parallel queries instead of sequential.
         Convert inputs to UTC-aware datetimes to match TIMESTAMP WITH TIME ZONE.
         """
         def _to_utc_aware(dt: datetime) -> datetime:
@@ -139,13 +141,21 @@ class MetricsService:
         y_time_from_dt = _to_utc_aware(time_from_dt - timedelta(days=1))
         y_time_to_dt = _to_utc_aware(time_to_dt - timedelta(days=1))
 
-        rows_today = await self._fetch_with_repository(
-            customer, supplier, destination, time_from_dt, time_to_dt
+        # Build filters for repository
+        filters = {
+            "customer": customer,
+            "supplier": supplier,
+            "destination": destination,
+        }
+        
+        # Use parallel fetch for better performance
+        return await self._repo.get_metrics_parallel(
+            filters,
+            time_from_dt,
+            time_to_dt,
+            y_time_from_dt,
+            y_time_to_dt,
         )
-        rows_yesterday = await self._fetch_with_repository(
-            customer, supplier, destination, y_time_from_dt, y_time_to_dt
-        )
-        return rows_today, rows_yesterday
 
     async def _fetch_with_repository(
         self,

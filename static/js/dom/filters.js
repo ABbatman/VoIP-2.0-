@@ -42,8 +42,10 @@ import {
   isChartsRenderRequested,
   setChartsRenderRequested,
   setManualFindInProgress,
+  setChartsUsedZoomForLastFetch,
+  setTableNeedsRebuild,
 } from "../state/runtimeFlags.js";
-import { getVirtualManager, setVirtualManager } from "../state/moduleRegistry.js";
+import { getVirtualManager, setVirtualManager, getTableRenderer, setTableRenderer } from "../state/moduleRegistry.js";
 import { logError, logWarn, ErrorCategory } from "../utils/errorLogger.js";
 
 export function initFilters(isStateLoaded) {
@@ -385,12 +387,13 @@ function destroyTableHard() {
   }
   
   // destroy tableRenderer
-  if (window.tableRenderer) {
+  const existingRenderer = getTableRenderer();
+  if (existingRenderer) {
     try {
-      if (typeof window.tableRenderer.destroy === 'function') {
-        window.tableRenderer.destroy();
+      if (typeof existingRenderer.destroy === 'function') {
+        existingRenderer.destroy();
       }
-      window.tableRenderer = null;
+      setTableRenderer(null);
     } catch (e) { 
       logError(ErrorCategory.RENDER, 'destroyTableHard:renderer', e); 
     }
@@ -514,7 +517,7 @@ async function handleFindClick() {
     }
 
     // remember that last fetch did not use zoom
-    try { window.__chartsUsedZoomForLastFetch = false; } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
+    try { setChartsUsedZoomForLastFetch(false); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
       // Ignore global flag errors
     }
     // Try cache before fetching
@@ -698,13 +701,14 @@ async function handleSummaryClick() {
         // Render: always create fresh renderer to avoid stale state
         const mod = await import('../rendering/table-renderer.js');
         // destroy old renderer if exists
-        if (window.tableRenderer) {
-          try { window.tableRenderer.destroy(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);}
-          window.tableRenderer = null;
+        const oldRenderer = getTableRenderer();
+        if (oldRenderer) {
+          try { oldRenderer.destroy(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);}
+          setTableRenderer(null);
         }
         const tr = new mod.TableRenderer();
         try { await tr.initialize(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);}
-        window.tableRenderer = tr;
+        setTableRenderer(tr);
         const res = await tr.renderTable(main_rows || [], peer_rows || [], hourly_rows || []);
         try {
           const tbody = document.getElementById('tableBody');
@@ -802,7 +806,7 @@ function handleReverseClick() {
   try { setShowTable(false); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); }
 
   // 3. Mark table as needing rebuild on next Summary click
-  try { window.__tableNeedsRebuild = true; } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); }
+  try { setTableNeedsRebuild(true); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); }
 
   // 4. Animate button (rotation)
   try {

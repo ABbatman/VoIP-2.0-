@@ -3,6 +3,7 @@
 
 import { subscribe, publish } from '../../state/eventBus.js';
 import { logError, ErrorCategory } from '../../utils/errorLogger.js';
+import { isChartsBarPerProvider, setChartsBarPerProvider } from '../../state/runtimeFlags.js';
 
 function buildCheckboxEl() {
   const wrap = document.createElement('label');
@@ -49,16 +50,16 @@ export function initProviderStackControl() {
       const { wrap, input } = buildCheckboxEl();
       controls.appendChild(wrap);
       // restore state
-      try { input.checked = !!window.__chartsBarPerProvider; } catch (e) { logError(ErrorCategory.CHART, 'providerStackControl', e); }
+      try { input.checked = isChartsBarPerProvider(); } catch (e) { logError(ErrorCategory.CHART, 'providerStackControl', e); }
       input.addEventListener('change', () => {
         const checked = !!input.checked;
-        try { window.__chartsBarPerProvider = checked; } catch (e) { logError(ErrorCategory.CHART, 'providerStackControl', e); }
+        try { setChartsBarPerProvider(checked); } catch (e) { logError(ErrorCategory.CHART, 'providerStackControl', e); }
         try { publish('charts:bar:perProviderChanged', { perProvider: checked }); } catch (e) { logError(ErrorCategory.CHART, 'providerStackControl', e); }
       });
     } else {
       const input = existing.querySelector('input');
       if (input) {
-        try { input.checked = !!window.__chartsBarPerProvider; } catch (e) { logError(ErrorCategory.CHART, 'providerStackControl', e); }
+        try { input.checked = isChartsBarPerProvider(); } catch (e) { logError(ErrorCategory.CHART, 'providerStackControl', e); }
       }
     }
     // Show only for Bar

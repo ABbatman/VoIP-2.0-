@@ -5,6 +5,7 @@
 const _registry = {
   virtualManager: null,
   dashboard: null,
+  tableRenderer: null,
 };
 
 // --- Virtual Manager ---
@@ -27,4 +28,17 @@ export function getDashboard() {
 
 export function setDashboard(instance) {
   _registry.dashboard = instance;
+}
+
+// --- Table Renderer ---
+export function getTableRenderer() {
+  return _registry.tableRenderer;
+}
+
+export function setTableRenderer(instance) {
+  _registry.tableRenderer = instance;
+}
+
+export function hasTableRenderer() {
+  return _registry.tableRenderer !== null && _registry.tableRenderer !== undefined;
 }

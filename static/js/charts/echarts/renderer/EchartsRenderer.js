@@ -33,30 +33,45 @@ function getZoomRange(chart) {
   return null;
 }
 
-// Wait for element to have dimensions
-async function waitForDimensions(el, maxWait = 500) {
+// Wait for element to have dimensions, returns true if valid
+async function waitForDimensions(el, maxWait = 1000) {
   return new Promise((resolve) => {
     const check = () => {
       const w = el.clientWidth || el.getBoundingClientRect().width;
       const h = el.clientHeight || el.getBoundingClientRect().height;
-      if (w > 0 && h > 0) return resolve(true);
-      return false;
+      return w > 0 && h > 0;
     };
-    if (check()) return;
+    if (check()) return resolve(true);
     const start = Date.now();
     const interval = setInterval(() => {
-      if (check() || Date.now() - start > maxWait) {
+      if (check()) {
         clearInterval(interval);
         resolve(true);
+      } else if (Date.now() - start > maxWait) {
+        clearInterval(interval);
+        resolve(false);
       }
-    }, 16);
+    }, 32);
   });
+}
+
+// Check if element has valid dimensions
+function hasDimensions(el) {
+  if (!el) return false;
+  const w = el.clientWidth || el.getBoundingClientRect().width;
+  const h = el.clientHeight || el.getBoundingClientRect().height;
+  return w > 0 && h > 0;
 }
 
 export async function initChart(container) {
   const el = ensureContainer(container);
   // Wait for container to have dimensions
   await waitForDimensions(el);
+  // Return null if still no dimensions
+  if (!hasDimensions(el)) {
+    console.warn('[EchartsRenderer] Container has no dimensions, skipping init');
+    return null;
+  }
   try {
     const existing = echarts.getInstanceByDom(el);
     if (existing) existing.dispose();
@@ -88,11 +103,15 @@ export async function initChart(container) {
 }
 
 export function setOptionWithZoomSync(chart, option, { onAfterSet, onDataZoom } = {}) {
+  // Skip if chart is disposed
+  if (!chart || (typeof chart.isDisposed === 'function' && chart.isDisposed())) {
+    return;
+  }
   // move logic
   chart.setOption(option, { notMerge: true, lazyUpdate: true });
   // apply persisted zoom range (if exists)
-  try { applyZoomRange(chart); } catch (e) { logError(ErrorCategory.CHART, 'EchartsRenderer', e); }
+  try { if (!chart.isDisposed()) applyZoomRange(chart); } catch (e) { logError(ErrorCategory.CHART, 'EchartsRenderer', e); }
   // attach unified zoom handler
-  try { attachZoom(chart, { onZoom: onDataZoom }); } catch (e) { logError(ErrorCategory.CHART, 'EchartsRenderer', e); }
+  try { if (!chart.isDisposed()) attachZoom(chart, { onZoom: onDataZoom }); } catch (e) { logError(ErrorCategory.CHART, 'EchartsRenderer', e); }
   try { if (typeof onAfterSet === 'function') onAfterSet(); } catch (e) { logError(ErrorCategory.CHART, 'EchartsRenderer', e); }
 }

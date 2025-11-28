@@ -16,6 +16,7 @@ import { renderFilterCell as renderFilterCellComponent } from './components/filt
 import { applySortSafe } from "../table/features/sortControl.js";
 import { getVirtualManager } from "../state/moduleRegistry.js";
 import { logError, ErrorCategory } from "../utils/errorLogger.js";
+import { getPendingFilterFocus, setPendingFilterFocus, clearPendingFilterFocus } from "../state/runtimeFlags.js";
 const DEBUG = (typeof window !== 'undefined' && window.DEBUG === true);
 
 const arrowSvg = `<svg viewBox="0 0 24 24">
@@ -647,7 +648,7 @@ function handleColumnFilterChange(event) {
 
   // Global pending focus (prevents race with async re-renders)
   try {
-    window._pendingFilterFocus = { key, fromFloating, cursorPosition, cursorEnd, inputValue };
+    setPendingFilterFocus({ key, fromFloating, cursorPosition, cursorEnd, inputValue });
   } catch (e) { logError(ErrorCategory.TABLE, 'tableUI', e); }
   
   // Import setColumnFilter dynamically to avoid circular imports
@@ -707,34 +708,34 @@ function handleColumnFilterChange(event) {
 }
 
 // Restore pending filter focus if any (used by virtual/standard refresh points)
-try {
-  if (!window.restoreFilterFocusIfPending) {
-    window.restoreFilterFocusIfPending = function restoreFilterFocusIfPending() {
-      const pending = window._pendingFilterFocus;
-      if (!pending || !pending.key) return;
-      const { key, fromFloating, cursorPosition, cursorEnd, inputValue } = pending;
-      const selector = `input[data-filter-key="${key}"]`;
-      const container = fromFloating
-        ? document.querySelector('.floating-table-footer tfoot')
-        : document.querySelector('#summaryTable tfoot');
-      const target = container ? container.querySelector(selector) : document.querySelector(selector);
-      if (target) {
-        // Restore value if needed (prevent value loss during async refresh)
-        if (inputValue !== undefined && target.value !== inputValue) {
-          target.value = inputValue;
-        }
-        // Restore cursor position
-        const pos = Math.min(cursorPosition ?? target.value.length, target.value.length);
-        const end = Math.min(cursorEnd ?? pos, target.value.length);
-        if (document.activeElement !== target) {
-          target.focus();
-        }
-        if (typeof target.setSelectionRange === 'function') {
-          target.setSelectionRange(pos, end);
-        }
-        // Clear after successful restore
-        try { window._pendingFilterFocus = null; } catch (e) { logError(ErrorCategory.TABLE, 'tableUI', e); /* intentional no-op */ }
+export function restoreFilterFocusIfPending() {
+  try {
+    const pending = getPendingFilterFocus();
+    if (!pending || !pending.key) return;
+    const { key, fromFloating, cursorPosition, cursorEnd, inputValue } = pending;
+    const selector = `input[data-filter-key="${key}"]`;
+    const container = fromFloating
+      ? document.querySelector('.floating-table-footer tfoot')
+      : document.querySelector('#summaryTable tfoot');
+    const target = container ? container.querySelector(selector) : document.querySelector(selector);
+    if (target) {
+      // Restore value if needed (prevent value loss during async refresh)
+      if (inputValue !== undefined && target.value !== inputValue) {
+        target.value = inputValue;
       }
-    };
-  }
-} catch (e) { logError(ErrorCategory.TABLE, 'tableUI', e); }
+      // Restore cursor position
+      const pos = Math.min(cursorPosition ?? target.value.length, target.value.length);
+      const end = Math.min(cursorEnd ?? pos, target.value.length);
+      if (document.activeElement !== target) {
+        target.focus();
+      }
+      if (typeof target.setSelectionRange === 'function') {
+        target.setSelectionRange(pos, end);
+      }
+      // Clear after successful restore
+      clearPendingFilterFocus();
+    }
+  } catch (e) { logError(ErrorCategory.TABLE, 'tableUI', e); }
+}
+// Backward compatibility: expose on window
+try { if (typeof window !== 'undefined') window.restoreFilterFocusIfPending = restoreFilterFocusIfPending; } catch (e) { /* noop */ }

@@ -30,24 +30,34 @@ function ensureContainer(container) {
 }
 
 
-// Wait for element to have dimensions
-function waitForDimensions(el, maxWait = 500) {
+// Wait for element to have dimensions, returns true if dimensions are valid
+function waitForDimensions(el, maxWait = 1000) {
   return new Promise((resolve) => {
     const check = () => {
       const w = el.clientWidth || el.getBoundingClientRect().width;
       const h = el.clientHeight || el.getBoundingClientRect().height;
-      if (w > 0 && h > 0) return resolve(true);
-      return false;
+      return w > 0 && h > 0;
     };
-    if (check()) return;
+    if (check()) return resolve(true);
     const start = Date.now();
     const interval = setInterval(() => {
-      if (check() || Date.now() - start > maxWait) {
+      if (check()) {
         clearInterval(interval);
         resolve(true);
+      } else if (Date.now() - start > maxWait) {
+        clearInterval(interval);
+        resolve(false); // timeout - dimensions still 0
       }
-    }, 16);
+    }, 32);
   });
+}
+
+// Check if element has valid dimensions for ECharts
+function hasDimensions(el) {
+  if (!el) return false;
+  const w = el.clientWidth || el.getBoundingClientRect().width;
+  const h = el.clientHeight || el.getBoundingClientRect().height;
+  return w > 0 && h > 0;
 }
 
 export async function renderMultiLineChartEcharts(container, data, options = {}) {
@@ -55,6 +65,12 @@ export async function renderMultiLineChartEcharts(container, data, options = {})
   
   // Wait for container to have dimensions before init
   await waitForDimensions(el);
+  
+  // Skip if still no dimensions (element hidden or not in DOM)
+  if (!hasDimensions(el)) {
+    console.warn('[echartsRenderer] Container has no dimensions, skipping render');
+    return { update: () => {}, dispose: () => {}, getInstance: () => null };
+  }
   
   try {
     const existing = echarts.getInstanceByDom(el);
@@ -65,7 +81,7 @@ export async function renderMultiLineChartEcharts(container, data, options = {})
   const chart = echarts.init(el);
   const sliderEl = document.getElementById('chart-slider');
   let sliderChart = null;
-  if (sliderEl) {
+  if (sliderEl && hasDimensions(sliderEl)) {
     await waitForDimensions(sliderEl);
     try {
       const existingSlider = echarts.getInstanceByDom(sliderEl);
@@ -145,11 +161,12 @@ export async function renderMultiLineChartEcharts(container, data, options = {})
         extraCssText: 'border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,0.07); line-height:1.35;'
       };
     } catch (e) { logError(ErrorCategory.CHART, 'echartsRenderer', e); /* keep default tooltip */ }
+    if (chart.isDisposed && chart.isDisposed()) return;
     chart.setOption(nextMain, { notMerge: true, lazyUpdate: true });
     if (sliderChart && nextSlider && !(sliderChart.isDisposed && sliderChart.isDisposed())) {
       sliderChart.setOption(nextSlider, { notMerge: true, lazyUpdate: true });
     }
-    try { applyZoomRange(chart); } catch (e) { logError(ErrorCategory.CHART, 'echartsRenderer', e); }
+    try { if (!(chart.isDisposed && chart.isDisposed())) applyZoomRange(chart); } catch (e) { logError(ErrorCategory.CHART, 'echartsRenderer', e); }
     try { if (sliderChart && !(sliderChart.isDisposed && sliderChart.isDisposed())) applyZoomRange(sliderChart); } catch (e) { logError(ErrorCategory.CHART, 'echartsRenderer', e); }
   }
 

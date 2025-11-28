@@ -537,6 +537,10 @@ function makeHandlers(chart, { getCapsuleData, textColor, metricByGridIndex }) {
 }
 
 export function attachCapsuleTooltip(chart, { getCapsuleData, textColor = 'var(--ds-color-fg)', metricByGridIndex = {} } = {}) {
+  // Skip if chart is disposed
+  if (!chart || (typeof chart.isDisposed === 'function' && chart.isDisposed())) {
+    return;
+  }
   const handlers = makeHandlers(chart, { getCapsuleData, textColor, metricByGridIndex });
   chart.__capsuleTooltip = handlers;
   chart.on('mouseover', handlers.over);
@@ -546,8 +550,15 @@ export function attachCapsuleTooltip(chart, { getCapsuleData, textColor = 'var(-
 }
 
 export function detachCapsuleTooltip(chart) { // cleanup
-  const h = chart && chart.__capsuleTooltip;
+  if (!chart) return;
+  const h = chart.__capsuleTooltip;
   if (!h) return;
+  // Skip if disposed
+  if (typeof chart.isDisposed === 'function' && chart.isDisposed()) {
+    try { delete chart.__capsuleTooltip; } catch (e) { /* ignore */ }
+    if (el) el.style.opacity = '0';
+    return;
+  }
   try { chart.off('mouseover', h.over); } catch (e) { logError(ErrorCategory.CHART, 'capsuleTooltip', e); }
   try { chart.off('mouseout', h.out); } catch (e) { logError(ErrorCategory.CHART, 'capsuleTooltip', e); }
   try { chart.off('globalout', h.out); } catch (e) { logError(ErrorCategory.CHART, 'capsuleTooltip', e); }

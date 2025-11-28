@@ -11,7 +11,7 @@ import { attachCapsuleTooltip, detachCapsuleTooltip } from './echarts/helpers/ca
 import { initChart, setOptionWithZoomSync } from './echarts/renderer/EchartsRenderer.js';
 import { getRange } from './echarts/services/zoomManager.js';
 import { computeChartGrids } from './services/layout.js';
-import { getChartsZoomRange } from '../state/runtimeFlags.js';
+import { getChartsZoomRange, isChartsBarPerProvider } from '../state/runtimeFlags.js';
 import { logError, logWarn, ErrorCategory } from '../utils/errorLogger.js';
 
 function ensureContainer(container) {
@@ -35,6 +35,13 @@ export async function renderBarChartEcharts(container, data = [], options = {}) 
     logError(ErrorCategory.CHART, 'echartsBarChart:dispose', e);
   }
   const chart = await initChart(el);
+  
+  // Skip if chart init failed (no dimensions)
+  if (!chart) {
+    console.warn('[echartsBarChart] Container has no dimensions, skipping render');
+    return { update: () => {}, dispose: () => {}, getInstance: () => null };
+  }
+  
   const sliderEl = document.getElementById('chart-slider');
   let sliderChart = null;
   if (sliderEl) {
@@ -73,6 +80,7 @@ export async function renderBarChartEcharts(container, data = [], options = {}) 
     acdSeries: Array.isArray(options.acdSeries) ? options.acdSeries : [],
     labels: (options && typeof options.labels === 'object') ? options.labels : {}, // use backend labels
     colorMap: (options && typeof options.colorMap === 'object') ? options.colorMap : undefined, // color mapping per supplier
+    providerRows: Array.isArray(options.providerRows) ? options.providerRows : [], // provider rows for labels
   };
 
   // Build a stable color map per supplier using provider rows
@@ -263,7 +271,7 @@ export async function renderBarChartEcharts(container, data = [], options = {}) 
         const needBuild = !(hasSupplierInfo(le.ASR) || hasSupplierInfo(le.ACD));
         try { if (typeof window !== 'undefined' && window.__chartsDebug) console.debug('[bar] labels.hasSupplierInfo', !needBuild); } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); }
         if (!needBuild) return le;
-        const rows = Array.isArray(options?.providerRows) ? options.providerRows : [];
+        const rows = Array.isArray(opts.providerRows) ? opts.providerRows : [];
         if (!rows.length) return le;
 
         const NAME_KEYS = ['name', 'supplier', 'provider', 'peer', 'vendor', 'carrier', 'operator', 'route', 'trunk', 'gateway', 'partner', 'supplier_name', 'provider_name', 'vendor_name', 'carrier_name', 'peer_name'];
@@ -321,7 +329,7 @@ export async function renderBarChartEcharts(container, data = [], options = {}) 
       } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart:labelsEffective', e); return { ASR: (opts.labels && opts.labels.ASR) || {}, ACD: (opts.labels && opts.labels.ACD) || {} }; }
     })();
 
-    const showLabels = (() => { try { return !!(typeof window !== 'undefined' && window.__chartsBarPerProvider); } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart:showLabels', e); return false; } })();
+    const showLabels = (() => { try { return isChartsBarPerProvider(); } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart:showLabels', e); return false; } })();
     const out = {
       animation: true,
       animationDurationUpdate: 200,
@@ -371,8 +379,8 @@ export async function renderBarChartEcharts(container, data = [], options = {}) 
         stepMs: step,
         labels: labelsEffective,
         colorMap: opts.colorMap,
-        providerRows: Array.isArray(options?.providerRows) ? options.providerRows : [],
-        providerKey: (() => { try { return detectProviderKey(Array.isArray(options?.providerRows) ? options.providerRows : []); } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); return null; } })()
+        providerRows: Array.isArray(opts.providerRows) ? opts.providerRows : [],
+        providerKey: (() => { try { return detectProviderKey(Array.isArray(opts.providerRows) ? opts.providerRows : []); } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); return null; } })()
       }),
       graphic: graphicLabels
     };
@@ -533,7 +541,7 @@ export async function renderBarChartEcharts(container, data = [], options = {}) 
                     };
                     // enrich with per-supplier customers/destinations using providerRows when available (visual-only)
                     try {
-                      const rows = Array.isArray(options?.providerRows) ? options.providerRows : [];
+                      const rows = Array.isArray(base.providerRows) ? base.providerRows : [];
                       if (rows.length) {
                         const pKey = detectProviderKey(rows);
                         if (pKey) {
@@ -594,16 +602,16 @@ export async function renderBarChartEcharts(container, data = [], options = {}) 
                 }
               } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); }
               // Fallback: compute from providerRows if available
-              const rows = Array.isArray(options?.providerRows) ? options.providerRows : [];
-              if (!rows.length) return null;
-              const pKey = detectProviderKey(rows);
+              const rowsFb = Array.isArray(base.providerRows) ? base.providerRows : [];
+              if (!rowsFb.length) return null;
+              const pKey = detectProviderKey(rowsFb);
               if (!pKey) return null;
               const destCand = ['destination', 'Destination', 'dst', 'Dst', 'country', 'Country', 'prefix', 'Prefix', 'route', 'Route', 'direction', 'Direction'];
               const custCand = ['customer', 'Customer', 'client', 'Client', 'account', 'Account', 'buyer', 'Buyer', 'main', 'Main'];
               const detectKey = (cands) => {
                 try {
                   const lowerPref = cands.map(k => k.toLowerCase());
-                  for (const r of rows) {
+                  for (const r of rowsFb) {
                     if (!r || typeof r !== 'object') continue;
                     for (const k of Object.keys(r)) {
                       const kl = String(k).toLowerCase();
@@ -622,7 +630,7 @@ export async function renderBarChartEcharts(container, data = [], options = {}) 
               const supAgg = new Map(); // name -> { sum, cnt }
               const custBySup = new Map(); // name -> Set
               const destBySup = new Map(); // name -> Map(dest->{sum,cnt})
-              for (const r of rows) {
+              for (const r of rowsFb) {
                 const rt = parseRowTs(r.time || r.Time || r.timestamp || r.Timestamp || r.slot || r.Slot || r.hour || r.Hour || r.datetime || r.DateTime || r.ts || r.TS || r.period || r.Period || r.start || r.Start || r.start_time || r.StartTime);
                 if (!Number.isFinite(rt)) continue;
                 if (bucketCenter(rt) !== ts) continue;
@@ -683,8 +691,10 @@ export async function renderBarChartEcharts(container, data = [], options = {}) 
   try {
     const zr = getRange();
     if (zr && Number.isFinite(zr.fromTs) && Number.isFinite(zr.toTs)) {
-      chart.setOption({ dataZoom: [{ startValue: zr.fromTs, endValue: zr.toTs }] }, { lazyUpdate: true });
-      if (sliderChart) {
+      if (!chart.isDisposed()) {
+        chart.setOption({ dataZoom: [{ startValue: zr.fromTs, endValue: zr.toTs }] }, { lazyUpdate: true });
+      }
+      if (sliderChart && !sliderChart.isDisposed()) {
         sliderChart.setOption({ dataZoom: [{ startValue: zr.fromTs, endValue: zr.toTs }, { startValue: zr.fromTs, endValue: zr.toTs }] }, { lazyUpdate: true });
       }
     }
@@ -730,6 +740,7 @@ export async function renderBarChartEcharts(container, data = [], options = {}) 
         const each = Math.max(2, Math.floor(desired * 0.35));
         // skip update if width did not change (prevents layout thrash)
         if (chart.__lastBarWidth === each) return;
+        if (chart.isDisposed()) return;
         const cur = chart.getOption();
         const upd = (cur.series || []).filter(s => s && s.type === 'bar').map(s => ({ id: s.id, barWidth: each }));
         if (upd.length) {
@@ -744,7 +755,9 @@ export async function renderBarChartEcharts(container, data = [], options = {}) 
   // remove legacy dataZoom handler (handled by renderer)
 
   // Re-apply bar width after any setOption finishes (resize, update, etc.)
-  try { chart.on('finished', applyDynamicBarWidth); } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); }
+  try { 
+    if (!chart.isDisposed()) chart.on('finished', applyDynamicBarWidth); 
+  } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); }
   // Event handler registration might fail
 
   function update(newData = data, newOptions = {}) {
@@ -1001,8 +1014,10 @@ export async function renderBarChartEcharts(container, data = [], options = {}) 
       let sv = Number.isFinite(zrUpdate?.fromTs) ? clamp(Number(zrUpdate.fromTs)) : baseLo;
       let ev = Number.isFinite(zrUpdate?.toTs) ? clamp(Number(zrUpdate.toTs)) : baseHi;
       if (Number.isFinite(sv) && Number.isFinite(ev) && ev > sv) {
-        chart.setOption({ dataZoom: [{ startValue: sv, endValue: ev }] }, { lazyUpdate: true });
-        if (sliderChart) {
+        if (!chart.isDisposed()) {
+          chart.setOption({ dataZoom: [{ startValue: sv, endValue: ev }] }, { lazyUpdate: true });
+        }
+        if (sliderChart && !sliderChart.isDisposed()) {
           sliderChart.setOption({ dataZoom: [{ startValue: sv, endValue: ev }, { startValue: sv, endValue: ev }] }, { lazyUpdate: true });
         }
       }

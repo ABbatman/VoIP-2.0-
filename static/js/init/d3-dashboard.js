@@ -6,15 +6,14 @@ import { initChartControls } from '../charts/ui/chartControls.js';
 import { renderManager } from '../charts/services/renderManager.js';
 import { ensureDefaults } from '../charts/registry.js';
 import { logError, ErrorCategory } from '../utils/errorLogger.js';
+import { isChartsInitDone, setChartsInitDone } from '../state/runtimeFlags.js';
 
 // init - thin facade only
 
 export async function initD3Dashboard() {
   try {
-    if (typeof window !== 'undefined') {
-      if (window.__chartsInitDone) return;
-      window.__chartsInitDone = true;
-    }
+    if (isChartsInitDone()) return;
+    setChartsInitDone(true);
   } catch(e) { logError(ErrorCategory.INIT, 'd3Dashboard', e); }
 
   initFilters();

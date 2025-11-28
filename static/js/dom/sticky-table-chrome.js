@@ -4,6 +4,7 @@
 import { subscribe } from "../state/eventBus.js";
 import { getState, toggleYColumnsVisible } from "../state/tableState.js";
 import { logError, logWarn, ErrorCategory } from "../utils/errorLogger.js";
+import { setPendingFilterFocus } from "../state/runtimeFlags.js";
 
 let floatingFooter;
 let onSyncBound;
@@ -434,7 +435,7 @@ function bindFooterInputs() {
       try {
         const key = inp.getAttribute('data-filter-key');
         const pos = typeof inp.selectionStart === 'number' ? inp.selectionStart : (inp.value || '').length;
-        window._pendingFilterFocus = { key, fromFloating: true, cursorPosition: pos };
+        setPendingFilterFocus({ key, fromFloating: true, cursorPosition: pos });
         lastFloatingInteractionTs = Date.now();
         _floatingEngaged = true;
       } catch(e) { logError(ErrorCategory.DOM, 'stickyTableChrome', e); /* noop */ }

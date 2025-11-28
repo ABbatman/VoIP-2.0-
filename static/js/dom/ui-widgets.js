@@ -1,6 +1,7 @@
 // static/js/dom/ui-widgets.js
 /* global flatpickr */
 import { logError, ErrorCategory } from '../utils/errorLogger.js';
+import { setDateManuallyCommittedAt } from '../state/runtimeFlags.js';
 
 /**
  * Initializes the Flatpickr library for date inputs if it's available.
@@ -86,8 +87,8 @@ export function initFlatpickr() {
             const v = input.value.trim();
             if (!v) {
               fp.clear();
-              window._dateManuallyCommittedAt = Date.now();
-              try { input.dataset.userCommittedTs = String(window._dateManuallyCommittedAt); } catch (e) { logError(ErrorCategory.UI, 'uiWidgets', e);
+              setDateManuallyCommittedAt(Date.now());
+              try { input.dataset.userCommittedTs = String(Date.now()); } catch (e) { logError(ErrorCategory.UI, 'uiWidgets', e);
                 // Ignore dataset update errors
               }
               return { parsed: false, cleared: true };
@@ -100,8 +101,8 @@ export function initFlatpickr() {
               const altStr = fp.formatDate(dateObj, fp.config.altFormat);
               input.value = ymd;
               if (fp.altInput) fp.altInput.value = altStr;
-              window._dateManuallyCommittedAt = Date.now();
-              try { input.dataset.userCommittedTs = String(window._dateManuallyCommittedAt); } catch (e) { logError(ErrorCategory.UI, 'uiWidgets', e);
+              setDateManuallyCommittedAt(Date.now());
+              try { input.dataset.userCommittedTs = String(Date.now()); } catch (e) { logError(ErrorCategory.UI, 'uiWidgets', e);
                 // Ignore dataset update errors
               }
               return { parsed: true, cleared: false };

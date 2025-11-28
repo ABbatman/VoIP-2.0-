@@ -1,6 +1,7 @@
 // static/js/dom/filter-helpers.js
 // This module contains helper functions specifically for the filter logic.
 import { logError, ErrorCategory } from '../utils/errorLogger.js';
+import { getDateManuallyCommittedAt } from '../state/runtimeFlags.js';
 
 /**
  * Builds a parameters object from the filter input fields.
@@ -69,8 +70,9 @@ export function populateFiltersFromState(state) {
   try {
     // Do not overwrite if user has just manually committed a date
     try {
-      if (window._dateManuallyCommittedAt) {
-        const age = Date.now() - window._dateManuallyCommittedAt;
+      const committedAt = getDateManuallyCommittedAt();
+      if (committedAt) {
+        const age = Date.now() - committedAt;
         if (age >= 0 && age < 5000) {
           console.log("⏳ populateFiltersFromState: Skipping due to recent manual commit");
           return;

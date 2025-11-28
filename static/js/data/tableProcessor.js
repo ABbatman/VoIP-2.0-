@@ -4,9 +4,22 @@
 import { getState, getFullData } from "../state/tableState.js";
 import { getChartsZoomRange } from "../state/runtimeFlags.js";
 
-// TODO: TECH DEBT — Zoom re-aggregation duplicates backend logic (app/utils/grouped.py)
-// Future: Replace with API call to /api/metrics?zoom_from=X&zoom_to=Y
-// For now, we re-aggregate client-side from cached hourlyRows to avoid extra requests
+// Web Worker for heavy aggregation (optional - falls back to sync)
+let workerClient = null;
+async function getWorkerClient() {
+  if (workerClient === null) {
+    try {
+      const mod = await import('../workers/aggregationWorkerClient.js');
+      workerClient = mod;
+    } catch (e) {
+      console.warn('[tableProcessor] Worker not available, using sync fallback');
+      workerClient = false;
+    }
+  }
+  return workerClient || null;
+}
+
+// Optimized: Use Web Worker for heavy zoom re-aggregation
 
 function getFilteredAndSortedData() {
   const { mainRows, peerRows, hourlyRows } = getFullData();
@@ -147,6 +160,120 @@ export function getProcessedData() {
   const { data, count, effectivePeerRows, effectiveHourlyRows } = getFilteredAndSortedData();
   // Also return effective peer/hourly rows so the renderer uses the zoomed data
   return { pagedData: data, totalFiltered: count, peerRows: effectivePeerRows, hourlyRows: effectiveHourlyRows };
+}
+
+/**
+ * Async version using Web Worker for heavy zoom re-aggregation.
+ * Falls back to sync if worker unavailable.
+ */
+export async function getProcessedDataAsync() {
+  const { mainRows, peerRows, hourlyRows } = getFullData();
+  const { globalFilterQuery, columnFilters, multiSort } = getState();
+  
+  let effectiveMainRows = mainRows;
+  let effectivePeerRows = peerRows;
+  let effectiveHourlyRows = hourlyRows;
+  
+  const zr = getChartsZoomRange();
+  const hasZoom = zr && Number.isFinite(zr.fromTs) && Number.isFinite(zr.toTs) && zr.toTs > zr.fromTs;
+  
+  // Use Web Worker for heavy zoom re-aggregation
+  if (hasZoom && hourlyRows && hourlyRows.length > 0) {
+    const wc = await getWorkerClient();
+    
+    if (wc) {
+      try {
+        const result = await wc.fullReaggregationAsync(hourlyRows, zr.fromTs, zr.toTs);
+        effectiveHourlyRows = result.hourlyRows;
+        effectivePeerRows = result.peerRows;
+        effectiveMainRows = result.mainRows;
+      } catch (e) {
+        // Fallback to sync
+        effectiveHourlyRows = hourlyRows.filter(r => {
+          const ts = parseRowTs(r);
+          return ts >= zr.fromTs && ts <= zr.toTs;
+        });
+        effectivePeerRows = aggregatePeerRows(effectiveHourlyRows);
+        effectiveMainRows = aggregateMainRows(effectivePeerRows);
+      }
+    } else {
+      // Sync fallback
+      effectiveHourlyRows = hourlyRows.filter(r => {
+        const ts = parseRowTs(r);
+        return ts >= zr.fromTs && ts <= zr.toTs;
+      });
+      effectivePeerRows = aggregatePeerRows(effectiveHourlyRows);
+      effectiveMainRows = aggregateMainRows(effectivePeerRows);
+    }
+  }
+  
+  // Apply filters and sorting (sync - fast enough)
+  let filteredMainRows = effectiveMainRows;
+  
+  if (Object.keys(columnFilters).length > 0) {
+    const peerFilter = columnFilters.peer?.toLowerCase();
+    filteredMainRows = effectiveMainRows.filter((mainRow) => {
+      let mainRowPasses = true;
+      for (const key in columnFilters) {
+        if (key === "peer") continue;
+        if (!passesColumnFilter(mainRow[key], columnFilters[key])) {
+          mainRowPasses = false;
+          break;
+        }
+      }
+      if (peerFilter) {
+        const hasMatchingPeer = effectivePeerRows.some(
+          (peerRow) =>
+            peerRow.main === mainRow.main &&
+            peerRow.destination === mainRow.destination &&
+            (peerRow.peer ?? "").toString().toLowerCase().includes(peerFilter)
+        );
+        return mainRowPasses && hasMatchingPeer;
+      }
+      return mainRowPasses;
+    });
+  }
+  
+  if (globalFilterQuery) {
+    const query = globalFilterQuery.toLowerCase();
+    filteredMainRows = filteredMainRows.filter((row) => {
+      for (const key in row) {
+        if ((row[key] ?? "").toString().toLowerCase().includes(query)) {
+          return true;
+        }
+      }
+      return false;
+    });
+  }
+  
+  if (multiSort && multiSort.length > 0) {
+    const order = normalizeMultiSort(multiSort);
+    filteredMainRows = filteredMainRows.slice().sort((a, b) => {
+      for (let i = 0; i < order.length; i++) {
+        const { key, dir } = order[i];
+        let aVal = a[key], bVal = b[key];
+        if (aVal == null) aVal = "";
+        if (bVal == null) bVal = "";
+        if (!isNaN(parseFloat(aVal)) && !isNaN(parseFloat(bVal))) {
+          aVal = parseFloat(aVal);
+          bVal = parseFloat(bVal);
+          if (aVal !== bVal) return dir === "desc" ? bVal - aVal : aVal - bVal;
+        } else {
+          aVal = aVal.toString().toLowerCase();
+          bVal = bVal.toString().toLowerCase();
+          if (aVal !== bVal) return dir === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+        }
+      }
+      return 0;
+    });
+  }
+  
+  return {
+    pagedData: filteredMainRows,
+    totalFiltered: filteredMainRows.length,
+    peerRows: effectivePeerRows,
+    hourlyRows: effectiveHourlyRows,
+  };
 }
 
 // --- UI-LEVEL AGGREGATION for footer ---
