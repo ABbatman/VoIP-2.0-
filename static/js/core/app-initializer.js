@@ -18,6 +18,8 @@ import { subscribe } from "../state/eventBus.js";
 import { initStickyFooter } from "../dom/sticky-table-chrome.js";
 import { renderCoordinator } from "../rendering/render-coordinator.js";
 import { initScrollControls } from "../dom/scroll-controls.js";
+import { isRenderingInProgress, isManualFindInProgress } from "../state/runtimeFlags.js";
+import { getVirtualManager } from "../state/moduleRegistry.js";
 
 /**
  * Application Initializer
@@ -152,15 +154,14 @@ export class AppInitializer {
       subscribe("tableState:changed", () => {
         // Skip if a coordinated table render is already in progress
         // to avoid enqueuing a redundant pass triggered from inside coordinator
-        if (typeof window !== 'undefined' && window.__renderingInProgress) return;
+        if (isRenderingInProgress()) return;
         // Always route through coordinator 'table' to avoid races/duplicates
         renderCoordinator.requestRender('table', async () => {
           try {
-            // Если активен виртуальный режим — не дергать стандартный контроллер
-            if (window.virtualManager && window.virtualManager.isActive) {
-              try { window.virtualManager.refreshVirtualTable(); } catch (_) {
-                // Virtual table refresh might fail
-              }
+            // If virtual mode active — refresh virtual table, not standard controller
+            const vm = getVirtualManager();
+            if (vm && vm.isActive) {
+              vm.refreshVirtualTable();
               return;
             }
             if (this.tableController && typeof this.tableController.redrawTable === 'function') {
@@ -246,7 +247,7 @@ export class AppInitializer {
       console.log('▶️ App Initializer: Executing auto-trigger "Find" after delay...');
 
       // Check if a manual find is already in progress
-      if (window._isManualFindInProgress) {
+      if (isManualFindInProgress()) {
         console.log('▶️ App Initializer: Manual find in progress, skipping auto-trigger');
         return;
       }
@@ -266,7 +267,7 @@ export class AppInitializer {
         fromTime: fromTimeInput?.value,
         toTime: toTimeInput?.value,
         filtersPopulated,
-        isManualFindInProgress: window._isManualFindInProgress
+        isManualFindInProgress: isManualFindInProgress()
       });
 
       if (filtersPopulated) {

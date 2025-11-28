@@ -4,6 +4,7 @@
 import { listTypes } from '../registry.js';
 import { publish } from '../../state/eventBus.js';
 import { initProviderStackControl } from '../controls/providerStackControl.js';
+import { getChartsZoomRange, setChartsCurrentInterval } from '../../state/runtimeFlags.js';
 
 let onTypeChangeCb = null;
 
@@ -97,19 +98,15 @@ function bindControls(controls) {
         const current = controls.dataset.interval || '1h';
         if (value === current) { closeAllDd(controls); return; }
         let next = value || '1h';
-        try {
-          const zr = (typeof window !== 'undefined') ? window.__chartsZoomRange : null;
-          let fromTs, toTs;
-          if (zr && Number.isFinite(zr.fromTs) && Number.isFinite(zr.toTs) && zr.toTs > zr.fromTs) {
-            fromTs = zr.fromTs; toTs = zr.toTs;
-          }
-          if (next === '5m' && fromTs != null && toTs != null) {
-            const diffDays = (toTs - fromTs) / (24 * 3600e3);
+        const zr = getChartsZoomRange();
+        if (zr && Number.isFinite(zr.fromTs) && Number.isFinite(zr.toTs) && zr.toTs > zr.fromTs) {
+          if (next === '5m') {
+            const diffDays = (zr.toTs - zr.fromTs) / (24 * 3600e3);
             if (diffDays > 5.0001) next = '1h';
           }
-        } catch(_) {}
+        }
         controls.dataset.interval = next;
-        try { if (typeof window !== 'undefined') window.__chartsCurrentInterval = next; } catch(_) {}
+        setChartsCurrentInterval(next);
         // update UI
         try {
           const btn = dd.querySelector('.charts-dd__button');
@@ -139,15 +136,15 @@ export function initChartTypeDropdown() {
   const typeItems = available.map(t => ({ value: t, label: t.charAt(0).toUpperCase() + t.slice(1) }));
   // interval
   const stepItems = [ { value: '5m', label: '5m' }, { value: '1h', label: '1h' }, { value: '1d', label: '1d' } ];
-  const initialInterval = (typeof window !== 'undefined' && window.__chartsCurrentInterval) ? window.__chartsCurrentInterval : (controls.dataset.interval || '1h');
+  const initialInterval = getChartsZoomRange() ? (controls.dataset.interval || '1h') : (controls.dataset.interval || '1h');
 
   controls.innerHTML = '';
   const typeDd = makeDd('chart-type-dropdown', typeItems, (controls.dataset.type || typeItems[0].value));
   const stepDd = makeDd('chart-interval-dropdown', stepItems, initialInterval);
   controls.appendChild(typeDd);
   controls.appendChild(stepDd);
-  try { controls.dataset.interval = initialInterval; } catch(_) {}
-  try { if (typeof window !== 'undefined') window.__chartsCurrentInterval = initialInterval; } catch(_) {}
+  controls.dataset.interval = initialInterval;
+  setChartsCurrentInterval(initialInterval);
   try { initProviderStackControl(); } catch(_) {}
   // bind
   const unbind = bindControls(controls);

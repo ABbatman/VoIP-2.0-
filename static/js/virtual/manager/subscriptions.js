@@ -3,6 +3,7 @@
 
 import { subscribe } from '../../state/eventBus.js';
 import { getExpandAllButton } from '../selectors/dom-selectors.js';
+import { isRenderingInProgress } from '../../state/runtimeFlags.js';
 
 // Export a reusable debounce for future signals
 export function debounce(fn, delay = 24) {
@@ -18,7 +19,7 @@ export function attachSubscriptions(vm) {
 
   // Y columns visibility changes
   const onYVisibility = () => {
-    if (typeof window !== 'undefined' && window.__renderingInProgress) return;
+    if (isRenderingInProgress()) return;
     try { vm.syncYToggleIcons && vm.syncYToggleIcons(); } catch(_) {
       // Ignore subscription errors
     }
@@ -34,7 +35,7 @@ export function attachSubscriptions(vm) {
 
   // Table state changes (e.g. sorting) — keep groups as-is, rebuild indices and refresh
   const onChanged = () => {
-    if (typeof window !== 'undefined' && window.__renderingInProgress) return;
+    if (isRenderingInProgress()) return;
     try { vm.updateSortArrowsAfterRefresh && vm.updateSortArrowsAfterRefresh(); } catch(_) {
       // Ignore subscription errors
     }
@@ -64,7 +65,7 @@ export function attachSubscriptions(vm) {
 
   // Reverse mode change — collapse all and reset button
   const onReverse = () => {
-    if (typeof window !== 'undefined' && window.__renderingInProgress) return;
+    if (isRenderingInProgress()) return;
     try { vm.openMainGroups && vm.openMainGroups.clear(); } catch(_) {
       // Ignore subscription errors
     }

@@ -3,6 +3,7 @@
 // based on the application's global status.
 
 import { subscribe } from "../state/eventBus.js";
+import { isSummaryFetchInProgress, shouldHideTableUntilSummary } from "../state/runtimeFlags.js";
 
 let __lastDataEmpty = false;
 
@@ -59,7 +60,7 @@ export function initUiFeedback() {
  */
 function updateFeedbackUI(status) {
   console.log("🔍 updateFeedbackUI: Updating UI for status:", status);
-  const isSummaryFetch = (() => { try { return !!window.__summaryFetchInProgress; } catch(_) { return false; } })();
+  const isSummaryFetch = isSummaryFetchInProgress();
   const findButton = document.getElementById("findButton");
   const summaryButton = document.getElementById("btnSummary");
   const controlButtons = document.querySelectorAll(".btn");
@@ -104,13 +105,9 @@ function updateFeedbackUI(status) {
         // Ensure overlay is hidden and table stays hidden until Summary is explicitly opened
         try { const loadingOverlay2 = document.getElementById("loading-overlay"); if (loadingOverlay2) loadingOverlay2.classList.add("is-hidden"); } catch(_) {}
       }
-      try {
-        if (typeof window !== 'undefined' && window.__hideTableUntilSummary) {
-          const resultsContainer2 = document.querySelector('.results-display');
-          if (resultsContainer2) resultsContainer2.classList.add('is-hidden');
-        }
-      } catch(_) {
-        // Ignore table hide errors
+      if (shouldHideTableUntilSummary()) {
+        const resultsContainer2 = document.querySelector('.results-display');
+        if (resultsContainer2) resultsContainer2.classList.add('is-hidden');
       }
       break;
 

@@ -1,17 +1,23 @@
 // static/js/data/tableProcessor.js
+// UI-only data processing: filtering, sorting, search
+// Heavy calculations (ACD/ASR/PDD) come pre-computed from backend
 import { getState, getFullData } from "../state/tableState.js";
+import { getChartsZoomRange } from "../state/runtimeFlags.js";
+
+// TODO: TECH DEBT — Zoom re-aggregation duplicates backend logic (app/utils/grouped.py)
+// Future: Replace with API call to /api/metrics?zoom_from=X&zoom_to=Y
+// For now, we re-aggregate client-side from cached hourlyRows to avoid extra requests
 
 function getFilteredAndSortedData() {
   const { mainRows, peerRows, hourlyRows } = getFullData();
   const { globalFilterQuery, columnFilters, multiSort } = getState();
 
-  // --- NEW: ZOOM & RE-AGGREGATION LOGIC ---
-  // 1. Determine effective time range (Zoom > Global)
+  // Zoom re-aggregation (uses pre-computed values from backend where possible)
   let effectiveMainRows = mainRows;
   let effectivePeerRows = peerRows;
   let effectiveHourlyRows = hourlyRows;
 
-  const zr = (typeof window !== 'undefined') ? window.__chartsZoomRange : null;
+  const zr = getChartsZoomRange();
   const hasZoom = zr && Number.isFinite(zr.fromTs) && Number.isFinite(zr.toTs) && zr.toTs > zr.fromTs;
 
   if (hasZoom && hourlyRows && hourlyRows.length > 0) {
@@ -21,108 +27,9 @@ function getFilteredAndSortedData() {
       return ts >= zr.fromTs && ts <= zr.toTs;
     });
 
-    // Re-aggregate Peer Rows from filtered Hourly Rows
-    const peerMap = new Map();
-    for (const hr of effectiveHourlyRows) {
-      const key = [hr.main, hr.peer, hr.destination].join('||');
-      if (!peerMap.has(key)) {
-        peerMap.set(key, {
-          main: hr.main,
-          peer: hr.peer,
-          destination: hr.destination,
-          // Initialize accumulators
-          Min: 0, SCall: 0, TCall: 0,
-          sumPDD: 0, sumAtime: 0, sumMos: 0,
-          cntPDD: 0, cntAtime: 0, cntMos: 0 // using count or SCall for weighting
-        });
-      }
-      const agg = peerMap.get(key);
-      const min = parseNumber(hr.Min);
-      const scall = parseNumber(hr.SCall);
-      const tcall = parseNumber(hr.TCall);
-      const pdd = parseNumber(hr.pdd);
-      const atime = parseNumber(hr.atime);
-      const mos = parseNumber(hr.mos);
-
-      if (!isNaN(min)) agg.Min += min;
-      if (!isNaN(scall)) agg.SCall += scall;
-      if (!isNaN(tcall)) agg.TCall += tcall;
-
-      // Weighted averages for PDD, Atime, MOS (weight by SCall if possible, else count)
-      const weight = !isNaN(scall) && scall > 0 ? scall : 1;
-      if (!isNaN(pdd)) { agg.sumPDD += pdd * weight; agg.cntPDD += weight; }
-      if (!isNaN(atime)) { agg.sumAtime += atime * weight; agg.cntAtime += weight; }
-      if (!isNaN(mos)) { agg.sumMos += mos * weight; agg.cntMos += weight; }
-    }
-
-    effectivePeerRows = Array.from(peerMap.values()).map(agg => {
-      // Calculate averages
-      const asr = agg.TCall > 0 ? (agg.SCall / agg.TCall) * 100 : 0;
-      const acd = agg.SCall > 0 ? agg.Min / agg.SCall : 0;
-      const pdd = agg.cntPDD > 0 ? agg.sumPDD / agg.cntPDD : 0;
-      const atime = agg.cntAtime > 0 ? agg.sumAtime / agg.cntAtime : 0;
-      const mos = agg.cntMos > 0 ? agg.sumMos / agg.cntMos : 0;
-
-      return {
-        ...agg, // keeps main, peer, destination
-        Min: agg.Min,
-        SCall: agg.SCall,
-        TCall: agg.TCall,
-        asr: asr,
-        acd: acd,
-        pdd: pdd,
-        atime: atime,
-        mos: mos,
-        // Format for display if needed, but keeping raw numbers for sorting/filtering is better
-        ASR: asr, ACD: acd, PDD: pdd, Atime: atime, Mos: mos
-      };
-    });
-
-    // Re-aggregate Main Rows from new Peer Rows
-    const mainMap = new Map();
-    for (const pr of effectivePeerRows) {
-      const key = [pr.main, pr.destination].join('||');
-      if (!mainMap.has(key)) {
-        mainMap.set(key, {
-          main: pr.main,
-          destination: pr.destination,
-          Min: 0, SCall: 0, TCall: 0,
-          sumPDD: 0, sumAtime: 0, sumMos: 0,
-          cntPDD: 0, cntAtime: 0, cntMos: 0
-        });
-      }
-      const agg = mainMap.get(key);
-      // Peer rows are already numbers from above
-      agg.Min += pr.Min;
-      agg.SCall += pr.SCall;
-      agg.TCall += pr.TCall;
-
-      const weight = pr.SCall > 0 ? pr.SCall : 1;
-      if (pr.pdd) { agg.sumPDD += pr.pdd * weight; agg.cntPDD += weight; }
-      if (pr.atime) { agg.sumAtime += pr.atime * weight; agg.cntAtime += weight; }
-      if (pr.mos) { agg.sumMos += pr.mos * weight; agg.cntMos += weight; }
-    }
-
-    effectiveMainRows = Array.from(mainMap.values()).map(agg => {
-      const asr = agg.TCall > 0 ? (agg.SCall / agg.TCall) * 100 : 0;
-      const acd = agg.SCall > 0 ? agg.Min / agg.SCall : 0;
-      const pdd = agg.cntPDD > 0 ? agg.sumPDD / agg.cntPDD : 0;
-      const atime = agg.cntAtime > 0 ? agg.sumAtime / agg.cntAtime : 0;
-      const mos = agg.cntMos > 0 ? agg.sumMos / agg.cntMos : 0;
-
-      return {
-        ...agg,
-        Min: agg.Min,
-        SCall: agg.SCall,
-        TCall: agg.TCall,
-        asr: asr,
-        acd: acd,
-        pdd: pdd,
-        atime: atime,
-        mos: mos,
-        ASR: asr, ACD: acd, PDD: pdd, Atime: atime, Mos: mos
-      };
-    });
+    // Re-aggregate using pre-computed values from backend
+    effectivePeerRows = aggregatePeerRows(effectiveHourlyRows);
+    effectiveMainRows = aggregateMainRows(effectivePeerRows);
   }
 
   let filteredMainRows = effectiveMainRows;
@@ -242,7 +149,9 @@ export function getProcessedData() {
   return { pagedData: data, totalFiltered: count, peerRows: effectivePeerRows, hourlyRows: effectiveHourlyRows };
 }
 
-// --- NEW: Compute aggregate totals/averages for footer ---
+// --- UI-LEVEL AGGREGATION for footer ---
+// This is a UI operation on already-filtered/computed data, NOT business logic
+// ACD/ASR here are derived from pre-computed Min/SCall/TCall values
 export function computeAggregates() {
   const { data } = getFilteredAndSortedData();
   const { columnFilters, globalFilterQuery } = getState();
@@ -391,3 +300,97 @@ function passesColumnFilter(value, filter) {
 }
 
 // Pagination function removed - virtualization handles all data display
+
+// --- ZOOM AGGREGATION HELPERS ---
+// These use pre-computed values from backend, only summing/averaging
+
+function aggregatePeerRows(hourlyRows) {
+  const peerMap = new Map();
+  
+  for (const hr of hourlyRows) {
+    const key = [hr.main, hr.peer, hr.destination].join('||');
+    if (!peerMap.has(key)) {
+      peerMap.set(key, {
+        main: hr.main,
+        peer: hr.peer,
+        destination: hr.destination,
+        Min: 0, SCall: 0, TCall: 0,
+        // weighted sums for averages
+        sumASR: 0, sumACD: 0, sumPDD: 0, sumATime: 0,
+        cntASR: 0, cntACD: 0, cntPDD: 0, cntATime: 0
+      });
+    }
+    const agg = peerMap.get(key);
+    const min = parseNumber(hr.Min);
+    const scall = parseNumber(hr.SCall);
+    const tcall = parseNumber(hr.TCall);
+    
+    if (!isNaN(min)) agg.Min += min;
+    if (!isNaN(scall)) agg.SCall += scall;
+    if (!isNaN(tcall)) agg.TCall += tcall;
+    
+    // Use backend-computed values, weighted by calls
+    const weight = !isNaN(scall) && scall > 0 ? scall : 1;
+    const asr = parseNumber(hr.ASR);
+    const acd = parseNumber(hr.ACD);
+    const pdd = parseNumber(hr.PDD);
+    const atime = parseNumber(hr.ATime);
+    
+    if (!isNaN(asr)) { agg.sumASR += asr * weight; agg.cntASR += weight; }
+    if (!isNaN(acd)) { agg.sumACD += acd * weight; agg.cntACD += weight; }
+    if (!isNaN(pdd)) { agg.sumPDD += pdd * weight; agg.cntPDD += weight; }
+    if (!isNaN(atime)) { agg.sumATime += atime * weight; agg.cntATime += weight; }
+  }
+
+  return Array.from(peerMap.values()).map(agg => ({
+    main: agg.main,
+    peer: agg.peer,
+    destination: agg.destination,
+    Min: agg.Min,
+    SCall: agg.SCall,
+    TCall: agg.TCall,
+    ASR: agg.cntASR > 0 ? agg.sumASR / agg.cntASR : 0,
+    ACD: agg.cntACD > 0 ? agg.sumACD / agg.cntACD : 0,
+    PDD: agg.cntPDD > 0 ? agg.sumPDD / agg.cntPDD : 0,
+    ATime: agg.cntATime > 0 ? agg.sumATime / agg.cntATime : 0
+  }));
+}
+
+function aggregateMainRows(peerRows) {
+  const mainMap = new Map();
+  
+  for (const pr of peerRows) {
+    const key = [pr.main, pr.destination].join('||');
+    if (!mainMap.has(key)) {
+      mainMap.set(key, {
+        main: pr.main,
+        destination: pr.destination,
+        Min: 0, SCall: 0, TCall: 0,
+        sumASR: 0, sumACD: 0, sumPDD: 0, sumATime: 0,
+        cntASR: 0, cntACD: 0, cntPDD: 0, cntATime: 0
+      });
+    }
+    const agg = mainMap.get(key);
+    agg.Min += pr.Min || 0;
+    agg.SCall += pr.SCall || 0;
+    agg.TCall += pr.TCall || 0;
+    
+    const weight = pr.SCall > 0 ? pr.SCall : 1;
+    if (pr.ASR) { agg.sumASR += pr.ASR * weight; agg.cntASR += weight; }
+    if (pr.ACD) { agg.sumACD += pr.ACD * weight; agg.cntACD += weight; }
+    if (pr.PDD) { agg.sumPDD += pr.PDD * weight; agg.cntPDD += weight; }
+    if (pr.ATime) { agg.sumATime += pr.ATime * weight; agg.cntATime += weight; }
+  }
+
+  return Array.from(mainMap.values()).map(agg => ({
+    main: agg.main,
+    destination: agg.destination,
+    Min: agg.Min,
+    SCall: agg.SCall,
+    TCall: agg.TCall,
+    ASR: agg.cntASR > 0 ? agg.sumASR / agg.cntASR : 0,
+    ACD: agg.cntACD > 0 ? agg.sumACD / agg.cntACD : 0,
+    PDD: agg.cntPDD > 0 ? agg.sumPDD / agg.cntPDD : 0,
+    ATime: agg.cntATime > 0 ? agg.sumATime / agg.cntATime : 0
+  }));
+}

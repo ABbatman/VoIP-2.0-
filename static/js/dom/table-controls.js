@@ -16,8 +16,8 @@ import {
   showTableControls,
   updateSortArrows,
 } from "./table-ui.js";
-// --- REMOVED: updateColumnPlaceholders is no longer needed here ---
 import { updateTopScrollbar } from "./top-scrollbar.js";
+import { getVirtualManager } from "../state/moduleRegistry.js";
 
 /**
  * Initializes all event handlers for the table controls.
@@ -107,9 +107,10 @@ export function clearAllTableFilters() {
   }
 
   // Force table refresh after clearing all filters
-  if (window.virtualManager && window.virtualManager.isActive) {
+  const vm = getVirtualManager();
+  if (vm && vm.isActive) {
     console.log("🔄 Refreshing table after clearing all filters...");
-    window.virtualManager.refreshVirtualTable();
+    vm.refreshVirtualTable();
   }
 
   // Reconnect filter event handlers after clearing
@@ -156,9 +157,10 @@ export function clearColumnFilter(columnKey) {
   }
 
   // Force table refresh after clearing filter
-  if (window.virtualManager && window.virtualManager.isActive) {
+  const vmFilter = getVirtualManager();
+  if (vmFilter && vmFilter.isActive) {
     console.log("🔄 Refreshing table after filter clear...");
-    window.virtualManager.refreshVirtualTable();
+    vmFilter.refreshVirtualTable();
   }
 
   console.log(`🧹 Column filter "${columnKey}" cleared`);

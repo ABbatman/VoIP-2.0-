@@ -5,6 +5,7 @@
 import { getTableBody, getMainToggleButtons, getExpandAllButton, isVirtualModeActive } from '../../dom/selectors.js';
 import { renderCoordinator } from '../../rendering/render-coordinator.js';
 import { expandAllMain, collapseAll, buildMainGroupId } from '../../state/expansionState.js';
+import { getVirtualManager } from '../../state/moduleRegistry.js';
 
 // --- Standard mode operations ---
 export function expandAllPeersStandard() {
@@ -56,13 +57,7 @@ export function collapseAllPeersStandard() {
 
 // --- Virtual mode operations ---
 function getVM() {
-  const tableRenderer = window.tableRenderer;
-  if (tableRenderer && tableRenderer.virtualManager) return tableRenderer.virtualManager;
-  if (window.virtualManager) return window.virtualManager;
-  if (window.appInitializer && window.appInitializer.tableController && window.appInitializer.tableController.tableRenderer) {
-    return window.appInitializer.tableController.tableRenderer.virtualManager || null;
-  }
-  return null;
+  return getVirtualManager();
 }
 
 export function expandAllPeersVirtual() {

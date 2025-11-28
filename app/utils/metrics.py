@@ -1,10 +1,15 @@
 # app/utils/metrics.py
+# Total metrics calculation using centralized formulas
 
-from collections import defaultdict
-from app.utils.logger import log_info # Use absolute import
+from app.utils.logger import log_info
+from app.utils.formulas import calc_minutes, calc_acd, calc_asr, calc_pdd, calc_atime
 
-# ===== METRICS FOR TOTAL =====
+
 def calculate_metrics(rows):
+    """
+    Calculate total metrics from raw rows.
+    Uses centralized formulas from app/utils/formulas.py.
+    """
     log_info("📊 Starting metric calculation...")
 
     if not rows:
@@ -12,8 +17,8 @@ def calculate_metrics(rows):
         return {
             "Min": 0.0,
             "ACD": 0.0,
-            "ASR": 0,
-            "Scall": 0,
+            "ASR": 0.0,
+            "Scall": 0.0,
             "AvPDD": 0.0,
             "ATime": 0.0,
             "SCal": 0,
@@ -53,32 +58,16 @@ def calculate_metrics(rows):
     log_info(f"⏱ Total seconds: {total_seconds}, Total PDD: {total_pdd}, Total Answer Time: {total_answer_time}")
     log_info(f"📈 Counts — PDD: {pdd_count}, ATime: {atime_count}, SCal: {scal}, TCall: {tcall}, UCall: {ucall}")
 
-    # --- Calculations with new formatting ---
-
-    # Convert total seconds to minutes, formatted to one decimal place.
-    min_val = round(total_seconds / 60, 1)
-
-    # Calculate ACD in minutes, formatted to one decimal place.
-    # The original calculation was already in minutes, we just confirm the rounding.
-    acd = round(total_seconds / scal / 60, 1) if scal else 0.0
-
-    # Calculate ASR as attempts-to-success ratio (expressed in %).
-    asr = round(scal / tcall * 100, 1) if tcall else 0.0
-    scall = asr  # Keep the copy of ASR
-
-    # Calculate average PDD in seconds (divide by 1000), formatted to one decimal place.
-    av_pdd = round(total_pdd / pdd_count / 1000, 1) if pdd_count else 0.0
-
-    # Calculate average Answer Time, formatted to one decimal place.
-    atime = round(total_answer_time / atime_count, 1) if atime_count else 0.0
+    # Use centralized formulas
+    asr = calc_asr(scal, tcall)
 
     result = {
-        "Min": min_val,
-        "ACD": acd,
+        "Min": calc_minutes(total_seconds),
+        "ACD": calc_acd(total_seconds, scal),
         "ASR": asr,
-        "Scall": scall,
-        "AvPDD": av_pdd,
-        "ATime": atime,
+        "Scall": asr,  # legacy alias
+        "AvPDD": calc_pdd(total_pdd, pdd_count),
+        "ATime": calc_atime(total_answer_time, atime_count),
         "SCal": scal,
         "TCall": tcall,
         "UCall": ucall

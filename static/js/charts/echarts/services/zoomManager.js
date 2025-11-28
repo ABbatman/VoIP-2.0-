@@ -1,6 +1,12 @@
 // static/js/charts/echarts/services/zoomManager.js
 // Centralized zoom range management and policy
 import { toast } from '../../../ui/notify.js';
+import {
+  getChartsZoomRange,
+  setChartsZoomRange,
+  getChartsCurrentInterval,
+  setChartsCurrentInterval
+} from '../../../state/runtimeFlags.js';
 
 function _getModelRange(chart) {
   try {
@@ -17,12 +23,15 @@ function _getModelRange(chart) {
   return null;
 }
 
+// local cache for policy throttle
+let _zoomPolicyLastSwitchTs = 0;
+
 export function getRange() {
-  try { return (typeof window !== 'undefined') ? (window.__chartsZoomRange || null) : null; } catch(_) { return null; }
+  return getChartsZoomRange();
 }
 
 export function setRange(range) {
-  try { if (range && Number.isFinite(range.fromTs) && Number.isFinite(range.toTs)) window.__chartsZoomRange = { fromTs: Number(range.fromTs), toTs: Number(range.toTs) }; } catch(_) {}
+  setChartsZoomRange(range);
 }
 
 export function applyRange(chart) {
@@ -49,14 +58,13 @@ export function attach(chart, { onZoom } = {}) {
       // 5m interval hard policy: auto-switch to 1h when zoom > 5 days
       try {
         const diffDays = (zr.toTs - zr.fromTs) / (24 * 3600e3);
-        const curInt = (typeof window !== 'undefined' && window.__chartsCurrentInterval) ? String(window.__chartsCurrentInterval) : '5m';
+        const curInt = getChartsCurrentInterval();
         if (curInt === '5m' && Number.isFinite(diffDays) && diffDays > 5.0001) {
           const now = Date.now();
-          const last = window.__zoomPolicyLastSwitchTs || 0;
-          if (now - last > 600) {
-            window.__zoomPolicyLastSwitchTs = now;
+          if (now - _zoomPolicyLastSwitchTs > 600) {
+            _zoomPolicyLastSwitchTs = now;
             try { toast('5-minute interval is available only for ranges up to 5 days. Switching to 1 hour.', { type: 'warning', duration: 3500 }); } catch(_) {}
-            try { window.__chartsCurrentInterval = '1h'; } catch(_) {}
+            setChartsCurrentInterval('1h');
             try {
               import('../../../state/eventBus.js').then(({ publish }) => {
                 try { publish('charts:intervalChanged', { interval: '1h' }); } catch(_) {}

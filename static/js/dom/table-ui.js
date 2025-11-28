@@ -14,6 +14,7 @@ import { computeAggregates } from "../data/tableProcessor.js";
 import { renderHeaderCellString } from './components/header-cell.js';
 import { renderFilterCell as renderFilterCellComponent } from './components/filter-cell.js';
 import { applySortSafe } from "../table/features/sortControl.js";
+import { getVirtualManager } from "../state/moduleRegistry.js";
 const DEBUG = (typeof window !== 'undefined' && window.DEBUG === true);
 
 const arrowSvg = `<svg viewBox="0 0 24 24">
@@ -542,23 +543,21 @@ function handleGlobalFilterChange(event) {
     restoreScroll();
     
     // If virtual manager is active, refresh the table to show filtered/unfiltered data
-    if (window.virtualManager && window.virtualManager.isActive) {
+    const vm = getVirtualManager();
+    if (vm && vm.isActive) {
       if (DEBUG) console.log("🔄 Refreshing table after global filter change...");
-      window.virtualManager.refreshVirtualTable();
+      vm.refreshVirtualTable();
       
       // Restore focus after table refresh
       if (wasFocused) {
-        // Use requestAnimationFrame for better timing
         requestAnimationFrame(() => {
           const newInput = document.getElementById("table-filter-input");
           if (newInput) {
             newInput.focus();
-            // Ensure cursor position is within bounds
             const maxPosition = Math.min(cursorPosition, newInput.value.length);
             newInput.setSelectionRange(maxPosition, maxPosition);
             if (DEBUG) console.log("🔧 Restored focus to global filter input");
           }
-          // Restore scroll again after focus placement
           restoreScroll();
         });
       }
@@ -658,9 +657,10 @@ function handleColumnFilterChange(event) {
     restoreScroll();
     
     // If virtual manager is active, refresh the table to show filtered/unfiltered data
-    if (window.virtualManager && window.virtualManager.isActive) {
+    const vmCol = getVirtualManager();
+    if (vmCol && vmCol.isActive) {
       if (DEBUG) console.log("🔄 Refreshing table after filter change...");
-      window.virtualManager.refreshVirtualTable();
+      vmCol.refreshVirtualTable();
       // Extra safety: if processor says 0 rows, clear tbody immediately (surface behavior)
       import("../data/tableProcessor.js").then(({ getProcessedData }) => {
         try {

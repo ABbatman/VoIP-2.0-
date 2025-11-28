@@ -28,6 +28,7 @@ import {
   togglePeer,
   resetExpansionState,
 } from "../state/expansionState.js";
+import { getVirtualManager } from "../state/moduleRegistry.js";
 
 // Centralized expansion state proxies (shared with virtual table)
 const openMainGroups = getMainSetProxy();
@@ -208,7 +209,8 @@ export function initTableInteractions() {
 
   tableBody.addEventListener("click", (event) => {
     // If virtual mode is active, delegate toggle handling to virtual manager to avoid double toggles
-    try { if (window.virtualManager && window.virtualManager.isActive) return; } catch (_) {}
+    const vm = getVirtualManager();
+    if (vm && vm.isActive) return;
     // --- EXPAND/COLLAPSE LOGIC ---
     const targetButton = event.target.closest(".toggle-btn");
     if (targetButton) {
@@ -246,7 +248,8 @@ export function initTableInteractions() {
     const clickedRow = event.target.closest("tr");
     if (clickedRow && clickedRow.classList.contains("peer-row")) {
       // If virtual mode is active, do not emulate toggle by row click
-      try { if (window.virtualManager && window.virtualManager.isActive) return; } catch (_) {}
+      const vmPeer = getVirtualManager();
+      if (vmPeer && vmPeer.isActive) return;
       // If the direct target wasn't the toggle button, delegate to the existing button logic
       const innerToggleBtn = clickedRow.querySelector(".toggle-btn");
       if (innerToggleBtn && !event.target.closest(".toggle-btn")) {

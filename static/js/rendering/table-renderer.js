@@ -3,6 +3,7 @@
 
 import { renderGroupedTable } from '../dom/table.js';
 import { getRenderingMode, isVirtualScrollEnabled } from '../state/tableState.js';
+import { setVirtualManager } from '../state/moduleRegistry.js';
 
 /**
  * Table Renderer - Coordinates between standard and virtual rendering
@@ -93,8 +94,8 @@ export class TableRenderer {
             this._vmUnavailable = true;
             return this.renderStandardTable(mRows, pRows, hRows);
           }
-          // Expose globally for UI controls only after successful init
-          window.virtualManager = this.virtualManager;
+          // Expose via registry for UI controls only after successful init
+          setVirtualManager(this.virtualManager);
           console.log('✅ Table Renderer: Virtual manager initialized on-demand');
         } catch (e) {
           console.error('❌ Table Renderer: Failed to lazy-load VirtualManager, fallback to standard', e);

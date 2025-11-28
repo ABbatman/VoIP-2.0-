@@ -1,5 +1,6 @@
 // static/js/rendering/render-coordinator.js
 // Responsibility: serialize table renders (no races), de-duplicate same-kind requests in a short window
+import { setRenderingInProgress } from '../state/runtimeFlags.js';
 
 const DEFAULT_DEBOUNCE_MS = 500; // coalesce sequential triggers from different sources
 
@@ -66,10 +67,8 @@ class RenderCoordinator {
         // Execute single-flight
         try {
           // Mark global rendering in progress for table pipeline to let subscribers skip
-          if (typeof window !== 'undefined' && item.kind === 'table') {
-            try { window.__renderingInProgress = true; } catch(_) {
-              // Ignore render coordination errors
-            }
+          if (item.kind === 'table') {
+            setRenderingInProgress(true);
           }
           this._activeKinds.add(item.kind);
           await item.taskFn();
@@ -78,10 +77,8 @@ class RenderCoordinator {
           console.warn('[RenderCoordinator] task failed:', err);
           item.reject(err);
         } finally {
-          if (typeof window !== 'undefined' && item.kind === 'table') {
-            try { window.__renderingInProgress = false; } catch(_) {
-              // Ignore render coordination errors
-            }
+          if (item.kind === 'table') {
+            setRenderingInProgress(false);
           }
           this._pendingByKind.delete(item.kind);
           try { this._lastCompletedByKind.set(item.kind, performance.now()); } catch(_) {

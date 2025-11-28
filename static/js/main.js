@@ -15,6 +15,11 @@ import 'flatpickr/dist/flatpickr.min.css';
 import flatpickr from 'flatpickr';
 import morphdom from 'morphdom'; // NEW: DOM patching library
 
+// Init runtime flags and module registry early (provides backward-compatible window.* bridge)
+import './state/runtimeFlags.js';
+import './state/moduleRegistry.js';
+import { setDashboard } from './state/moduleRegistry.js';
+
 import { MetricsDashboardModule, clearTableFilters, clearSpecificFilter } from './core/MetricsDashboardModule.js';
 import { initTypeaheadFilters } from './init/typeahead-init.js'; // Typeahead init
 import { initD3 } from './init/d3-init.js'; // D3 core init (now bootstraps dashboard lazily)
@@ -22,19 +27,16 @@ import { initD3 } from './init/d3-init.js'; // D3 core init (now bootstraps dash
 const ready = (fn) => (document.readyState !== 'loading' ? fn() : document.addEventListener('DOMContentLoaded', fn));
 
 ready(() => {
-  // Expose flatpickr globally for ui-widgets.js which checks `typeof flatpickr`
+  // Libraries: expose on window for external checks (typeof flatpickr)
   window.flatpickr = flatpickr;
-  
-  // Expose morphdom globally for debugging
   window.morphdom = morphdom;
   
+  // Dashboard: use centralized registry
   const dashboard = new MetricsDashboardModule();
-  // index.html contains #dashboard-container
   dashboard.init('dashboard-container');
-  // Expose for console testing if needed
-  window.dashboard = dashboard;
+  setDashboard(dashboard);
   
-  // Expose utility functions globally
+  // Utility functions for console/external use
   window.clearTableFilters = clearTableFilters;
   window.clearSpecificFilter = clearSpecificFilter;
 

@@ -41,7 +41,7 @@ export function attachToggles(vm) {
       try { vm.updateAllToggleButtons && vm.updateAllToggleButtons(); } catch (e) {
         console.error('Error updating toggle buttons:', e);
       }
-      try { vm.syncExpandCollapseAllButtonLabel && vm.syncExpandCollapseAllButtonLabel(); } catch (e) {
+      try { syncExpandCollapseAllButtonLabel(); } catch (e) {
         console.error('Error syncing expand/collapse all button label:', e);
       }
     } catch (e) {
@@ -130,7 +130,7 @@ export function attachToggles(vm) {
     try {
       const btn = getExpandAllButton();
       if (btn) { btn.textContent = 'Hide All'; btn.dataset.state = 'shown'; }
-      vm.syncExpandCollapseAllButtonLabel();
+      syncExpandCollapseAllButtonLabel();
     } catch (e) {
       console.error('Error syncing expand/collapse all button label:', e);
     }
@@ -158,11 +158,27 @@ export function attachToggles(vm) {
     try {
       const btn = getExpandAllButton();
       if (btn) { btn.textContent = 'Show All'; btn.dataset.state = 'hidden'; }
-      vm.syncExpandCollapseAllButtonLabel();
+      syncExpandCollapseAllButtonLabel();
     } catch (e) {
       console.error('Error syncing expand/collapse all button label:', e);
     }
   }
 
-  return { handleVirtualToggle, updateAllToggleButtons, showAllRows, hideAllRows, closeHourlyGroupsUnderMain, processQueuedExpandCollapseAll };
+  // Sync button label based on current expansion state
+  function syncExpandCollapseAllButtonLabel() {
+    try {
+      const btn = getExpandAllButton();
+      if (!btn) return;
+      const mainIndex = vm.lazyData?.mainIndex || [];
+      if (mainIndex.length === 0) return;
+      // Check if any main is expanded
+      const anyExpanded = mainIndex.some(m => isMainExpanded(m.groupId));
+      btn.textContent = anyExpanded ? 'Hide All' : 'Show All';
+      btn.dataset.state = anyExpanded ? 'shown' : 'hidden';
+    } catch (_) {
+      // Ignore sync errors
+    }
+  }
+
+  return { handleVirtualToggle, updateAllToggleButtons, showAllRows, hideAllRows, closeHourlyGroupsUnderMain, processQueuedExpandCollapseAll, syncExpandCollapseAllButtonLabel };
 }

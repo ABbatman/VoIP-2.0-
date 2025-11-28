@@ -6,21 +6,22 @@ from app.models.query_params import MetricsQueryParams
 from app.utils.logger import log_info, log_exception, json_response, json_error
 from app.repositories.metrics_repository import MetricsRepository
 
-class MetricsHandler(tornado.web.RequestHandler):
-    """
-    Thin Tornado request handler: validates incoming query parameters using
-    Pydantic and delegates business logic to `MetricsService`.
-    """
 
+class BaseMetricsHandler(tornado.web.RequestHandler):
+    """
+    Base handler with shared logic for all metrics endpoints.
+    Subclasses only need to override `get_granularity()`.
+    """
+    
     def initialize(self, metrics_service: MetricsService | None = None):
-        # Allows injecting a mock in tests; builds a real service by default
         self.metrics_service = metrics_service or MetricsService(MetricsRepository())
 
+    def get_granularity(self) -> str | None:
+        """Override in subclass to force specific granularity, or return None for query param."""
+        return None
+
     async def get(self):
-        """
-        Handles GET /api/metrics asynchronously.
-        Supports response format `format=compact`.
-        """
+        """Unified GET handler for all metrics endpoints."""
         try:
             log_info(f" GET {self.request.path} - Received request.")
 
@@ -34,6 +35,9 @@ class MetricsHandler(tornado.web.RequestHandler):
                 error_msg = f"Parameter '{error_details['loc'][0]}': {error_details['msg']}"
                 return json_error(self, error_msg, status=400)
 
+            # Use forced granularity from subclass or query param
+            granularity = self.get_granularity() or params.granularity
+
             report_data = await self.metrics_service.get_full_metrics_report(
                 customer=params.customer,
                 supplier=params.supplier,
@@ -41,20 +45,18 @@ class MetricsHandler(tornado.web.RequestHandler):
                 time_from=params.time_from,
                 time_to=params.time_to,
                 reverse=params.reverse,
-                granularity=params.granularity,
+                granularity=granularity,
             )
 
-            # Optional compact format to reduce payload size: headers + rows
             fmt = self.get_argument("format", default="json").lower()
             if fmt == "compact":
-                compact = MetricsHandler._to_compact_format(report_data)
+                compact = self._to_compact_format(report_data)
                 return json_response(self, compact)
 
-            # Default verbose JSON
             return json_response(self, report_data)
 
         except Exception as e:
-            log_exception(e, " Error in MetricsHandler")
+            log_exception(e, f" Error in {self.__class__.__name__}")
             return json_error(self, "An internal server error occurred.", status=500)
 
     @staticmethod
@@ -114,74 +116,19 @@ class MetricsHandler(tornado.web.RequestHandler):
             out["five_min"] = compact_rows(data.get("five_min_rows", []), five_min_headers)
         return out
 
-class Metrics5mHandler(tornado.web.RequestHandler):
-    def initialize(self, metrics_service: MetricsService | None = None):
-        self.metrics_service = metrics_service or MetricsService(MetricsRepository())
+# Backward-compatible alias
+MetricsHandler = BaseMetricsHandler
 
-    async def get(self):
-        try:
-            log_info(f" GET {self.request.path} - Received request.")
-            try:
-                query_args = {key: self.get_argument(key) for key in self.request.arguments}
-                params = MetricsQueryParams.model_validate(query_args)
-                log_info(f" Query parameters validated successfully: {params.model_dump()}")
-            except ValidationError as e:
-                log_info(f" Validation failed: {e.errors()}")
-                error_details = e.errors()[0]
-                error_msg = f"Parameter '{error_details['loc'][0]}': {error_details['msg']}"
-                return json_error(self, error_msg, status=400)
 
-            report_data = await self.metrics_service.get_full_metrics_report(
-                customer=params.customer,
-                supplier=params.supplier,
-                destination=params.destination,
-                time_from=params.time_from,
-                time_to=params.time_to,
-                reverse=params.reverse,
-                granularity='5m',
-            )
+class Metrics5mHandler(BaseMetricsHandler):
+    """Handler for /api/metrics/5m — forces 5-minute granularity."""
+    
+    def get_granularity(self) -> str:
+        return "5m"
 
-            fmt = self.get_argument("format", default="json").lower()
-            if fmt == "compact":
-                compact = MetricsHandler._to_compact_format(report_data)
-                return json_response(self, compact)
-            return json_response(self, report_data)
-        except Exception as e:
-            log_exception(e, " Error in Metrics5mHandler")
-            return json_error(self, "An internal server error occurred.", status=500)
 
-class Metrics1hHandler(tornado.web.RequestHandler):
-    def initialize(self, metrics_service: MetricsService | None = None):
-        self.metrics_service = metrics_service or MetricsService(MetricsRepository())
-
-    async def get(self):
-        try:
-            log_info(f" GET {self.request.path} - Received request.")
-            try:
-                query_args = {key: self.get_argument(key) for key in self.request.arguments}
-                params = MetricsQueryParams.model_validate(query_args)
-                log_info(f" Query parameters validated successfully: {params.model_dump()}")
-            except ValidationError as e:
-                log_info(f" Validation failed: {e.errors()}")
-                error_details = e.errors()[0]
-                error_msg = f"Parameter '{error_details['loc'][0]}': {error_details['msg']}"
-                return json_error(self, error_msg, status=400)
-
-            report_data = await self.metrics_service.get_full_metrics_report(
-                customer=params.customer,
-                supplier=params.supplier,
-                destination=params.destination,
-                time_from=params.time_from,
-                time_to=params.time_to,
-                reverse=params.reverse,
-                granularity='1h',
-            )
-
-            fmt = self.get_argument("format", default="json").lower()
-            if fmt == "compact":
-                compact = MetricsHandler._to_compact_format(report_data)
-                return json_response(self, compact)
-            return json_response(self, report_data)
-        except Exception as e:
-            log_exception(e, " Error in Metrics1hHandler")
-            return json_error(self, "An internal server error occurred.", status=500)
+class Metrics1hHandler(BaseMetricsHandler):
+    """Handler for /api/metrics/1h — forces 1-hour granularity."""
+    
+    def get_granularity(self) -> str:
+        return "1h"

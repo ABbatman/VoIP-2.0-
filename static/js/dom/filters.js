@@ -24,6 +24,26 @@ import { initStickyFooter, initStickyHeader } from "./sticky-table-chrome.js";
 import { renderCoordinator } from "../rendering/render-coordinator.js";
 import { getCachedMetrics, putCachedMetrics } from "../data/metricsCache.js";
 import { toast } from "../ui/notify.js";
+import {
+  isSummaryDelegationInstalled,
+  setSummaryDelegationInstalled,
+  isSummaryFetchInProgress,
+  setSummaryFetchInProgress,
+  isChartsIntervalFetchSubscribed,
+  setChartsIntervalFetchSubscribed,
+  isIntervalFetchInFlight,
+  setIntervalFetchInFlight,
+  getChartsZoomRange,
+  clearChartsZoomRange,
+  getChartsCurrentInterval,
+  setChartsCurrentInterval,
+  shouldHideTableUntilSummary,
+  setHideTableUntilSummary,
+  isChartsRenderRequested,
+  setChartsRenderRequested,
+  setManualFindInProgress,
+} from "../state/runtimeFlags.js";
+import { getVirtualManager, setVirtualManager } from "../state/moduleRegistry.js";
 
 export function initFilters(isStateLoaded) {
   const findButton = document.getElementById("findButton");
@@ -124,15 +144,14 @@ export function initFilters(isStateLoaded) {
 
   // Install delegated click handler once to survive DOM re-renders
   try {
-    const alreadyDelegated = (() => { try { return !!window.__summaryDelegationInstalled; } catch (_) { return false; } })();
-    if (!alreadyDelegated) {
+    if (!isSummaryDelegationInstalled()) {
       document.addEventListener('click', (e) => {
         const btn = e.target && (e.target.closest ? e.target.closest('#btnSummary') : null);
         if (!btn) return;
-        try { if (typeof window !== 'undefined' && window.__summaryFetchInProgress) return; } catch (_) { }
+        if (isSummaryFetchInProgress()) return;
         handleSummaryClick(e);
       }, false);
-      try { window.__summaryDelegationInstalled = true; } catch (_) { /* no-op */ }
+      setSummaryDelegationInstalled(true);
     }
   } catch (_) { /* best-effort */ }
 
@@ -196,30 +215,22 @@ export function initFilters(isStateLoaded) {
 
   // Auto-fetch data when user switches interval without pressing Find
   try {
-    const already = (() => { try { return !!window.__chartsIntervalFetchSubscribed; } catch (_) { return false; } })();
-    if (!already) {
-      try { window.__chartsIntervalFetchSubscribed = true; } catch (_) {
-        // Ignore global flag errors
-      }
-    }
-    if (!already) subscribe('charts:intervalChanged', async (payload) => {
-      try {
-        const interval = payload && payload.interval ? String(payload.interval) : '';
-        if (!interval) return;
-        // prevent duplicate interval fetches
+    if (!isChartsIntervalFetchSubscribed()) {
+      setChartsIntervalFetchSubscribed(true);
+      subscribe('charts:intervalChanged', async (payload) => {
         try {
+          const interval = payload && payload.interval ? String(payload.interval) : '';
+          if (!interval) return;
+          // prevent duplicate interval fetches
           if (getAppStatus && getAppStatus() === 'loading') return;
-          if (typeof window !== 'undefined' && window.__intervalFetchInFlight) return;
-          if (typeof window !== 'undefined') window.__intervalFetchInFlight = true;
-        } catch (_) {
-          // Ignore fetch guard errors
-        }
-        try { refreshFilterValues(); } catch (_) {
-          // Ignore filter refresh errors
-        }
-        const base = buildFilterParams();
-        // Prefer zoom window if present
-        const zr = (typeof window !== 'undefined') ? window.__chartsZoomRange : null;
+          if (isIntervalFetchInFlight()) return;
+          setIntervalFetchInFlight(true);
+          try { refreshFilterValues(); } catch (_) {
+            // Ignore filter refresh errors
+          }
+          const base = buildFilterParams();
+          // Prefer zoom window if present
+          const zr = getChartsZoomRange();
         let fromStr = base.from;
         let toStr = base.to;
         let effFromTs = new Date(fromStr.replace(' ', 'T') + 'Z').getTime();
@@ -229,9 +240,7 @@ export function initFilters(isStateLoaded) {
           // NOTE: do NOT override fromStr/toStr for the request; requests must use base filters
         }
         if (!Number.isFinite(effFromTs) || !Number.isFinite(effToTs) || effToTs <= effFromTs) {
-          try { if (typeof window !== 'undefined') window.__intervalFetchInFlight = false; } catch (_) {
-            // Ignore global flag errors
-          }
+          setIntervalFetchInFlight(false);
           return;
         }
         // Choose granularity by selected interval based on EFFECTIVE window (zoom if present)
@@ -248,9 +257,7 @@ export function initFilters(isStateLoaded) {
           effInterval = '1h';
         }
         // Persist chosen interval globally for backend hinting
-        try { if (typeof window !== 'undefined') window.__chartsCurrentInterval = effInterval; } catch (_) {
-          // Ignore global interval update errors
-        }
+        setChartsCurrentInterval(effInterval);
         let gran = '5m';
         if (diffHours <= 6) {
           gran = '5m';
@@ -269,9 +276,7 @@ export function initFilters(isStateLoaded) {
         if (cached) {
           setMetricsData(cached);
           setAppStatus('success');
-          try { if (typeof window !== 'undefined') window.__intervalFetchInFlight = false; } catch (_) {
-            // Ignore global flag errors
-          }
+          setIntervalFetchInFlight(false);
           return;
         }
         // No cache -> fetch
@@ -286,13 +291,12 @@ export function initFilters(isStateLoaded) {
         } else {
           setAppStatus('error');
         }
-        try { if (typeof window !== 'undefined') window.__intervalFetchInFlight = false; } catch (_) {
-          // Ignore global flag errors
-        }
+        setIntervalFetchInFlight(false);
       } catch (_) {
-        // Ignore interval fetch errors
+        setIntervalFetchInFlight(false);
       }
     });
+    }
   } catch (_) { /* best-effort */ }
 
   // While typing in filters, do NOT hide charts or controls; re-assert visibility
@@ -307,9 +311,7 @@ export function initFilters(isStateLoaded) {
   // After data changes, ensure charts stay visible (toast handled centrally by ui-feedback.js)
   try {
     subscribe("appState:dataChanged", () => {
-      try { if (typeof window !== 'undefined' && window.__hideTableUntilSummary) setShowTable(false); } catch (_) {
-        // Ignore table visibility errors
-      }
+      if (shouldHideTableUntilSummary()) setShowTable(false);
       try { const overlayEl = document.getElementById('loading-overlay'); if (overlayEl) overlayEl.classList.add('is-hidden'); } catch (_) {
         // Ignore overlay errors
       }
@@ -382,12 +384,13 @@ function destroyTableHard() {
     }
     
     // destroy virtualManager completely
-    if (window.virtualManager) {
+    const vm = getVirtualManager();
+    if (vm) {
       try {
-        if (typeof window.virtualManager.destroy === 'function') {
-          window.virtualManager.destroy();
+        if (typeof vm.destroy === 'function') {
+          vm.destroy();
         }
-        window.virtualManager = null;
+        setVirtualManager(null);
       } catch (_) {}
     }
     
@@ -421,10 +424,10 @@ function destroyTableHard() {
  */
 async function handleFindClick() {
   // Prevent auto-trigger from running while we're handling a manual click
-  window._isManualFindInProgress = true;
+  setManualFindInProgress(true);
 
   setAppStatus("loading");
-  try { if (typeof window !== 'undefined') window.__chartsZoomRange = null; } catch (_) { }
+  clearChartsZoomRange();
   // Ensure charts and mode controls remain visible across re-renders after Find
   try { setUI({ showCharts: true, showModeControls: true }); } catch (_) {
     // Ignore UI state errors
@@ -441,9 +444,7 @@ async function handleFindClick() {
     // Ignore DOM manipulation errors
   }
   // Mark that charts were explicitly requested; charts module will honor this on init as well
-  try { if (typeof window !== 'undefined') window.__chartsRenderRequested = true; } catch (_) {
-    // Ignore global flag errors
-  }
+  setChartsRenderRequested(true);
   // Explicitly request charts render tied to Find click
   try { const { publish } = await import('../state/eventBus.js'); publish('charts:renderRequest'); } catch (_) {
     // Ignore event bus errors
@@ -455,9 +456,7 @@ async function handleFindClick() {
   } catch (_) { /* intentional no-op: summary may not be present */ }
 
   // Hide UI elements immediately
-  try { window.__hideTableUntilSummary = true; } catch (_) {
-    // Ignore global flag errors
-  }
+  setHideTableUntilSummary(true);
   destroyTableHard();
   hideTableUI();
 
@@ -480,21 +479,15 @@ async function handleFindClick() {
     // Build fetch params strictly from inputs (IGNORE any active zoom)
     const fetchParams = { ...filterParams };
     // Add API granularity hint based on current chart interval
-    try {
-      const ci = (typeof window !== 'undefined' && window.__chartsCurrentInterval) ? String(window.__chartsCurrentInterval) : '5m';
-      const from = new Date(validation.params.from.replace(' ', 'T') + 'Z');
-      const to = new Date(validation.params.to.replace(' ', 'T') + 'Z');
-      const diffDays = (to - from) / (24 * 3600e3);
-      if (ci === '5m' && diffDays > 5.0001) {
-        fetchParams.granularity = '1h';
-        try { if (typeof window !== 'undefined') window.__chartsCurrentInterval = '1h'; } catch (_) {
-          // Ignore interval update errors
-        }
-      } else {
-        fetchParams.granularity = (ci === '5m') ? '5m' : '1h';
-      }
-    } catch (_) {
-      // Ignore granularity calculation errors
+    const ci = getChartsCurrentInterval();
+    const from = new Date(validation.params.from.replace(' ', 'T') + 'Z');
+    const to = new Date(validation.params.to.replace(' ', 'T') + 'Z');
+    const diffDays = (to - from) / (24 * 3600e3);
+    if (ci === '5m' && diffDays > 5.0001) {
+      fetchParams.granularity = '1h';
+      setChartsCurrentInterval('1h');
+    } else {
+      fetchParams.granularity = (ci === '5m') ? '5m' : '1h';
     }
     // Preserve current chart zoom state; Find fetch uses filter inputs only
 
@@ -548,7 +541,7 @@ async function handleFindClick() {
   } finally {
     // Clear the flag after a short delay to allow state updates to complete
     setTimeout(() => {
-      window._isManualFindInProgress = false;
+      setManualFindInProgress(false);
     }, 100);
   }
 }
@@ -580,8 +573,8 @@ async function handleSummaryClick() {
   console.log("📊 Table hidden, showing with reverse=" + isReverseMode());
 
   // Mark summary-only fetch in progress
-  try { if (typeof window !== 'undefined') window.__summaryFetchInProgress = true; } catch (_) { }
-  try { window.__hideTableUntilSummary = false; } catch (_) { }
+  setSummaryFetchInProgress(true);
+  setHideTableUntilSummary(false);
 
   // Reset virtual table state
   resetVirtualTableState();
@@ -597,8 +590,8 @@ async function handleSummaryClick() {
     const filterParams = buildFilterParams();
     // If a chart zoom is active, use its range for this fetch (do not touch inputs)
     let usedZoom = false;
+    const zr = getChartsZoomRange();
     try {
-      const zr = window.__chartsZoomRange;
       if (zr && Number.isFinite(zr.fromTs) && Number.isFinite(zr.toTs) && zr.toTs > zr.fromTs) {
         const fmt = (ts) => {
           const d = new Date(ts);
@@ -618,30 +611,22 @@ async function handleSummaryClick() {
     } catch (_) {
       // Ignore zoom range parsing errors
     }
-    try { window.__chartsUsedZoomForLastFetch = !!usedZoom; } catch (_) {
-      // Ignore global flag update errors
-    }
+    // Note: usedZoom flag tracked locally, no global needed
     if (!filterParams.from || !filterParams.to) {
       throw new Error("Date range is not set. Cannot fetch metrics.");
     }
 
     console.log("🔍 Fetching data for Summary Table with filters:", filterParams);
     // Add API granularity hint for summary flow as well
-    try {
-      const ci = (typeof window !== 'undefined' && window.__chartsCurrentInterval) ? String(window.__chartsCurrentInterval) : '5m';
-      const from = new Date(filterParams.from.replace(' ', 'T') + 'Z');
-      const to = new Date(filterParams.to.replace(' ', 'T') + 'Z');
-      const diffDays = (to - from) / (24 * 3600e3);
-      if (ci === '5m' && diffDays > 5.0001) {
-        filterParams.granularity = '1h';
-        try { if (typeof window !== 'undefined') window.__chartsCurrentInterval = '1h'; } catch (_) {
-          // Ignore interval update errors
-        }
-      } else {
-        filterParams.granularity = (ci === '5m') ? '5m' : '1h';
-      }
-    } catch (_) {
-      // Ignore granularity calculation errors
+    const ci = getChartsCurrentInterval();
+    const from = new Date(filterParams.from.replace(' ', 'T') + 'Z');
+    const to = new Date(filterParams.to.replace(' ', 'T') + 'Z');
+    const diffDays = (to - from) / (24 * 3600e3);
+    if (ci === '5m' && diffDays > 5.0001) {
+      filterParams.granularity = '1h';
+      setChartsCurrentInterval('1h');
+    } else {
+      filterParams.granularity = (ci === '5m') ? '5m' : '1h';
     }
     const data = await fetchMetrics(filterParams);
 
@@ -760,9 +745,7 @@ async function handleSummaryClick() {
     console.error("❌ Error fetching data for Summary Table:", error);
     alert('Error loading data. Please try again.');
   } finally {
-    try { if (typeof window !== 'undefined') window.__summaryFetchInProgress = false; } catch (_) {
-      // Ignore fetch flag cleanup errors
-    }
+    setSummaryFetchInProgress(false);
   }
 }
 
@@ -774,12 +757,13 @@ function resetVirtualTableState() {
   try { resetExpansionState(); } catch (_) {}
   
   // destroy virtualManager completely for fresh start
-  if (window.virtualManager) {
+  const vm = getVirtualManager();
+  if (vm) {
     try {
-      if (typeof window.virtualManager.destroy === 'function') {
-        window.virtualManager.destroy();
+      if (typeof vm.destroy === 'function') {
+        vm.destroy();
       }
-      window.virtualManager = null;
+      setVirtualManager(null);
     } catch (_) {}
   }
 }
@@ -827,9 +811,10 @@ export function clearTableFilters() {
   setupAutoFilterClearing();
 
   // If virtual manager is active, refresh the table to show unfiltered data
-  if (window.virtualManager && window.virtualManager.isActive) {
+  const vm1 = getVirtualManager();
+  if (vm1 && vm1.isActive) {
     console.log("🔄 Refreshing table after filter clear...");
-    window.virtualManager.refreshVirtualTable();
+    vm1.refreshVirtualTable();
   }
 
   console.log("✅ Table filters cleared and table refreshed");
@@ -846,9 +831,10 @@ export function clearSpecificFilter(columnKey) {
   clearColumnFilter(columnKey);
 
   // If virtual manager is active, refresh the table to show updated data
-  if (window.virtualManager && window.virtualManager.isActive) {
+  const vm2 = getVirtualManager();
+  if (vm2 && vm2.isActive) {
     console.log("🔄 Refreshing table after specific filter clear...");
-    window.virtualManager.refreshVirtualTable();
+    vm2.refreshVirtualTable();
   }
 
   console.log(`✅ Filter for column "${columnKey}" cleared and table refreshed`);

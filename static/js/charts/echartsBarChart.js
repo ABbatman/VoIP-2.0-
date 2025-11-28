@@ -11,6 +11,7 @@ import { attachCapsuleTooltip, detachCapsuleTooltip } from './echarts/helpers/ca
 import { initChart, setOptionWithZoomSync } from './echarts/renderer/EchartsRenderer.js';
 import { getRange } from './echarts/services/zoomManager.js';
 import { computeChartGrids } from './services/layout.js';
+import { getChartsZoomRange } from '../state/runtimeFlags.js';
 
 function ensureContainer(container) {
   if (typeof container === 'string') {
@@ -184,15 +185,11 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
     // Initialize zoom window from global range if present
     let startVal = Number.isFinite(fromTs) ? fromTs : null;
     let endVal = Number.isFinite(toTs) ? toTs : null;
-    try {
-      const zr = (typeof window !== 'undefined') ? window.__chartsZoomRange : null;
-      if (zr && Number.isFinite(zr.fromTs) && Number.isFinite(zr.toTs) && zr.toTs > zr.fromTs) {
-        const clamp = (v) => (Number.isFinite(fromTs) && Number.isFinite(toTs)) ? Math.max(fromTs, Math.min(toTs, v)) : v;
-        startVal = clamp(zr.fromTs);
-        endVal = clamp(zr.toTs);
-      }
-    } catch (_) {
-      // Ignore zoom range errors
+    const zr = getChartsZoomRange();
+    if (zr && Number.isFinite(zr.fromTs) && Number.isFinite(zr.toTs) && zr.toTs > zr.fromTs) {
+      const clamp = (v) => (Number.isFinite(fromTs) && Number.isFinite(toTs)) ? Math.max(fromTs, Math.min(toTs, v)) : v;
+      startVal = clamp(zr.fromTs);
+      endVal = clamp(zr.toTs);
     }
     try {
       if (!(Number.isFinite(startVal) && Number.isFinite(endVal) && endVal > startVal)) {
@@ -709,8 +706,8 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
       if (chart.isDisposed && chart.isDisposed()) return null;
       const step = Number(base.stepMs) || getStepMs(base.interval);
       // prefer current zoom start; else fromTs; else first data point
-      const zr = (typeof window !== 'undefined') ? window.__chartsZoomRange : null;
-      const ref = (zr && Number.isFinite(zr.fromTs)) ? zr.fromTs : (Number(base.fromTs) || (Array.isArray(main.series?.[0]?.data) ? main.series[0].data[0]?.[0] : null));
+      const zrLocal = getChartsZoomRange();
+      const ref = (zrLocal && Number.isFinite(zrLocal.fromTs)) ? zrLocal.fromTs : (Number(base.fromTs) || (Array.isArray(main.series?.[0]?.data) ? main.series[0].data[0]?.[0] : null));
       if (!Number.isFinite(ref) || !Number.isFinite(step) || step <= 0) return null;
       const p0 = chart.convertToPixel({ xAxisIndex: 0 }, ref);
       const p1 = chart.convertToPixel({ xAxisIndex: 0 }, ref + step);
@@ -1004,12 +1001,12 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
     }
 
     try {
-      const zr = (typeof window !== 'undefined') ? window.__chartsZoomRange : null;
+      const zrUpdate = getChartsZoomRange();
       const baseLo = Number(merged.fromTs);
       const baseHi = Number(merged.toTs);
       const clamp = (v) => (Number.isFinite(baseLo) && Number.isFinite(baseHi)) ? Math.max(baseLo, Math.min(baseHi, v)) : v;
-      let sv = Number.isFinite(zr?.fromTs) ? clamp(Number(zr.fromTs)) : baseLo;
-      let ev = Number.isFinite(zr?.toTs) ? clamp(Number(zr.toTs)) : baseHi;
+      let sv = Number.isFinite(zrUpdate?.fromTs) ? clamp(Number(zrUpdate.fromTs)) : baseLo;
+      let ev = Number.isFinite(zrUpdate?.toTs) ? clamp(Number(zrUpdate.toTs)) : baseHi;
       if (Number.isFinite(sv) && Number.isFinite(ev) && ev > sv) {
         chart.setOption({ dataZoom: [{ startValue: sv, endValue: ev }] }, { lazyUpdate: true });
         if (sliderChart) {

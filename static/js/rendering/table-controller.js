@@ -12,6 +12,7 @@ import { renderCoordinator } from "./render-coordinator.js";
 import { renderTableHeader, renderTableFooter as buildTableFooter, showTableControls, initTableView } from "../dom/table-ui.js";
 import { initTableControls } from "../dom/table-controls.js";
 import { initStickyFooter, initStickyHeader } from "../dom/sticky-table-chrome.js";
+import { getChartsCurrentInterval } from "../state/runtimeFlags.js";
 
 /**
  * Table Controller - Manages table rendering lifecycle
@@ -102,13 +103,9 @@ export class TableController {
     // Use processed rows if available (from zoom/filter), otherwise fallback to appData
     const peer_rows = processedPeerRows || appData?.peer_rows || [];
     let hourly_rows = processedHourlyRows || appData?.hourly_rows || [];
-    try {
-      const ci = (typeof window !== 'undefined' && window.__chartsCurrentInterval) ? String(window.__chartsCurrentInterval) : '1h';
-      if (ci === '5m' && Array.isArray(appData?.five_min_rows) && appData.five_min_rows.length > 0) {
-        hourly_rows = appData.five_min_rows;
-      }
-    } catch (_) {
-      // Ignore table controller errors
+    const ci = getChartsCurrentInterval();
+    if (ci === '5m' && Array.isArray(appData?.five_min_rows) && appData.five_min_rows.length > 0) {
+      hourly_rows = appData.five_min_rows;
     }
     // Use coordinator; coalesce with Summary by sharing kind 'table'
     renderCoordinator.requestRender('table', async () => {

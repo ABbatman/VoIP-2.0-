@@ -376,6 +376,15 @@ export class VirtualManager {
   }
 
   /**
+   * Sync expand/collapse all button label based on current state
+   */
+  syncExpandCollapseAllButtonLabel() {
+    if (this.toggles && typeof this.toggles.syncExpandCollapseAllButtonLabel === 'function') {
+      return this.toggles.syncExpandCollapseAllButtonLabel();
+    }
+  }
+
+  /**
    * Update UI to reflect virtual scrolling state
    */
   updateUI(isVirtualMode) { if (this.ui && this.ui.updateUI) return this.ui.updateUI(isVirtualMode); }

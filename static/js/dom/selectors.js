@@ -1,6 +1,8 @@
 // static/js/dom/selectors.js
 // Responsibility: centralize standard (non-virtual) DOM selectors for the table UI
 
+import { getVirtualManager } from "../state/moduleRegistry.js";
+
 export function getTableBody() {
   return document.getElementById('tableBody');
 }
@@ -20,6 +22,6 @@ export function getExpandAllButton() {
 }
 
 export function isVirtualModeActive() {
-  // Strict detection: rely only on real VM state to prevent false positives
-  try { return !!(window.virtualManager && window.virtualManager.isActive); } catch (_) { return false; }
+  const vm = getVirtualManager();
+  return !!(vm && vm.isActive);
 }

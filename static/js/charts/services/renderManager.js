@@ -7,6 +7,7 @@ import { subscribe } from '../../state/eventBus.js';
 import { shapeChartPayload, intervalToStep } from '../engine/timeSeriesEngine.js';
 import { parseUtc } from '../../utils/date.js';
 import { ensureFixedChartHeight } from './layout.js';
+import { getChartsCurrentInterval, setChartsCurrentInterval } from '../../state/runtimeFlags.js';
 
 function getMount() { return document.getElementById('chart-area-1'); }
 function getHost() { return document.getElementById('charts-container'); }
@@ -18,7 +19,10 @@ let initialized = false;
 function initOnce() {
   if (initialized) return;
   initialized = true;
-  try { if (typeof window !== 'undefined' && !window.__chartsCurrentInterval) window.__chartsCurrentInterval = currentInterval; } catch(_) {}
+  // Sync initial interval to centralized state
+  if (!getChartsCurrentInterval() || getChartsCurrentInterval() === '1h') {
+    setChartsCurrentInterval(currentInterval);
+  }
   // minimal subscriptions (no business logic here)
   subscribe('charts:typeChanged', (payload) => {
     try { currentType = String(payload?.type || 'line'); } catch(_) { currentType = 'line'; }
@@ -47,7 +51,7 @@ export async function render(type) {
   const { from, to } = getFilters();
   const fromTs = parseUtc(from);
   const toTs = parseUtc(to);
-  const interval = (typeof window !== 'undefined' && window.__chartsCurrentInterval) ? String(window.__chartsCurrentInterval) : currentInterval;
+  const interval = getChartsCurrentInterval() || currentInterval;
   const stepMs = intervalToStep(interval);
   const md = getMetricsData() || {};
   const fiveRows = Array.isArray(md.five_min_rows) ? md.five_min_rows : [];

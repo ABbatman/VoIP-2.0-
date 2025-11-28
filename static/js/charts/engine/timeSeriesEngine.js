@@ -156,10 +156,6 @@ export function shapeChartPayload(rows, { type, fromTs, toTs, stepMs, height }) 
       minutesSeries: series.Minutes,
       acdSeries: series.ACD,
     };
-  } else if (type === 'stream') {
-    // For streamgraph, pass raw rows for flexible aggregation in renderer
-    data = Array.isArray(rows) ? rows : [];
-    options = { height, fromTs, toTs };
   }
   return { data, options };
 }
