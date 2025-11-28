@@ -220,6 +220,9 @@ export class TableRenderer {
       this.virtualManager = null;
     }
     this.isVirtualMode = false;
+    // reset flags for fresh start
+    this._vmUnavailable = false;
+    this._inflightUntil = 0;
     console.log('🗑️ Table Renderer: Destroyed');
   }
 }

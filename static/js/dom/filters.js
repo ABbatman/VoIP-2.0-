@@ -15,6 +15,7 @@ import {
 import { subscribe } from "../state/eventBus.js";
 import { saveStateToUrl } from "../state/urlState.js";
 import { hideTableUI, renderTableHeader, renderTableFooter, showTableControls, initTableView } from "./table-ui.js";
+import { resetExpansionState } from "../state/expansionState.js";
 import { initTableControls, clearAllTableFilters, setupAutoFilterClearing, clearColumnFilter } from "./table-controls.js";
 import { buildFilterParams, setDefaultDateRange, validateFilterParams, refreshFilterValues } from "./filter-helpers.js";
 import { initFlatpickr, initTimeControls } from "./ui-widgets.js";
@@ -361,26 +362,36 @@ export function initFilters(isStateLoaded) {
  */
 function destroyTableHard() {
   try {
-    // Hide container immediately via UI state
-    try { setShowTable(false); } catch (_) {
-      // Ignore table hide errors
-    }
-    // Clear virtual manager if present
-    if (window.virtualManager && window.virtualManager.isActive) {
+    // hide table via UI state
+    try { setShowTable(false); } catch (_) {}
+    
+    // reset expansion state (main/peer groups)
+    try { resetExpansionState(); } catch (_) {}
+    
+    // reset table column filters
+    try { clearAllTableFilters(); } catch (_) {}
+    
+    // destroy tableRenderer completely
+    if (window.tableRenderer) {
       try {
-        window.virtualManager.openMainGroups.clear();
-        window.virtualManager.openHourlyGroups.clear();
-        window.virtualManager.headersInitialized = false;
-        window.virtualManager.sortHandlersAttached = false;
+        if (typeof window.tableRenderer.destroy === 'function') {
+          window.tableRenderer.destroy();
+        }
+        window.tableRenderer = null;
+      } catch (_) {}
+    }
+    
+    // destroy virtualManager completely
+    if (window.virtualManager) {
+      try {
         if (typeof window.virtualManager.destroy === 'function') {
           window.virtualManager.destroy();
         }
-      } catch (_) {
-        // Ignore virtual manager cleanup errors
-      }
+        window.virtualManager = null;
+      } catch (_) {}
     }
-    // Restore DOM content of the virtual table container to default structure
-    // matching renderer.js (_renderTableSection): include spacer + table skeleton
+    
+    // restore DOM to clean state
     const vwrap = document.getElementById('virtual-scroll-container');
     if (vwrap) {
       try {
@@ -392,16 +403,13 @@ function destroyTableHard() {
           '<tfoot><tr><td id="table-footer-info" colspan="24"></td></tr></tfoot>' +
           '</table>'
         );
-      } catch (_) {
-        // Ignore DOM restore errors
-      }
+      } catch (_) {}
     }
-    // Also ensure table-specific controls are hidden
+    
+    // hide table controls
     const controls = document.getElementById('table-controls');
     if (controls) controls.style.display = 'none';
-  } catch (_) {
-    // Ignore table hard destroy errors
-  }
+  } catch (_) {}
 }
 
 /**
@@ -686,14 +694,16 @@ async function handleSummaryClick() {
         try { const tb = document.getElementById('tableBody'); if (tb) tb.innerHTML = ''; } catch (_) {
           // Ignore table clearing errors
         }
-        // Render (central renderer picks mode and clears opposite)
+        // Render: always create fresh renderer to avoid stale state
         const mod = await import('../rendering/table-renderer.js');
-        let tr = window.tableRenderer;
-        if (!tr) {
-          tr = new mod.TableRenderer(); try { await tr.initialize(); } catch (_) {
-            // Ignore renderer initialization errors
-          }; window.tableRenderer = tr;
+        // destroy old renderer if exists
+        if (window.tableRenderer) {
+          try { window.tableRenderer.destroy(); } catch (_) {}
+          window.tableRenderer = null;
         }
+        const tr = new mod.TableRenderer();
+        try { await tr.initialize(); } catch (_) {}
+        window.tableRenderer = tr;
         const res = await tr.renderTable(main_rows || [], peer_rows || [], hourly_rows || []);
         try {
           const tbody = document.getElementById('tableBody');
@@ -760,20 +770,17 @@ async function handleSummaryClick() {
  * Reset virtual table state (clear all opened groups)
  */
 function resetVirtualTableState() {
-  // Reset virtual manager state if it exists
-  if (window.virtualManager && window.virtualManager.isActive) {
-    window.virtualManager.openMainGroups.clear();
-    window.virtualManager.openHourlyGroups.clear();
-
-    // Reset headers flag to allow re-initialization with fresh data
-    window.virtualManager.headersInitialized = false;
-
-    // Reset sort handlers flag to allow re-attaching sort handlers
-    window.virtualManager.sortHandlersAttached = false;
-
-    // Force refresh virtual table with cleared state
-    window.virtualManager.refreshVirtualTable();
-    window.virtualManager.forceImmediateRender();
+  // reset centralized expansion state
+  try { resetExpansionState(); } catch (_) {}
+  
+  // destroy virtualManager completely for fresh start
+  if (window.virtualManager) {
+    try {
+      if (typeof window.virtualManager.destroy === 'function') {
+        window.virtualManager.destroy();
+      }
+      window.virtualManager = null;
+    } catch (_) {}
   }
 }
 
