@@ -1,11 +1,6 @@
 // static/js/dom/components/typeahead.js
 // Lightweight Typeahead for plain JS + Vite
-// - Inline CSS via <style>
-// - No result limit (renders all returned items)
-// - Debounced fetch with AbortController
-// - Keyboard navigation (Up/Down/Enter/Escape)
-// - Click selection and outside-click close
-// - No modifications to existing components; you must import and attach manually
+import { logError, ErrorCategory } from "../../utils/errorLogger.js";
 
 const _styleId = "typeahead-inline-styles";
 
@@ -75,7 +70,7 @@ function renderItems(container, items, activeIndex, renderer) {
         } else {
           el.textContent = it.label;
         }
-      } catch (_) {
+      } catch (e) { logError(ErrorCategory.UI, 'typeahead', e);
         el.textContent = it.label;
       }
     } else {
@@ -166,7 +161,7 @@ export function attachTypeahead(input, options = {}) {
     try {
       items = await fetchItems(q);
       // Debug: show count
-      try { console.debug('[typeahead] results:', items.length); } catch(_) {
+      try { console.debug('[typeahead] results:', items.length); } catch(e) { logError(ErrorCategory.UI, 'typeahead', e);
         // Ignore debug logging errors
       }
       // Always show the dropdown; render "No results" when empty
@@ -174,7 +169,7 @@ export function attachTypeahead(input, options = {}) {
       openList();
     } catch (e) {
       // Silently ignore fetch errors
-      try { console.debug('[typeahead] fetch error'); } catch(_) {
+      try { console.debug('[typeahead] fetch error'); } catch(e) { logError(ErrorCategory.UI, 'typeahead', e);
         // Ignore debug logging errors
       }
       closeList();
@@ -194,7 +189,7 @@ export function attachTypeahead(input, options = {}) {
     input.value = chosen.label;
     closeList();
     if (typeof onSelect === 'function') {
-      try { onSelect(chosen); } catch(_) {
+      try { onSelect(chosen); } catch(e) { logError(ErrorCategory.UI, 'typeahead', e);
         // Ignore callback errors
       }
     }
@@ -244,25 +239,25 @@ export function attachTypeahead(input, options = {}) {
 
   // Public destroy
   const destroy = () => {
-    try { input.removeEventListener('input', onInput); } catch(_) {
+    try { input.removeEventListener('input', onInput); } catch(e) { logError(ErrorCategory.UI, 'typeahead', e);
       // Ignore cleanup errors
     }
-    try { input.removeEventListener('keydown', onKeydown); } catch(_) {
+    try { input.removeEventListener('keydown', onKeydown); } catch(e) { logError(ErrorCategory.UI, 'typeahead', e);
       // Ignore cleanup errors
     }
-    try { listEl.removeEventListener('click', onClickItem); } catch(_) {
+    try { listEl.removeEventListener('click', onClickItem); } catch(e) { logError(ErrorCategory.UI, 'typeahead', e);
       // Ignore cleanup errors
     }
-    try { document.removeEventListener('click', onDocumentClick); } catch(_) {
+    try { document.removeEventListener('click', onDocumentClick); } catch(e) { logError(ErrorCategory.UI, 'typeahead', e);
       // Ignore cleanup errors
     }
-    try { window.removeEventListener('resize', () => positionContainer(input, listEl)); } catch(_) {
+    try { window.removeEventListener('resize', () => positionContainer(input, listEl)); } catch(e) { logError(ErrorCategory.UI, 'typeahead', e);
       // Ignore cleanup errors
     }
-    try { window.removeEventListener('scroll', () => positionContainer(input, listEl), true); } catch(_) {
+    try { window.removeEventListener('scroll', () => positionContainer(input, listEl), true); } catch(e) { logError(ErrorCategory.UI, 'typeahead', e);
       // Ignore cleanup errors
     }
-    try { listEl.remove(); } catch(_) {
+    try { listEl.remove(); } catch(e) { logError(ErrorCategory.UI, 'typeahead', e);
       // Ignore cleanup errors
     }
   };

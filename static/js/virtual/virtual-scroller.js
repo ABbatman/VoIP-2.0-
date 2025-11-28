@@ -10,6 +10,7 @@ import { maybeNotifyDomUpdate } from './scroller/dom-callbacks.js';
 import { patchRowAt, patchRowsRange } from './scroller/patch.js';
 import { applyOptimizedConfig } from './scroller/config-adapter.js';
 import { getStatus as getScrollerStatus } from './scroller/status.js';
+import { logError, ErrorCategory } from '../utils/errorLogger.js';
 
 /**
  * Simple Virtual Scroller implementation
@@ -82,7 +83,7 @@ export class VirtualScroller {
     if (this.tbody && this.tbody.style) {
       this.tbody.style.willChange = 'transform';
       // Isolate layout/paint for tbody to improve performance on large tables
-      try { this.tbody.style.contain = 'content'; } catch (_) { /* ignore if unsupported */ }
+      try { this.tbody.style.contain = 'content'; } catch (e) { logError(ErrorCategory.SCROLL, 'virtualScroller', e); /* ignore if unsupported */ }
     }
     return true;
   }
@@ -101,7 +102,7 @@ export class VirtualScroller {
     this.spacer.style.height = `${totalHeight}px`;
 
     // Hard clear tbody to remove any legacy/non-pooled rows from previous render modes
-    try { if (this.tbody) this.tbody.innerHTML = ''; } catch (_) {
+    try { if (this.tbody) this.tbody.innerHTML = ''; } catch (e) { logError(ErrorCategory.SCROLL, 'virtualScroller', e);
       // Ignore tbody clear errors
     }
 
@@ -109,7 +110,7 @@ export class VirtualScroller {
     if (!this.data.length) {
       if (this.tbody) this.tbody.innerHTML = '';
       this.spacer.style.height = '0px';
-      try { maybeNotifyDomUpdate(this, { forceRender: true, structuralChange: true }); } catch(_) {
+      try { maybeNotifyDomUpdate(this, { forceRender: true, structuralChange: true }); } catch(e) { logError(ErrorCategory.SCROLL, 'virtualScroller', e);
       // Ignore virtual scroller errors
     }
       return true;
@@ -121,7 +122,7 @@ export class VirtualScroller {
     this.render(true);
 
     // After first render, measure real row height (accounts for borders) and correct spacer
-    try { recomputeRowHeight(this); } catch(_) {
+    try { recomputeRowHeight(this); } catch(e) { logError(ErrorCategory.SCROLL, 'virtualScroller', e);
       // Ignore virtual scroller errors
     }
   }
@@ -135,7 +136,7 @@ export class VirtualScroller {
     if (!this.data.length) {
       if (this.tbody) this.tbody.innerHTML = '';
       this.spacer.style.height = '0px';
-      try { maybeNotifyDomUpdate(this, { forceRender: true, structuralChange: true }); } catch(_) {
+      try { maybeNotifyDomUpdate(this, { forceRender: true, structuralChange: true }); } catch(e) { logError(ErrorCategory.SCROLL, 'virtualScroller', e);
       // Ignore virtual scroller errors
     }
       return;
@@ -240,7 +241,7 @@ export class VirtualScroller {
     }
     
     // Notify that DOM has been updated (for event handler setup) with soft throttling
-    try { maybeNotifyDomUpdate(this, { forceRender, structuralChange: (_attachCount > 0 || _detachCount > 0) }); } catch(_) {
+    try { maybeNotifyDomUpdate(this, { forceRender, structuralChange: (_attachCount > 0 || _detachCount > 0) }); } catch(e) { logError(ErrorCategory.SCROLL, 'virtualScroller', e);
       // Ignore virtual scroller errors
     }
     
@@ -283,7 +284,7 @@ export class VirtualScroller {
           dataLen: this.data.length,
         });
       }
-    } catch (_) {
+    } catch (e) { logError(ErrorCategory.SCROLL, 'virtualScroller', e);
       // Ignore debug logging errors
     }
   }
@@ -291,7 +292,7 @@ export class VirtualScroller {
   /**
    * Recompute actual row height from DOM and adjust spacer to remove trailing gap
    */
-  recomputeRowHeight() { try { recomputeRowHeight(this); } catch(_) {
+  recomputeRowHeight() { try { recomputeRowHeight(this); } catch(e) { logError(ErrorCategory.SCROLL, 'virtualScroller', e);
       // Ignore virtual scroller errors
     } }
 

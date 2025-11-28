@@ -6,9 +6,10 @@ import { areYColumnsVisible } from '../../state/tableState.js';
 import { getYColumnToggleIcon } from '../../dom/hideYColumns.js';
 import { bindFloatingHeader } from './ui-sync.js';
 import { getYToggleButtons, getResultsTables } from '../selectors/dom-selectors.js';
+import { logError, ErrorCategory } from '../../utils/errorLogger.js';
 
 function logDebug(...args) {
-  try { if (typeof window !== 'undefined' && window.DEBUG) console.log(...args); } catch(_) {
+  try { if (typeof window !== 'undefined' && window.DEBUG) console.log(...args); } catch(e) { logError(ErrorCategory.TABLE, 'vmHeader', e);
     // Ignore header sync errors
   }
 }
@@ -21,7 +22,7 @@ export function attachHeader(vm) {
       renderTableFooter();
       updateSortArrows();
       syncYToggleIcons();
-      try { bindFloatingHeader(vm); } catch(_) {
+      try { bindFloatingHeader(vm); } catch(e) { logError(ErrorCategory.TABLE, 'vmHeader', e);
     // Ignore header sync errors
   }
       logDebug('✅ Header: ready');

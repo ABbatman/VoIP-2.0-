@@ -1,5 +1,6 @@
 // static/js/dom/filter-helpers.js
 // This module contains helper functions specifically for the filter logic.
+import { logError, ErrorCategory } from '../utils/errorLogger.js';
 
 /**
  * Builds a parameters object from the filter input fields.
@@ -75,7 +76,7 @@ export function populateFiltersFromState(state) {
           return;
         }
       }
-    } catch (_) {
+    } catch (e) { logError(ErrorCategory.FILTER, 'filterHelpers', e);
       // Ignore guard check errors
     }
 

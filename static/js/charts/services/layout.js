@@ -1,5 +1,6 @@
 // static/js/charts/services/layout.js
 // layout utils for charts
+import { logError, ErrorCategory } from '../../utils/errorLogger.js';
 
 // Unified grid layout for 4 charts - each gets exactly 25% of usable height
 export function computeChartGrids(heightPx) {
@@ -30,7 +31,7 @@ export function ensureFixedChartHeight(host, mount) {
   if (mountH > 600) {
     try {
       if (mountEl) mountEl.dataset.fixedHeight = String(mountH);
-    } catch (_) {}
+    } catch (e) { logError(ErrorCategory.CHART, 'layout', e);}
     return mountH;
   }
   
@@ -47,6 +48,6 @@ export function ensureFixedChartHeight(host, mount) {
   
   try {
     if (mountEl) mountEl.dataset.fixedHeight = String(result);
-  } catch (_) {}
+  } catch (e) { logError(ErrorCategory.CHART, 'layout', e);}
   return result;
 }

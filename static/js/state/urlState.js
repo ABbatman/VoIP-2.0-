@@ -1,6 +1,7 @@
 // static/js/state/urlState.js
 // DEPRECATED: This module now delegates to shortLinkState for persistence.
 // Kept for backward compatibility with existing imports.
+import { logError, ErrorCategory } from '../utils/errorLogger.js';
 
 import {
   setFullState as setTableState,
@@ -30,7 +31,8 @@ function encodeState(state) {
   try {
     const jsonString = JSON.stringify(state);
     return btoa(jsonString);
-  } catch (e) {
+  } catch (e) { 
+    logError(ErrorCategory.STATE, 'urlState', e);
     console.error("Failed to encode state:", e);
     return "";
   }
@@ -40,7 +42,8 @@ function decodeState(encodedState) {
   try {
     const jsonString = atob(encodedState);
     return JSON.parse(jsonString);
-  } catch (e) {
+  } catch (e) { 
+    logError(ErrorCategory.STATE, 'urlState', e);
     console.error("Failed to decode state from URL:", e);
     return null;
   }
@@ -97,7 +100,7 @@ export function loadStateFromUrl() {
             return decodedState;
           }
         }
-      } catch(_) {
+      } catch(e) { logError(ErrorCategory.STATE, 'urlState', e);
         // ignore
       }
 

@@ -4,6 +4,7 @@
 import { renderGroupedTable } from '../dom/table.js';
 import { getRenderingMode, isVirtualScrollEnabled } from '../state/tableState.js';
 import { setVirtualManager } from '../state/moduleRegistry.js';
+import { logError, ErrorCategory } from '../utils/errorLogger.js';
 
 /**
  * Table Renderer - Coordinates between standard and virtual rendering
@@ -67,7 +68,7 @@ export class TableRenderer {
                   document.getElementById('virtual-scroll-spacer') &&
                   document.getElementById('summaryTable') &&
                   document.getElementById('tableBody'));
-      } catch (_) { return false; }
+      } catch (e) { logError(ErrorCategory.RENDER, 'tableRenderer', e); return false; }
     };
     
     if (forceStandard) {
@@ -129,7 +130,7 @@ export class TableRenderer {
       try {
         const tbody = document.getElementById('tableBody');
         if (tbody) tbody.innerHTML = '';
-      } catch (_) { /* best-effort */ }
+      } catch (e) { logError(ErrorCategory.RENDER, 'tableRenderer', e); /* best-effort */ }
       
       const success = this.virtualManager.renderVirtualTable(mainRows, peerRows, hourlyRows);
       
@@ -163,7 +164,7 @@ export class TableRenderer {
         }
         const tbody = document.getElementById('tableBody');
         if (tbody) tbody.innerHTML = '';
-      } catch (_) { /* best-effort */ }
+      } catch (e) { logError(ErrorCategory.RENDER, 'tableRenderer', e); /* best-effort */ }
       
       renderGroupedTable(mainRows, peerRows, hourlyRows);
       this.isVirtualMode = false;

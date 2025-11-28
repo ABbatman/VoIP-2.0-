@@ -1,4 +1,5 @@
 import { formatTimeRange } from './echarts/helpers/time.js';
+import { logError, ErrorCategory } from '../utils/errorLogger.js';
 
 export function makeBarLineLikeTooltip({ chart, stepMs }) {
   const names = ['TCalls', 'ASR', 'Minutes', 'ACD'];
@@ -38,7 +39,7 @@ export function makeBarLineLikeTooltip({ chart, stepMs }) {
       }
       const out = Array.from(acc.entries()).sort((a, b) => a[0] - b[0]);
       return out;
-    } catch (_) { return []; }
+    } catch (e) { logError(ErrorCategory.CHART, 'tooltip', e); return []; }
   };
   const findPrevWithin = (pairs, ts, maxDelta) => {
     if (!Array.isArray(pairs) || pairs.length === 0) return null;
@@ -71,7 +72,7 @@ export function makeBarLineLikeTooltip({ chart, stepMs }) {
     // Prefer axisValue for timestamp (axis trigger)
     let ts = Number(arr[0]?.axisValue);
     if (!Number.isFinite(ts)) {
-      try { ts = Date.parse(arr[0]?.axisValueLabel); } catch (_) {
+      try { ts = Date.parse(arr[0]?.axisValueLabel); } catch (e) { logError(ErrorCategory.CHART, 'tooltip', e);
         // Ignore date parsing errors
       }
     }

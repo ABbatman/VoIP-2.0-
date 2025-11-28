@@ -1,6 +1,7 @@
 // static/js/charts/engine/timeSeriesEngine.js
 
 import { parseUtc } from '../../utils/date.js';
+import { logError, ErrorCategory } from '../../utils/errorLogger.js';
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
@@ -16,13 +17,9 @@ function parseRowTs(raw) {
       const hasTZ = /[zZ]$/.test(s) || /[+-]\d{2}:\d{2}$/.test(s);
       if (!hasTZ) s = s + 'Z';
       t = Date.parse(s);
-    } catch(_) {
-      // Ignore date parsing errors
-    }
+    } catch (e) { logError(ErrorCategory.CHART, 'timeSeriesEngine', e); }
     if (!isFinite(t)) {
-      try { t = parseUtc(String(raw)); } catch(_) {
-        // Ignore fallback parsing errors
-      }
+      try { t = parseUtc(String(raw)); } catch (e) { logError(ErrorCategory.CHART, 'timeSeriesEngine', e); }
     }
   }
   return Number.isFinite(t) ? t : NaN;
@@ -63,18 +60,21 @@ export function computeBinsAndSeries(rows, { fromTs, toTs, stepMs }) {
     if (acdW > 0 && Number.isFinite(acd)) { bins.ACD[idx].sum += acd * acdW; bins.ACD[idx].count += acdW; }
   }
 
-  const valOf = (b, avg) => (b.count ? (avg ? (b.sum / b.count) : b.sum) : null);
+  const valOf = (b, avg) => (b && b.count ? (avg ? (b.sum / b.count) : b.sum) : null);
   const toSeries = (name, avg) => {
     const out = [];
+    const binsArr = bins[name] || [];
     for (let i = 0; i < binCount; i++) {
-      const bin = bins[name][i];
-      out.push({ x: bin.x, y: valOf(bin, avg) });
+      const bin = binsArr[i];
+      if (bin) out.push({ x: bin.x, y: valOf(bin, avg) });
     }
     // explicit edges
     const li = clamp(Math.floor((fromTs - alignedFrom) / stepMs), 0, binCount - 1);
     const ri = clamp(Math.floor(((toTs - 1) - alignedFrom) / stepMs), 0, binCount - 1);
-    out.push({ x: fromTs, y: valOf(bins[name][li], avg) });
-    out.push({ x: toTs, y: valOf(bins[name][ri], avg) });
+    const leftBin = binsArr[li];
+    const rightBin = binsArr[ri];
+    if (leftBin) out.push({ x: fromTs, y: valOf(leftBin, avg) });
+    if (rightBin) out.push({ x: toTs, y: valOf(rightBin, avg) });
     // sort and dedupe by x preferring last
     out.sort((a,b) => a.x - b.x);
     const dedup = [];

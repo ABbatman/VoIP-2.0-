@@ -1,5 +1,7 @@
 // static/js/dom/ui-widgets.js
 /* global flatpickr */
+import { logError, ErrorCategory } from '../utils/errorLogger.js';
+
 /**
  * Initializes the Flatpickr library for date inputs if it's available.
  */
@@ -35,7 +37,7 @@ export function initFlatpickr() {
               try {
                 const d = flatpickr.parseDate(s, f);
                 if (d) return d;
-              } catch(_) { /* try next */ }
+              } catch (e) { logError(ErrorCategory.UI, 'uiWidgets', e); /* try next */ }
             }
             // compact numeric e.g. 20251002 -> Ymd
             const digits = s.replace(/[^0-9]/g, "");
@@ -70,15 +72,13 @@ export function initFlatpickr() {
         input._flatpickr = fp;
         // Ensure calendar opens on click/focus of both original and alt input
         try {
-          const openOnClick = () => { try { fp.open(); } catch(_){
-            // Ignore calendar open errors
-          } };
+          const openOnClick = () => { try { fp.open(); } catch (e) { logError(ErrorCategory.UI, 'uiWidgets', e); } };
           // Open only on click to avoid overriding manual typing on focus/blur
           input.addEventListener('click', openOnClick);
           if (fp.altInput) {
             fp.altInput.addEventListener('click', openOnClick);
           }
-        } catch(_) { /* best-effort */ }
+        } catch (e) { logError(ErrorCategory.UI, 'uiWidgets', e); /* best-effort */ }
 
         // Also allow manual typing in the original (hidden or visible) input in Y-m-d
         try {
@@ -87,7 +87,7 @@ export function initFlatpickr() {
             if (!v) {
               fp.clear();
               window._dateManuallyCommittedAt = Date.now();
-              try { input.dataset.userCommittedTs = String(window._dateManuallyCommittedAt); } catch(_) {
+              try { input.dataset.userCommittedTs = String(window._dateManuallyCommittedAt); } catch (e) { logError(ErrorCategory.UI, 'uiWidgets', e);
                 // Ignore dataset update errors
               }
               return { parsed: false, cleared: true };
@@ -101,7 +101,7 @@ export function initFlatpickr() {
               input.value = ymd;
               if (fp.altInput) fp.altInput.value = altStr;
               window._dateManuallyCommittedAt = Date.now();
-              try { input.dataset.userCommittedTs = String(window._dateManuallyCommittedAt); } catch(_) {
+              try { input.dataset.userCommittedTs = String(window._dateManuallyCommittedAt); } catch (e) { logError(ErrorCategory.UI, 'uiWidgets', e);
                 // Ignore dataset update errors
               }
               return { parsed: true, cleared: false };
@@ -124,7 +124,7 @@ export function initFlatpickr() {
               input.blur();
             }
           });
-        } catch(_) { /* best-effort */ }
+        } catch (e) { logError(ErrorCategory.UI, 'uiWidgets', e); /* best-effort */ }
 
         // altInput disabled: manual typing happens directly in the same input
         

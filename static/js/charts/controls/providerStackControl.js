@@ -2,6 +2,7 @@
 // Adds a Bar-only checkbox to toggle per-provider stacking for ECharts Bar
 
 import { subscribe, publish } from '../../state/eventBus.js';
+import { logError, ErrorCategory } from '../../utils/errorLogger.js';
 
 function buildCheckboxEl() {
   const wrap = document.createElement('label');
@@ -18,9 +19,7 @@ function buildCheckboxEl() {
   input.type = 'checkbox';
   input.id = 'charts-bar-per-provider';
   input.className = 'charts-toggle__input';
-  try { input.style.accentColor = '#4f86ff'; } catch(_) {
-    // Ignore style setting errors
-  }
+  try { input.style.accentColor = '#4f86ff'; } catch (e) { logError(ErrorCategory.CHART, 'providerStackControl', e); }
   const span = document.createElement('span');
   span.textContent = 'Suppliers';
   span.className = 'charts-toggle__label';
@@ -37,7 +36,7 @@ function isBarType() {
     const controls = document.getElementById('charts-controls');
     const t = controls?.dataset?.type;
     return t === 'bar';
-  } catch(_) { return false; }
+  } catch (e) { logError(ErrorCategory.CHART, 'providerStackControl', e); return false; }
 }
 
 export function initProviderStackControl() {
@@ -50,32 +49,22 @@ export function initProviderStackControl() {
       const { wrap, input } = buildCheckboxEl();
       controls.appendChild(wrap);
       // restore state
-      try { input.checked = !!window.__chartsBarPerProvider; } catch(_) {
-        // Ignore state restoration errors
-      }
+      try { input.checked = !!window.__chartsBarPerProvider; } catch (e) { logError(ErrorCategory.CHART, 'providerStackControl', e); }
       input.addEventListener('change', () => {
         const checked = !!input.checked;
-        try { window.__chartsBarPerProvider = checked; } catch(_) {
-          // Ignore global state update errors
-        }
-        try { publish('charts:bar:perProviderChanged', { perProvider: checked }); } catch(_) {
-          // Ignore event publishing errors
-        }
+        try { window.__chartsBarPerProvider = checked; } catch (e) { logError(ErrorCategory.CHART, 'providerStackControl', e); }
+        try { publish('charts:bar:perProviderChanged', { perProvider: checked }); } catch (e) { logError(ErrorCategory.CHART, 'providerStackControl', e); }
       });
     } else {
       const input = existing.querySelector('input');
       if (input) {
-        try { input.checked = !!window.__chartsBarPerProvider; } catch(_) {
-        // Ignore state restoration errors
-      }
+        try { input.checked = !!window.__chartsBarPerProvider; } catch (e) { logError(ErrorCategory.CHART, 'providerStackControl', e); }
       }
     }
     // Show only for Bar
     const el = controls.querySelector('.charts-toggle--suppliers');
     if (el) el.style.display = isBarType() ? 'inline-flex' : 'none';
-  } catch(_) {
-    // Ignore control initialization errors
-  }
+  } catch (e) { logError(ErrorCategory.CHART, 'providerStackControl', e); }
 }
 
 // Keep visibility in sync on events
@@ -84,6 +73,4 @@ subscribe('appState:dataChanged', () => initProviderStackControl());
 subscribe('appState:statusChanged', () => initProviderStackControl());
 subscribe('appState:uiChanged', () => initProviderStackControl());
 // Expose re-init for external calls
-try { if (typeof window !== 'undefined') window.__initProviderStackControl = initProviderStackControl; } catch(_) {
-  // Ignore global function exposure errors
-}
+try { if (typeof window !== 'undefined') window.__initProviderStackControl = initProviderStackControl; } catch (e) { logError(ErrorCategory.CHART, 'providerStackControl', e); }

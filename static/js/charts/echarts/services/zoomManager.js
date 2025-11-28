@@ -7,6 +7,7 @@ import {
   getChartsCurrentInterval,
   setChartsCurrentInterval
 } from '../../../state/runtimeFlags.js';
+import { logError, ErrorCategory } from '../../../utils/errorLogger.js';
 
 function _getModelRange(chart) {
   try {
@@ -19,7 +20,7 @@ function _getModelRange(chart) {
       const toTs = Math.ceil(ext[1]);
       if (Number.isFinite(fromTs) && Number.isFinite(toTs) && toTs > fromTs) return { fromTs, toTs };
     }
-  } catch(_) {}
+  } catch(e) { logError(ErrorCategory.CHART, 'zoomManager', e); }
   return null;
 }
 
@@ -35,6 +36,8 @@ export function setRange(range) {
 }
 
 export function applyRange(chart) {
+  // Guard against disposed chart
+  if (!chart || (chart.isDisposed && chart.isDisposed())) return;
   // apply global zoom range to existing dataZoom components only (do not add new ones)
   try {
     const zr = getRange();
@@ -45,12 +48,14 @@ export function applyRange(chart) {
     // update only existing dataZoom components
     const updates = existing.map(() => ({ startValue: zr.fromTs, endValue: zr.toTs }));
     chart.setOption({ dataZoom: updates }, { lazyUpdate: true });
-  } catch(_) {}
+  } catch(e) { logError(ErrorCategory.CHART, 'zoomManager', e); }
 }
 
 export function attach(chart, { onZoom } = {}) {
+  // Guard against disposed chart
+  if (!chart || (chart.isDisposed && chart.isDisposed())) return;
   // attach unified dataZoom listener to persist and enforce policies
-  try { chart.off('dataZoom'); } catch(_) {}
+  try { chart.off('dataZoom'); } catch(e) { logError(ErrorCategory.CHART, 'zoomManager', e); }
   chart.on('dataZoom', () => {
     const zr = _getModelRange(chart);
     if (zr) {
@@ -63,17 +68,17 @@ export function attach(chart, { onZoom } = {}) {
           const now = Date.now();
           if (now - _zoomPolicyLastSwitchTs > 600) {
             _zoomPolicyLastSwitchTs = now;
-            try { toast('5-minute interval is available only for ranges up to 5 days. Switching to 1 hour.', { type: 'warning', duration: 3500 }); } catch(_) {}
+            try { toast('5-minute interval is available only for ranges up to 5 days. Switching to 1 hour.', { type: 'warning', duration: 3500 }); } catch(e) { logError(ErrorCategory.CHART, 'zoomManager', e); }
             setChartsCurrentInterval('1h');
             try {
               import('../../../state/eventBus.js').then(({ publish }) => {
-                try { publish('charts:intervalChanged', { interval: '1h' }); } catch(_) {}
+                try { publish('charts:intervalChanged', { interval: '1h' }); } catch(e) { logError(ErrorCategory.CHART, 'zoomManager', e); }
               }).catch(() => {});
-            } catch(_) {}
+            } catch(e) { logError(ErrorCategory.CHART, 'zoomManager', e); }
           }
         }
-      } catch(_) {}
-      try { if (typeof onZoom === 'function') onZoom(zr); } catch(_) {}
+      } catch(e) { logError(ErrorCategory.CHART, 'zoomManager', e); }
+      try { if (typeof onZoom === 'function') onZoom(zr); } catch(e) { logError(ErrorCategory.CHART, 'zoomManager', e); }
     }
   });
 }

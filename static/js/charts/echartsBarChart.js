@@ -12,6 +12,7 @@ import { initChart, setOptionWithZoomSync } from './echarts/renderer/EchartsRend
 import { getRange } from './echarts/services/zoomManager.js';
 import { computeChartGrids } from './services/layout.js';
 import { getChartsZoomRange } from '../state/runtimeFlags.js';
+import { logError, logWarn, ErrorCategory } from '../utils/errorLogger.js';
 
 function ensureContainer(container) {
   if (typeof container === 'string') {
@@ -25,23 +26,23 @@ function ensureContainer(container) {
 
 // remove legacy inline helpers (moved to helpers/dataTransform.js)
 
-export function renderBarChartEcharts(container, data = [], options = {}) {
+export async function renderBarChartEcharts(container, data = [], options = {}) {
   const el = ensureContainer(container);
   try {
     const existing = echarts.getInstanceByDom(el);
     if (existing) existing.dispose();
-  } catch (_) {
-    // Ignore error if chart instance doesn't exist
+  } catch (e) { 
+    logError(ErrorCategory.CHART, 'echartsBarChart:dispose', e);
   }
-  const chart = initChart(el);
+  const chart = await initChart(el);
   const sliderEl = document.getElementById('chart-slider');
   let sliderChart = null;
   if (sliderEl) {
     try {
       const existingSlider = echarts.getInstanceByDom(sliderEl);
       if (existingSlider) existingSlider.dispose();
-    } catch (_) { }
-    sliderChart = initChart(sliderEl);
+    } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); }
+    sliderChart = await initChart(sliderEl);
   }
 
   // Connect charts for synchronization
@@ -86,7 +87,7 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
         if (typeof window !== 'undefined' && window.__chartsDebug) {
           console.debug('[bar] providerRows.len', rows.length, 'sample.keys', rows[0] ? Object.keys(rows[0]) : null, 'detectedKey', key);
         }
-      } catch (_) { }
+      } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); }
       if (rows.length && key) {
         const seen = new Set();
         const ID_CAND_KEYS = ['supplierId', 'providerId', 'vendorId', 'carrierId', 'peerId', 'id', 'supplier_id', 'provider_id', 'vendor_id', 'carrier_id', 'peer_id'];
@@ -141,9 +142,9 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
         if (typeof window !== 'undefined' && window.__chartsDebug) {
           console.debug('[bar] colorMap.size', Object.keys(map).length);
         }
-      } catch (_) { }
+      } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); }
     }
-  } catch (_) { /* keep default colorMap */ }
+  } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart:colorMap', e); }
   try {
     // reset zoom if filters range expanded
     const w = (typeof window !== 'undefined') ? window : {};
@@ -155,12 +156,12 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
       const pt = Number(prev.toTs);
       if ((Number.isFinite(pf) && f < pf) || (Number.isFinite(pt) && t > pt)) {
         // clear persisted zoom to show full new range
-        try { w.__chartsZoomRange = null; } catch (_) { }
+        try { w.__chartsZoomRange = null; } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); }
       }
     }
-    try { w.__chartsLastFilters = { fromTs: f, toTs: t }; } catch (_) { }
-  } catch (_) {
-    // Ignore zoom reset errors
+    try { w.__chartsLastFilters = { fromTs: f, toTs: t }; } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); }
+  } catch (e) { 
+    logError(ErrorCategory.CHART, 'echartsBarChart:zoomReset', e); 
   }
 
   // remove legacy buildPairs (moved to helpers/dataTransform.js)
@@ -196,8 +197,8 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
         startVal = Number.isFinite(fromTs) ? fromTs : null;
         endVal = Number.isFinite(toTs) ? toTs : null;
       }
-    } catch (_) {
-      // Ignore zoom range init errors
+    } catch (e) { 
+      logError(ErrorCategory.CHART, 'echartsBarChart', e); 
     }
 
     // Slider grid (for separate instance)
@@ -232,8 +233,8 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
           style: { text: name, fill: '#6e7781', font: '600 12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif' }
         };
       });
-    } catch (_) {
-      // Ignore graphic label creation errors
+    } catch (e) { 
+      logError(ErrorCategory.CHART, 'echartsBarChart', e); 
       graphicLabels = [];
     }
 
@@ -260,7 +261,7 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
         };
         const le = { ASR: (opts.labels && opts.labels.ASR) || {}, ACD: (opts.labels && opts.labels.ACD) || {} };
         const needBuild = !(hasSupplierInfo(le.ASR) || hasSupplierInfo(le.ACD));
-        try { if (typeof window !== 'undefined' && window.__chartsDebug) console.debug('[bar] labels.hasSupplierInfo', !needBuild); } catch (_) { }
+        try { if (typeof window !== 'undefined' && window.__chartsDebug) console.debug('[bar] labels.hasSupplierInfo', !needBuild); } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); }
         if (!needBuild) return le;
         const rows = Array.isArray(options?.providerRows) ? options.providerRows : [];
         if (!rows.length) return le;
@@ -268,16 +269,16 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
         const NAME_KEYS = ['name', 'supplier', 'provider', 'peer', 'vendor', 'carrier', 'operator', 'route', 'trunk', 'gateway', 'partner', 'supplier_name', 'provider_name', 'vendor_name', 'carrier_name', 'peer_name'];
         const ID_KEYS = ['supplierId', 'providerId', 'vendorId', 'carrierId', 'peerId', 'id', 'supplier_id', 'provider_id', 'vendor_id', 'carrier_id', 'peer_id'];
         const slotCenter = (t) => {
-          const step = Number(step) || Number(opts.stepMs) || getStepMs(opts.interval);
-          const s = Number.isFinite(step) && step > 0 ? Math.floor(t / step) * step : t;
-          return Number.isFinite(step) && step > 0 ? (s + Math.floor(step / 2)) : s;
+          const s = Number.isFinite(step) && step > 0 ? step : 3600e3;
+          const slotBase = Math.floor(t / s) * s;
+          return slotBase + Math.floor(s / 2);
         };
         const aggASR = new Map(); // ts -> Map<key,{sum,cnt,name,id}>
         const aggACD = new Map();
         for (const r of rows) {
           const t = parseRowTs(r.time || r.slot || r.hour || r.timestamp);
           if (!Number.isFinite(t)) continue;
-          const c = (() => { const stepv = Number(opts.stepMs) || getStepMs(opts.interval); const base = Math.floor(t / stepv) * stepv; return base + Math.floor(stepv / 2); })();
+          const c = slotCenter(t);
           let name = null; let sid = null;
           for (const k of ID_KEYS) { if (sid == null && Object.prototype.hasOwnProperty.call(r, k)) sid = r[k]; }
           for (const k of NAME_KEYS) { if (name == null && Object.prototype.hasOwnProperty.call(r, k)) name = r[k]; }
@@ -315,12 +316,12 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
             const k = Object.keys(eff.ASR || {});
             console.debug('[bar] labelsEffective.ASR.keys.len', k.length, 'firstLens', k.slice(0, 3).map(ts => (eff.ASR[ts] || []).length));
           }
-        } catch (_) { }
+        } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); }
         return eff;
-      } catch (_) { return { ASR: (opts.labels && opts.labels.ASR) || {}, ACD: (opts.labels && opts.labels.ACD) || {} }; }
+      } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart:labelsEffective', e); return { ASR: (opts.labels && opts.labels.ASR) || {}, ACD: (opts.labels && opts.labels.ACD) || {} }; }
     })();
 
-    const showLabels = (() => { try { return !!(typeof window !== 'undefined' && window.__chartsBarPerProvider); } catch (_) { return false; } })();
+    const showLabels = (() => { try { return !!(typeof window !== 'undefined' && window.__chartsBarPerProvider); } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart:showLabels', e); return false; } })();
     const out = {
       animation: true,
       animationDurationUpdate: 200,
@@ -371,7 +372,7 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
         labels: labelsEffective,
         colorMap: opts.colorMap,
         providerRows: Array.isArray(options?.providerRows) ? options.providerRows : [],
-        providerKey: (() => { try { return detectProviderKey(Array.isArray(options?.providerRows) ? options.providerRows : []); } catch (_) { return null; } })()
+        providerKey: (() => { try { return detectProviderKey(Array.isArray(options?.providerRows) ? options.providerRows : []); } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); return null; } })()
       }),
       graphic: graphicLabels
     };
@@ -422,7 +423,7 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
       ]
     };
     // expose labelsEffective for tooltip fallback
-    try { out.__labelsEffective = labelsEffective; } catch (_) { }
+    try { out.__labelsEffective = labelsEffective; } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); }
     // post-process overlay series for performance
     try {
       const ser = Array.isArray(out.series) ? out.series : [];
@@ -434,11 +435,11 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
           s.renderMode = 'canvas';
         }
       }
-    } catch (_) { }
+    } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); }
     if (!showLabels) {
       try {
         out.series = Array.isArray(out.series) ? out.series.filter(s => !(s && s.type === 'custom' && s.name === 'LabelsOverlay')) : out.series;
-      } catch (_) {/* keep series */ }
+      } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart:series', e); }
     }
     return { main: out, slider: sliderOption };
   };
@@ -448,7 +449,7 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
   // Render Main Chart
   setOptionWithZoomSync(chart, main, {
     onAfterSet: () => {
-      try { requestAnimationFrame(() => setTimeout(applyDynamicBarWidth, 0)); } catch (_) { }
+      try { requestAnimationFrame(() => setTimeout(applyDynamicBarWidth, 0)); } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); }
       // attach capsule tooltip once
       try {
         if (!capsuleTooltipAttached) {
@@ -490,7 +491,7 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
                         const byTs2 = eff[ts] || eff[String(ts)] || eff[Math.floor(Number(ts) / 1000)] || eff[String(Math.floor(Number(ts) / 1000))];
                         if (Array.isArray(byTs2) && byTs2.length) ret.suppliers = byTs2;
                       }
-                    } catch (_) { }
+                    } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); }
                   }
                   // minimal fallback: populate arrays from maps if arrays are empty
                   try {
@@ -512,7 +513,7 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
                       }
                       if (acc.length) ret.destinations = acc;
                     }
-                  } catch (_) { }
+                  } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); }
                   if (ret.suppliers && ret.suppliers.length) return ret;
                   // else continue to providerRows fallback
                 }
@@ -551,13 +552,13 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
                                   if (s) return k;
                                 }
                               }
-                            } catch (_) { }
+                            } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); }
                             return null;
                           };
                           const destKey = detectKey(destCand);
                           const custKey = detectKey(custCand);
                           const stepLocal = Number(base.stepMs) || getStepMs(base.interval);
-                          const bucketCenter = (t) => { const b = Math.floor(t / stepLocal) * stepLocal; return b + Math.floor(stepLocal / 2); };
+                          const bucketCenter = (t) => { const s = Number.isFinite(stepLocal) && stepLocal > 0 ? Math.floor(t / stepLocal) * stepLocal : t; return Number.isFinite(stepLocal) && stepLocal > 0 ? (s + Math.floor(stepLocal / 2)) : s; };
                           const custBySup = Object.create(null); // name -> string[]
                           const destBySup = Object.create(null); // name -> string[]
                           for (const r of rows) {
@@ -587,11 +588,11 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
                           if (Object.keys(destBySup).length) ret.destinationsBySupplier = destBySup;
                         }
                       }
-                    } catch (_) { }
+                    } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); }
                     return ret;
                   }
                 }
-              } catch (_) { }
+              } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); }
               // Fallback: compute from providerRows if available
               const rows = Array.isArray(options?.providerRows) ? options.providerRows : [];
               if (!rows.length) return null;
@@ -612,12 +613,12 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
                       if (s) return k;
                     }
                   }
-                } catch (_) { }
+                } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); }
                 return null;
               };
               const destKey = detectKey(destCand);
               const custKey = detectKey(custCand);
-              const bucketCenter = (t) => { const base = Math.floor(t / step) * step; return base + Math.floor(step / 2); };
+              const bucketCenter = (t) => { const s = Number(base.stepMs) || getStepMs(base.interval); const basev = Math.floor(t / s) * s; return basev + Math.floor(s / 2); };
               const supAgg = new Map(); // name -> { sum, cnt }
               const custBySup = new Map(); // name -> Set
               const destBySup = new Map(); // name -> Map(dest->{sum,cnt})
@@ -664,12 +665,12 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
                 destinationsBySupplier[name] = arr;
               }
               return { time: new Date(Number(ts)).toISOString().replace('T', ' ').replace('Z', ''), suppliers, customers: [], destinations: [], customersBySupplier, destinationsBySupplier };
-            } catch (_) { return null; }
+            } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); return null; }
           };
           attachCapsuleTooltip(chart, { getCapsuleData, textColor: 'var(--ds-color-fg)', metricByGridIndex });
           capsuleTooltipAttached = true;
         }
-      } catch (_) { /* ignore tooltip attach errors */ }
+      } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); /* ignore tooltip attach errors */ }
     }
   });
 
@@ -687,7 +688,7 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
         sliderChart.setOption({ dataZoom: [{ startValue: zr.fromTs, endValue: zr.toTs }, { startValue: zr.fromTs, endValue: zr.toTs }] }, { lazyUpdate: true });
       }
     }
-  } catch (_) { }
+  } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); }
 
   // react to Suppliers checkbox toggle: re-render overlay labels visibility
   try {
@@ -696,9 +697,9 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
         const { main: nextMain, slider: nextSlider } = buildOption(base, data);
         setOptionWithZoomSync(chart, nextMain);
         if (sliderChart) setOptionWithZoomSync(sliderChart, nextSlider);
-      } catch (_) { }
+      } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); }
     });
-  } catch (_) { /* ignore subscription errors */ }
+  } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart:subscribe', e); }
 
   const computeStepWidthPx = () => {
     try {
@@ -714,10 +715,7 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
       const w = Math.abs(Number(p1) - Number(p0));
       if (!Number.isFinite(w) || w <= 0) return null;
       return Math.max(2, Math.round(w));
-    } catch (_) {
-      // Ignore step width computation errors
-      return null;
-    }
+    } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); return null; }
   };
 
   const applyDynamicBarWidth = () => {
@@ -738,9 +736,7 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
           chart.setOption({ series: upd }, { lazyUpdate: true });
           chart.__lastBarWidth = each;
         }
-      } catch (_) {
-        // Ignore bar width update errors
-      }
+      } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); }
     }
   };
   // move logic: initial bar width adjustment scheduled in onAfterSet above
@@ -748,9 +744,8 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
   // remove legacy dataZoom handler (handled by renderer)
 
   // Re-apply bar width after any setOption finishes (resize, update, etc.)
-  try { chart.on('finished', applyDynamicBarWidth); } catch (_) {
-    // Event handler registration might fail
-  }
+  try { chart.on('finished', applyDynamicBarWidth); } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); }
+  // Event handler registration might fail
 
   function update(newData = data, newOptions = {}) {
     const merged = { ...base, ...newOptions };
@@ -764,15 +759,13 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
       base.asrSeries = Array.isArray(merged.asrSeries) ? merged.asrSeries : base.asrSeries;
       base.minutesSeries = Array.isArray(merged.minutesSeries) ? merged.minutesSeries : base.minutesSeries;
       base.acdSeries = Array.isArray(merged.acdSeries) ? merged.acdSeries : base.acdSeries;
-    } catch (_) {
-      // Ignore base update errors
-    }
+    } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart:baseUpdate', e); }
     const { main: nextMain, slider: nextSlider } = buildOption(merged, newData);
     setOptionWithZoomSync(chart, nextMain, {
       onAfterSet: () => {
-        try { applyDynamicBarWidth(); } catch (_) { }
+        try { applyDynamicBarWidth(); } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); }
         // reattach capsule tooltip to reflect updated data source if provided
-        try { detachCapsuleTooltip(chart); } catch (_) { }
+        try { detachCapsuleTooltip(chart); } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); }
         try {
           const metricByGridIndex = { 0: 'TCalls', 1: 'ASR', 2: 'Minutes', 3: 'ACD' };
           const getCapsuleData = ({ metric, ts }) => {
@@ -811,7 +804,7 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
                         const byTs2 = eff[ts] || eff[String(ts)] || eff[Math.floor(Number(ts) / 1000)] || eff[String(Math.floor(Number(ts) / 1000))];
                         if (Array.isArray(byTs2) && byTs2.length) ret.suppliers = byTs2;
                       }
-                    } catch (_) { }
+                    } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); }
                   }
                   // minimal fallback: populate arrays from maps if arrays are empty
                   try {
@@ -833,7 +826,7 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
                       }
                       if (acc.length) ret.destinations = acc;
                     }
-                  } catch (_) { }
+                  } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); }
                   if (ret.suppliers && ret.suppliers.length) return ret;
                   // else continue to providerRows fallback
                 }
@@ -872,7 +865,7 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
                                   if (s) return k;
                                 }
                               }
-                            } catch (_) { }
+                            } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); }
                             return null;
                           };
                           const destKey = detectKey(destCand);
@@ -908,11 +901,11 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
                           if (Object.keys(destBySup).length) ret.destinationsBySupplier = destBySup;
                         }
                       }
-                    } catch (_) { }
+                    } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); }
                     return ret;
                   }
                 }
-              } catch (_) { }
+              } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); }
               const rows = Array.isArray(merged?.providerRows) ? merged.providerRows : (Array.isArray(options?.providerRows) ? options.providerRows : []);
               if (!rows.length) return null;
               const pKey = detectProviderKey(rows);
@@ -932,7 +925,7 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
                       if (s) return k;
                     }
                   }
-                } catch (_) { }
+                } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); }
                 return null;
               };
               const destKey = detectKey(destCand);
@@ -944,7 +937,7 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
               for (const r of rows) {
                 const rt = parseRowTs(r.time || r.Time || r.timestamp || r.Timestamp || r.slot || r.Slot || r.hour || r.Hour || r.datetime || r.DateTime || r.ts || r.TS || r.period || r.Period || r.start || r.Start || r.start_time || r.StartTime);
                 if (!Number.isFinite(rt)) continue;
-                const ctr = (() => { const s = Number(base.stepMs) || getStepMs(base.interval); const basev = Math.floor(rt / s) * s; return basev + Math.floor(s / 2); })();
+                const ctr = bucketCenter(rt);
                 if (ctr !== ts) continue;
                 const prov = String(r[pKey] || '').trim();
                 if (!prov) continue;
@@ -986,12 +979,12 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
                 destinationsBySupplier[name] = arr;
               }
               return { time: new Date(Number(ts)).toISOString().replace('T', ' ').replace('Z', ''), suppliers, customers: [], destinations: [], customersBySupplier, destinationsBySupplier };
-            } catch (_) { return null; }
+            } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); return null; }
           };
           attachCapsuleTooltip(chart, { getCapsuleData, textColor: 'var(--ds-color-fg)', metricByGridIndex });
           capsuleTooltipAttached = true;
 
-        } catch (_) { /* ignore tooltip attach errors */ }
+        } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); /* ignore tooltip attach errors */ }
       }
     });
 
@@ -1013,15 +1006,15 @@ export function renderBarChartEcharts(container, data = [], options = {}) {
           sliderChart.setOption({ dataZoom: [{ startValue: sv, endValue: ev }, { startValue: sv, endValue: ev }] }, { lazyUpdate: true });
         }
       }
-    } catch (_) {
-      // Ignore zoom update errors
+    } catch (e) { 
+      logError(ErrorCategory.CHART, 'echartsBarChart:zoomUpdate', e); 
     }
   }
 
   function dispose() {
-    try { if (typeof unsubscribeToggle === 'function') unsubscribeToggle(); } catch (_) { }
-    try { chart.dispose(); } catch (_) {
-      // Chart might already be disposed
+    try { if (typeof unsubscribeToggle === 'function') unsubscribeToggle(); } catch (e) { logError(ErrorCategory.CHART, 'echartsBarChart', e); }
+    try { chart.dispose(); } catch (e) {
+      logError(ErrorCategory.CHART, 'echartsBarChart:chartDispose', e);
     }
   }
   function getInstance() { return chart; }

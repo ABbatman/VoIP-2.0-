@@ -5,6 +5,7 @@ import { listTypes } from '../registry.js';
 import { publish } from '../../state/eventBus.js';
 import { initProviderStackControl } from '../controls/providerStackControl.js';
 import { getChartsZoomRange, setChartsCurrentInterval } from '../../state/runtimeFlags.js';
+import { logError, ErrorCategory } from '../../utils/errorLogger.js';
 
 let onTypeChangeCb = null;
 
@@ -56,7 +57,7 @@ function makeDd(id, items, selected) {
 }
 
 function closeAllDd(root) {
-  try { root.querySelectorAll('.charts-dd').forEach(dd => dd.classList.remove('is-open')); } catch(_) {}
+  try { root.querySelectorAll('.charts-dd').forEach(dd => dd.classList.remove('is-open')); } catch(e) { logError(ErrorCategory.CHART, 'chartControls', e); }
 }
 
 function bindControls(controls) {
@@ -85,12 +86,12 @@ function bindControls(controls) {
           if (btn) btn.textContent = (items.find(li => li.dataset.value === value)?.textContent) || btn.textContent;
           if (btn) btn.style.color = '#4f86ff';
           dd.classList.remove('is-line','is-bar','is-heatmap','is-hybrid');
-        } catch(_) {}
+        } catch(e) { logError(ErrorCategory.CHART, 'chartControls', e); }
         closeAllDd(controls);
         // update provider toggle visibility
-        try { initProviderStackControl(); } catch(_) {}
+        try { initProviderStackControl(); } catch(e) { logError(ErrorCategory.CHART, 'chartControls', e); }
         // notify
-        try { publish('charts:typeChanged', { type: value || 'line' }); } catch(_) {}
+        try { publish('charts:typeChanged', { type: value || 'line' }); } catch(e) { logError(ErrorCategory.CHART, 'chartControls', e); }
         if (typeof onTypeChangeCb === 'function') onTypeChangeCb(value || 'line');
         return;
       }
@@ -115,9 +116,9 @@ function bindControls(controls) {
           if (btn) btn.textContent = (items.find(li => li.dataset.value === next)?.textContent) || btn.textContent;
           if (btn) btn.style.color = '#4f86ff';
           dd.classList.remove('is-5m','is-1h','is-1d');
-        } catch(_) {}
+        } catch(e) { logError(ErrorCategory.CHART, 'chartControls', e); }
         closeAllDd(controls);
-        try { publish('charts:intervalChanged', { interval: next }); } catch(_) {}
+        try { publish('charts:intervalChanged', { interval: next }); } catch(e) { logError(ErrorCategory.CHART, 'chartControls', e); }
         return;
       }
     }
@@ -145,16 +146,16 @@ export function initChartTypeDropdown() {
   controls.appendChild(stepDd);
   controls.dataset.interval = initialInterval;
   setChartsCurrentInterval(initialInterval);
-  try { initProviderStackControl(); } catch(_) {}
+  try { initProviderStackControl(); } catch(e) { logError(ErrorCategory.CHART, 'chartControls', e); }
   // bind
   const unbind = bindControls(controls);
-  return () => { try { unbind && unbind(); } catch(_) {} };
+  return () => { try { unbind && unbind(); } catch(e) { logError(ErrorCategory.CHART, 'chartControls', e); } };
 }
 
 export function setDefaultChartType(type) {
   const controls = ensureControls();
   const def = type || (controls.dataset.type || 'line');
-  try { controls.dataset.type = def; } catch(_) {}
+  try { controls.dataset.type = def; } catch(e) { logError(ErrorCategory.CHART, 'chartControls', e); }
   try {
     const dd = controls.querySelector('#chart-type-dropdown');
     const btn = dd?.querySelector('.charts-dd__button');
@@ -163,8 +164,8 @@ export function setDefaultChartType(type) {
     if (btn) btn.textContent = (items.find(li => li.dataset.value === def)?.textContent) || btn.textContent;
     if (btn) btn.style.color = '#4f86ff';
     if (dd) dd.classList.remove('is-line','is-bar','is-heatmap','is-hybrid');
-  } catch(_) {}
-  try { initProviderStackControl(); } catch(_) {}
+  } catch(e) { logError(ErrorCategory.CHART, 'chartControls', e); }
+  try { initProviderStackControl(); } catch(e) { logError(ErrorCategory.CHART, 'chartControls', e); }
 }
 
 // onChartTypeChange removed: use charts:typeChanged event instead

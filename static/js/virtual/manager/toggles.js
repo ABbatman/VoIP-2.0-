@@ -10,11 +10,12 @@ import {
   expandAllMain,
   collapseAll,
 } from '../../state/expansionState.js';
+import { logError, ErrorCategory } from '../../utils/errorLogger.js';
 
 export function attachToggles(vm) {
   function closeHourlyGroupsUnderMain(mainGroupId) {
     // Delegate to centralized state; returns number collapsed (we can't know easily, return 0/NaN)
-    try { return collapsePeersUnderMain(mainGroupId) || 0; } catch (_) { return 0; }
+    try { return collapsePeersUnderMain(mainGroupId) || 0; } catch (e) { logError(ErrorCategory.TABLE, 'vmToggles', e); return 0; }
   }
 
   function processQueuedExpandCollapseAll() {
@@ -29,13 +30,13 @@ export function attachToggles(vm) {
         expandAllMain(ids);
         const visible = vm.selectors ? vm.selectors.getLazyVisibleData() : vm.getLazyVisibleData();
         vm.adapter.setData(visible);
-        try { vm.forceImmediateRender && vm.forceImmediateRender(); } catch (_) {}
+        try { vm.forceImmediateRender && vm.forceImmediateRender(); } catch (e) { logError(ErrorCategory.TABLE, 'vmToggles', e);}
         if (btn) { btn.textContent = 'Hide All'; btn.dataset.state = 'shown'; }
       } else if (queued === 'collapse') {
         collapseAll();
         const visible = vm.selectors ? vm.selectors.getLazyVisibleData() : vm.getLazyVisibleData();
         vm.adapter.setData(visible);
-        try { vm.forceImmediateRender && vm.forceImmediateRender(); } catch (_) {}
+        try { vm.forceImmediateRender && vm.forceImmediateRender(); } catch (e) { logError(ErrorCategory.TABLE, 'vmToggles', e);}
         if (btn) { btn.textContent = 'Show All'; btn.dataset.state = 'hidden'; }
       }
       try { vm.updateAllToggleButtons && vm.updateAllToggleButtons(); } catch (e) {
@@ -70,9 +71,9 @@ export function attachToggles(vm) {
       } else if (parentRow.classList.contains('peer-row')) {
         togglePeer(groupId);
       }
-      try { vm.refreshVirtualTable(); } catch (_) {}
-      try { vm.forceImmediateRender && vm.forceImmediateRender(); } catch (_) {}
-      try { vm.updateAllToggleButtons && vm.updateAllToggleButtons(); } catch (_) {}
+      try { vm.refreshVirtualTable(); } catch (e) { logError(ErrorCategory.TABLE, 'vmToggles', e);}
+      try { vm.forceImmediateRender && vm.forceImmediateRender(); } catch (e) { logError(ErrorCategory.TABLE, 'vmToggles', e);}
+      try { vm.updateAllToggleButtons && vm.updateAllToggleButtons(); } catch (e) { logError(ErrorCategory.TABLE, 'vmToggles', e);}
     } catch (e) {
       console.error('Error handling virtual toggle:', e);
     }
@@ -175,7 +176,7 @@ export function attachToggles(vm) {
       const anyExpanded = mainIndex.some(m => isMainExpanded(m.groupId));
       btn.textContent = anyExpanded ? 'Hide All' : 'Show All';
       btn.dataset.state = anyExpanded ? 'shown' : 'hidden';
-    } catch (_) {
+    } catch (e) { logError(ErrorCategory.TABLE, 'vmToggles', e);
       // Ignore sync errors
     }
   }

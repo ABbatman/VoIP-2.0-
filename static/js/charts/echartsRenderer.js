@@ -9,8 +9,7 @@ import { buildMultiOption } from './echarts/builders/MultiLineBuilder.js';
 import { attach as attachZoom, applyRange as applyZoomRange } from './echarts/services/zoomManager.js';
 import { makeBarLineLikeTooltip } from './echarts/helpers/tooltip.js';
 import { getStepMs } from './echarts/helpers/time.js';
-// Removed D3 usage; ECharts is the sole charting system.
-// Archived: stream graph is disabled and not registered.
+import { logError, ErrorCategory } from '../utils/errorLogger.js';
 
 export async function registerEchartsRenderers() {
   const { registerChart } = await import('./registry.js');
@@ -31,22 +30,47 @@ function ensureContainer(container) {
 }
 
 
-export function renderMultiLineChartEcharts(container, data, options = {}) {
+// Wait for element to have dimensions
+function waitForDimensions(el, maxWait = 500) {
+  return new Promise((resolve) => {
+    const check = () => {
+      const w = el.clientWidth || el.getBoundingClientRect().width;
+      const h = el.clientHeight || el.getBoundingClientRect().height;
+      if (w > 0 && h > 0) return resolve(true);
+      return false;
+    };
+    if (check()) return;
+    const start = Date.now();
+    const interval = setInterval(() => {
+      if (check() || Date.now() - start > maxWait) {
+        clearInterval(interval);
+        resolve(true);
+      }
+    }, 16);
+  });
+}
+
+export async function renderMultiLineChartEcharts(container, data, options = {}) {
   const el = ensureContainer(container);
+  
+  // Wait for container to have dimensions before init
+  await waitForDimensions(el);
+  
   try {
     const existing = echarts.getInstanceByDom(el);
     if (existing) existing.dispose();
-  } catch (_) {
+  } catch (e) { logError(ErrorCategory.CHART, 'echartsRenderer', e);
     // Ignore existing chart disposal errors
   }
   const chart = echarts.init(el);
   const sliderEl = document.getElementById('chart-slider');
   let sliderChart = null;
   if (sliderEl) {
+    await waitForDimensions(sliderEl);
     try {
       const existingSlider = echarts.getInstanceByDom(sliderEl);
       if (existingSlider) existingSlider.dispose();
-    } catch (_) { }
+    } catch (e) { logError(ErrorCategory.CHART, 'echartsRenderer', e); }
     sliderChart = echarts.init(sliderEl);
   }
 
@@ -84,16 +108,26 @@ export function renderMultiLineChartEcharts(container, data, options = {}) {
       textStyle: { color: 'var(--ds-color-fg)' },
       extraCssText: 'border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,0.07); line-height:1.35;'
     };
-  } catch (_) { /* keep default tooltip */ }
+  } catch (e) { logError(ErrorCategory.CHART, 'echartsRenderer', e); /* keep default tooltip */ }
+  
+  // Guard against disposed chart (can happen if render is called again before this completes)
+  if (chart.isDisposed && chart.isDisposed()) return { update: () => {}, dispose: () => {}, getInstance: () => null };
+  
   chart.setOption(main, { notMerge: true, lazyUpdate: true });
-  if (sliderChart && slider) {
+  if (sliderChart && slider && !(sliderChart.isDisposed && sliderChart.isDisposed())) {
     sliderChart.setOption(slider, { notMerge: true, lazyUpdate: true });
   }
-  try { applyZoomRange(chart); } catch (_) { }
-  try { if (sliderChart) applyZoomRange(sliderChart); } catch (_) { }
-  try { attachZoom(chart); } catch (_) { }
+  if (!(chart.isDisposed && chart.isDisposed())) {
+    try { applyZoomRange(chart); } catch (e) { logError(ErrorCategory.CHART, 'echartsRenderer', e); }
+    try { attachZoom(chart); } catch (e) { logError(ErrorCategory.CHART, 'echartsRenderer', e); }
+  }
+  if (sliderChart && !(sliderChart.isDisposed && sliderChart.isDisposed())) {
+    try { applyZoomRange(sliderChart); } catch (e) { logError(ErrorCategory.CHART, 'echartsRenderer', e); }
+  }
 
   function update(newData = data, newOptions = {}) {
+    // Guard against disposed chart
+    if (chart.isDisposed && chart.isDisposed()) return;
     // use current container height for grid calculation
     const currentHeight = el.clientHeight || el.getBoundingClientRect().height || base.height;
     const merged = { ...base, ...newOptions, height: currentHeight };
@@ -110,18 +144,18 @@ export function renderMultiLineChartEcharts(container, data, options = {}) {
         textStyle: { color: 'var(--ds-color-fg)' },
         extraCssText: 'border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,0.07); line-height:1.35;'
       };
-    } catch (_) { /* keep default tooltip */ }
+    } catch (e) { logError(ErrorCategory.CHART, 'echartsRenderer', e); /* keep default tooltip */ }
     chart.setOption(nextMain, { notMerge: true, lazyUpdate: true });
-    if (sliderChart && nextSlider) {
+    if (sliderChart && nextSlider && !(sliderChart.isDisposed && sliderChart.isDisposed())) {
       sliderChart.setOption(nextSlider, { notMerge: true, lazyUpdate: true });
     }
-    try { applyZoomRange(chart); } catch (_) { }
-    try { if (sliderChart) applyZoomRange(sliderChart); } catch (_) { }
+    try { applyZoomRange(chart); } catch (e) { logError(ErrorCategory.CHART, 'echartsRenderer', e); }
+    try { if (sliderChart && !(sliderChart.isDisposed && sliderChart.isDisposed())) applyZoomRange(sliderChart); } catch (e) { logError(ErrorCategory.CHART, 'echartsRenderer', e); }
   }
 
   function dispose() {
-    try { chart.dispose(); } catch (_) { }
-    try { if (sliderChart) sliderChart.dispose(); } catch (_) { }
+    try { chart.dispose(); } catch (e) { logError(ErrorCategory.CHART, 'echartsRenderer', e); }
+    try { if (sliderChart) sliderChart.dispose(); } catch (e) { logError(ErrorCategory.CHART, 'echartsRenderer', e); }
   }
   function getInstance() { return chart; }
 

@@ -1,5 +1,6 @@
 // static/js/charts/tooltipBar.js
 // BAR tooltip helpers (visual only)
+import { logError, ErrorCategory } from '../utils/errorLogger.js';
 
 function parseRowTs(raw) {
   if (raw instanceof Date) return raw.getTime();
@@ -31,7 +32,7 @@ function detectKey(rows, candidates) {
         if (s) return k;
       }
     }
-  } catch(_) {}
+  } catch (e) { logError(ErrorCategory.CHART, 'tooltipBar', e);}
   return null;
 }
 
@@ -167,6 +168,6 @@ export function makeBarOverlayTooltipFormatter({ metricName, stepMs, providerKey
       if (custLines.length) { lines.push(...custLines); } else { lines.push('  - —'); }
       if (dirLines.length) { lines.push('Directions:'); lines.push(...dirLines); }
       return lines.join('<br/>');
-    } catch(_) { return ''; }
+    } catch (e) { logError(ErrorCategory.CHART, 'tooltipBar', e); return ''; }
   };
 }

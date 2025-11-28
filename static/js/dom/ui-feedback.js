@@ -4,6 +4,7 @@
 
 import { subscribe } from "../state/eventBus.js";
 import { isSummaryFetchInProgress, shouldHideTableUntilSummary } from "../state/runtimeFlags.js";
+import { logError, ErrorCategory } from "../utils/errorLogger.js";
 
 let __lastDataEmpty = false;
 
@@ -103,7 +104,7 @@ function updateFeedbackUI(status) {
         if (__lastDataEmpty) { showToast("No data for selected range", "error"); }
         else { showToast("Metrics loaded successfully!", "success"); }
         // Ensure overlay is hidden and table stays hidden until Summary is explicitly opened
-        try { const loadingOverlay2 = document.getElementById("loading-overlay"); if (loadingOverlay2) loadingOverlay2.classList.add("is-hidden"); } catch(_) {}
+        try { const loadingOverlay2 = document.getElementById("loading-overlay"); if (loadingOverlay2) loadingOverlay2.classList.add("is-hidden"); } catch (e) { logError(ErrorCategory.UI, 'uiFeedback', e); }
       }
       if (shouldHideTableUntilSummary()) {
         const resultsContainer2 = document.querySelector('.results-display');

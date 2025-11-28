@@ -15,6 +15,7 @@ import { renderHeaderCellString } from './components/header-cell.js';
 import { renderFilterCell as renderFilterCellComponent } from './components/filter-cell.js';
 import { applySortSafe } from "../table/features/sortControl.js";
 import { getVirtualManager } from "../state/moduleRegistry.js";
+import { logError, ErrorCategory } from "../utils/errorLogger.js";
 const DEBUG = (typeof window !== 'undefined' && window.DEBUG === true);
 
 const arrowSvg = `<svg viewBox="0 0 24 24">
@@ -122,7 +123,7 @@ export function initTableView() {
     updateTableView();
   });
   // Установить делегированные обработчики сортировки (однократно)
-  try { initDelegatedSortHandlers(); } catch (_) { /* no-op */ }
+  try { initDelegatedSortHandlers(); } catch (e) { logError(ErrorCategory.TABLE, 'tableUI', e); /* no-op */ }
 }
 
 function updateTableView() {
@@ -473,33 +474,33 @@ function handleGlobalFilterChange(event) {
   const prevCX = container ? container.scrollLeft : null;
   const prevCY = container ? container.scrollTop : null;
   const root = document.documentElement;
-  try { if (root) root.style.overflowAnchor = 'none'; } catch(_) {
+  try { if (root) root.style.overflowAnchor = 'none'; } catch(e) { logError(ErrorCategory.TABLE, 'tableUI', e);
       // Ignore table UI errors
     }
-  try { if (document.body) document.body.style.overflowAnchor = 'none'; } catch(_) {
+  try { if (document.body) document.body.style.overflowAnchor = 'none'; } catch(e) { logError(ErrorCategory.TABLE, 'tableUI', e);
       // Ignore table UI errors
     }
-  try { if (container) container.style.overflowAnchor = 'none'; } catch(_) {
+  try { if (container) container.style.overflowAnchor = 'none'; } catch(e) { logError(ErrorCategory.TABLE, 'tableUI', e);
       // Ignore table UI errors
     }
   const restoreScroll = () => {
     // Restore previous scroll positions on next frames (container first, then window)
     requestAnimationFrame(() => {
-      try { if (container && prevCY != null) container.scrollTop = prevCY; if (container && prevCX != null) container.scrollLeft = prevCX; } catch (_) {
+      try { if (container && prevCY != null) container.scrollTop = prevCY; if (container && prevCX != null) container.scrollLeft = prevCX; } catch (e) { logError(ErrorCategory.TABLE, 'tableUI', e);
         // Ignore scroll restore errors
       }
       requestAnimationFrame(() => {
-        try { window.scrollTo(prevX, prevY); } catch (_) {
+        try { window.scrollTo(prevX, prevY); } catch (e) { logError(ErrorCategory.TABLE, 'tableUI', e);
           // Ignore scroll errors
         }
         // Re-enable scroll anchoring
-        try { if (root) root.style.overflowAnchor = ''; } catch(_) {
+        try { if (root) root.style.overflowAnchor = ''; } catch(e) { logError(ErrorCategory.TABLE, 'tableUI', e);
       // Ignore table UI errors
     }
-        try { if (document.body) document.body.style.overflowAnchor = ''; } catch(_) {
+        try { if (document.body) document.body.style.overflowAnchor = ''; } catch(e) { logError(ErrorCategory.TABLE, 'tableUI', e);
       // Ignore table UI errors
     }
-        try { if (container) container.style.overflowAnchor = ''; } catch(_) {
+        try { if (container) container.style.overflowAnchor = ''; } catch(e) { logError(ErrorCategory.TABLE, 'tableUI', e);
       // Ignore table UI errors
     }
       });
@@ -513,7 +514,7 @@ function handleGlobalFilterChange(event) {
         if (root) root.style.overflowAnchor = '';
         if (document.body) document.body.style.overflowAnchor = '';
         if (container) container.style.overflowAnchor = '';
-      } catch (_) {
+      } catch (e) { logError(ErrorCategory.TABLE, 'tableUI', e);
         // Ignore scroll restore errors
       }
     });
@@ -525,7 +526,7 @@ function handleGlobalFilterChange(event) {
         if (root) root.style.overflowAnchor = '';
         if (document.body) document.body.style.overflowAnchor = '';
         if (container) container.style.overflowAnchor = '';
-      } catch (_) {
+      } catch (e) { logError(ErrorCategory.TABLE, 'tableUI', e);
         // Ignore scroll restore errors
       }
     }, 50);
@@ -582,31 +583,31 @@ function handleColumnFilterChange(event) {
   const prevCX = container ? container.scrollLeft : null;
   const prevCY = container ? container.scrollTop : null;
   const root = document.documentElement;
-  try { if (root) root.style.overflowAnchor = 'none'; } catch(_) {
+  try { if (root) root.style.overflowAnchor = 'none'; } catch(e) { logError(ErrorCategory.TABLE, 'tableUI', e);
       // Ignore table UI errors
     }
-  try { if (document.body) document.body.style.overflowAnchor = 'none'; } catch(_) {
+  try { if (document.body) document.body.style.overflowAnchor = 'none'; } catch(e) { logError(ErrorCategory.TABLE, 'tableUI', e);
       // Ignore table UI errors
     }
-  try { if (container) container.style.overflowAnchor = 'none'; } catch(_) {
+  try { if (container) container.style.overflowAnchor = 'none'; } catch(e) { logError(ErrorCategory.TABLE, 'tableUI', e);
       // Ignore table UI errors
     }
   const restoreScroll = () => {
     requestAnimationFrame(() => {
-      try { if (container && prevCY != null) container.scrollTop = prevCY; if (container && prevCX != null) container.scrollLeft = prevCX; } catch (_) {
+      try { if (container && prevCY != null) container.scrollTop = prevCY; if (container && prevCX != null) container.scrollLeft = prevCX; } catch (e) { logError(ErrorCategory.TABLE, 'tableUI', e);
         // Ignore scroll restore errors
       }
       requestAnimationFrame(() => {
-        try { window.scrollTo(prevX, prevY); } catch (_) {
+        try { window.scrollTo(prevX, prevY); } catch (e) { logError(ErrorCategory.TABLE, 'tableUI', e);
           // Ignore scroll errors
         }
-        try { if (root) root.style.overflowAnchor = ''; } catch(_) {
+        try { if (root) root.style.overflowAnchor = ''; } catch(e) { logError(ErrorCategory.TABLE, 'tableUI', e);
       // Ignore table UI errors
     }
-        try { if (document.body) document.body.style.overflowAnchor = ''; } catch(_) {
+        try { if (document.body) document.body.style.overflowAnchor = ''; } catch(e) { logError(ErrorCategory.TABLE, 'tableUI', e);
       // Ignore table UI errors
     }
-        try { if (container) container.style.overflowAnchor = ''; } catch(_) {
+        try { if (container) container.style.overflowAnchor = ''; } catch(e) { logError(ErrorCategory.TABLE, 'tableUI', e);
       // Ignore table UI errors
     }
       });
@@ -619,7 +620,7 @@ function handleColumnFilterChange(event) {
         if (root) root.style.overflowAnchor = '';
         if (document.body) document.body.style.overflowAnchor = '';
         if (container) container.style.overflowAnchor = '';
-      } catch (_) {
+      } catch (e) { logError(ErrorCategory.TABLE, 'tableUI', e);
         // Ignore scroll restore errors
       }
     });
@@ -631,7 +632,7 @@ function handleColumnFilterChange(event) {
         if (root) root.style.overflowAnchor = '';
         if (document.body) document.body.style.overflowAnchor = '';
         if (container) container.style.overflowAnchor = '';
-      } catch (_) {
+      } catch (e) { logError(ErrorCategory.TABLE, 'tableUI', e);
         // Ignore scroll restore errors
       }
     }, 50);
@@ -647,7 +648,7 @@ function handleColumnFilterChange(event) {
   // Global pending focus (prevents race with async re-renders)
   try {
     window._pendingFilterFocus = { key, fromFloating, cursorPosition, cursorEnd, inputValue };
-  } catch (_) { /* noop */ }
+  } catch (e) { logError(ErrorCategory.TABLE, 'tableUI', e); }
   
   // Import setColumnFilter dynamically to avoid circular imports
   import("../state/tableState.js").then(({ setColumnFilter }) => {
@@ -732,8 +733,8 @@ try {
           target.setSelectionRange(pos, end);
         }
         // Clear after successful restore
-        try { window._pendingFilterFocus = null; } catch (_) { /* intentional no-op */ }
+        try { window._pendingFilterFocus = null; } catch (e) { logError(ErrorCategory.TABLE, 'tableUI', e); /* intentional no-op */ }
       }
     };
   }
-} catch (_) { /* noop */ }
+} catch (e) { logError(ErrorCategory.TABLE, 'tableUI', e); }

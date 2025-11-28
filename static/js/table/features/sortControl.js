@@ -5,6 +5,7 @@
 import { getState, setMultiSort } from "../../state/tableState.js";
 import { renderCoordinator } from "../../rendering/render-coordinator.js";
 import { getVirtualManager } from "../../state/moduleRegistry.js";
+import { logError, ErrorCategory } from "../../utils/errorLogger.js";
 
 function computeNextMultiSort(current, key, _textFields) {
   let ms = Array.isArray(current) ? [...current] : [];
@@ -54,7 +55,7 @@ export async function applySortSafe(key) {
         const { pagedData } = app.getProcessedData();
         mod.renderGroupedTable(pagedData || [], data?.peer_rows || [], data?.hourly_rows || []);
       }
-    } catch (_) {
+    } catch (e) { logError(ErrorCategory.TABLE, 'sortControl', e);
       // Ignore render errors
     }
   }, { debounceMs: 120, cooldownMs: 0 }); // user-driven sort must not be throttled by cooldown

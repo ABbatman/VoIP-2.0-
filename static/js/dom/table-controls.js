@@ -18,6 +18,7 @@ import {
 } from "./table-ui.js";
 import { updateTopScrollbar } from "./top-scrollbar.js";
 import { getVirtualManager } from "../state/moduleRegistry.js";
+import { logError, logWarn, ErrorCategory } from "../utils/errorLogger.js";
 
 /**
  * Initializes all event handlers for the table controls.
@@ -43,7 +44,9 @@ export function initTableControls(allMainRows, allPeerRows, allHourlyRows = []) 
       { key: "destination", dir: "asc" },
       { key: "main", dir: "asc" },
     ]);
-  } catch (_) { /* intentional no-op: default sort not critical */ }
+  } catch (e) { 
+    logWarn(ErrorCategory.TABLE, 'initTableControls:defaultSort', 'Could not set default sort'); 
+  }
   // --- REMOVED: This is now handled automatically by table-ui.js ---
   // updateColumnPlaceholders();
   updateSortArrows(); // delegated sorting handler covers clicks globally

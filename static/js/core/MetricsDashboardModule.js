@@ -10,6 +10,7 @@ import { dashboardRenderer } from '../dom/renderer.js';
 import { domPatcher, setPatcherContainer } from '../utils/domPatcher.js';
 import { dispatch } from '../state/index.js';
 import { createSetFilters } from '../state/actions.js';
+import { logError, ErrorCategory } from '../utils/errorLogger.js';
 
 /**
  * Lightweight facade that orchestrates existing modules.
@@ -252,7 +253,7 @@ export class MetricsDashboardModule {
     if (this._initialized) {
       // Unsubscribe from store updates
       if (this._unsubscribeStore) {
-        try { this._unsubscribeStore(); } catch (_) { /* intentional no-op: best-effort unsubscribe */ }
+        try { this._unsubscribeStore(); } catch (e) { logError(ErrorCategory.INIT, 'MetricsDashboardModule', e); /* intentional no-op: best-effort unsubscribe */ }
         this._unsubscribeStore = null;
       }
       // Clean up state management

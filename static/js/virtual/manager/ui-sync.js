@@ -3,6 +3,7 @@
 import { toggleYColumnsVisible } from '../../state/tableState.js';
 import { getContainer } from '../selectors/dom-selectors.js';
 import { computeStickyLayout } from './sticky-calc.js';
+import { logError, ErrorCategory } from '../../utils/errorLogger.js';
 
 function measureCellWidths(row) {
   const widths = [];
@@ -22,10 +23,10 @@ function bindFloatingYToggle(vm) {
   if (!yBtn) return;
   if (yBtn._vm_bound) return;
   yBtn.addEventListener('click', (e) => {
-    try { e.preventDefault(); e.stopPropagation(); } catch(_) {
+    try { e.preventDefault(); e.stopPropagation(); } catch(e) { logError(ErrorCategory.UI, 'uiSync', e);
       // Ignore UI sync errors
     }
-    try { toggleYColumnsVisible(); } catch(_) {
+    try { toggleYColumnsVisible(); } catch(e) { logError(ErrorCategory.UI, 'uiSync', e);
       // Ignore UI sync errors
     }
   });
@@ -69,7 +70,7 @@ export function bindFloatingHeader(vm) {
   try {
     // Already created
     if (vm._floatingHeader) {
-      try { syncFloatingHeader(vm); } catch(_) {
+      try { syncFloatingHeader(vm); } catch(e) { logError(ErrorCategory.UI, 'uiSync', e);
         // Ignore UI sync errors
       }
       return;
@@ -102,7 +103,7 @@ export function bindFloatingHeader(vm) {
     vm._floatingHeader = wrapper;
     vm._floatingTable = shadowTable;
     vm._floatingThead = clonedThead;
-    try { bindFloatingYToggle(vm); } catch(_) {
+    try { bindFloatingYToggle(vm); } catch(e) { logError(ErrorCategory.UI, 'uiSync', e);
       // Ignore UI sync errors
     }
 
@@ -113,27 +114,27 @@ export function bindFloatingHeader(vm) {
       vm._rafStickyScheduled = true;
       requestAnimationFrame(() => {
         vm._rafStickyScheduled = false;
-        try { syncFloatingHeader(vm); } catch(_) {
+        try { syncFloatingHeader(vm); } catch(e) { logError(ErrorCategory.UI, 'uiSync', e);
           // Ignore UI sync errors
         }
       });
     };
-    try { window.addEventListener('resize', vm._onFloatingSync); } catch(_) {
+    try { window.addEventListener('resize', vm._onFloatingSync); } catch(e) { logError(ErrorCategory.UI, 'uiSync', e);
       // Ignore UI sync errors
     }
-    try { window.addEventListener('scroll', vm._onFloatingSync, { passive: true }); } catch(_) {
+    try { window.addEventListener('scroll', vm._onFloatingSync, { passive: true }); } catch(e) { logError(ErrorCategory.UI, 'uiSync', e);
       // Ignore UI sync errors
     }
     const container = getContainer();
     if (container) {
-      try { container.addEventListener('scroll', vm._onFloatingSync, { passive: true }); } catch(_) {
+      try { container.addEventListener('scroll', vm._onFloatingSync, { passive: true }); } catch(e) { logError(ErrorCategory.UI, 'uiSync', e);
         // Ignore UI sync errors
       }
     }
 
     // Initial sync
     syncFloatingHeader(vm);
-  } catch (_) { /* no-op */ }
+  } catch (e) { logError(ErrorCategory.UI, 'uiSync', e); /* no-op */ }
 }
 
 export function syncFloatingHeader(vm) {
@@ -153,11 +154,11 @@ export function syncFloatingHeader(vm) {
         }
         vm._floatingThead = newClone;
         vm._floatingHeaderSig = origSig;
-        try { bindFloatingYToggle(vm); } catch(_) {
+        try { bindFloatingYToggle(vm); } catch(e) { logError(ErrorCategory.UI, 'uiSync', e);
           // Ignore UI sync errors
         }
       }
-    } catch (_) { /* no-op */ }
+    } catch (e) { logError(ErrorCategory.UI, 'uiSync', e); /* no-op */ }
 
     // Show/hide according to computed layout
     const shouldShow = layout.shouldShow;
@@ -191,28 +192,28 @@ export function syncFloatingHeader(vm) {
 
     // Sync horizontal scroll offset: prefer container scrollLeft, fallback 0
     vm._floatingTable.style.transform = `translateX(${-layout.scrollLeft}px)`;
-  } catch (_) { /* no-op */ }
+  } catch (e) { logError(ErrorCategory.UI, 'uiSync', e); /* no-op */ }
 }
 
 export function unbindFloatingHeader(vm) {
   try {
     if (vm._onFloatingSync) {
-      try { window.removeEventListener('resize', vm._onFloatingSync); } catch(_) {
+      try { window.removeEventListener('resize', vm._onFloatingSync); } catch(e) { logError(ErrorCategory.UI, 'uiSync', e);
         // Ignore UI sync errors
       }
       try {
         const container = getContainer();
         container && container.removeEventListener('scroll', vm._onFloatingSync);
-      } catch(_) {
+      } catch(e) { logError(ErrorCategory.UI, 'uiSync', e);
         // Ignore UI sync errors
       }
     }
     if (vm._floatingHeader && vm._floatingHeader.parentNode) {
-      try { vm._floatingHeader.parentNode.removeChild(vm._floatingHeader); } catch(_) {
+      try { vm._floatingHeader.parentNode.removeChild(vm._floatingHeader); } catch(e) { logError(ErrorCategory.UI, 'uiSync', e);
         // Ignore UI sync errors
       }
     }
-  } catch(_) {
+  } catch(e) { logError(ErrorCategory.UI, 'uiSync', e);
     // Ignore UI sync errors
   }
   vm._floatingHeader = null;

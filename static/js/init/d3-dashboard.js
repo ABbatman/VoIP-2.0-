@@ -5,6 +5,7 @@ import { initFilters } from '../dom/filters.js';
 import { initChartControls } from '../charts/ui/chartControls.js';
 import { renderManager } from '../charts/services/renderManager.js';
 import { ensureDefaults } from '../charts/registry.js';
+import { logError, ErrorCategory } from '../utils/errorLogger.js';
 
 // init - thin facade only
 
@@ -14,11 +15,11 @@ export async function initD3Dashboard() {
       if (window.__chartsInitDone) return;
       window.__chartsInitDone = true;
     }
-  } catch(_) {}
+  } catch(e) { logError(ErrorCategory.INIT, 'd3Dashboard', e); }
 
   initFilters();
   // make sure registry is populated so UI lists only real types
-  try { await ensureDefaults(); } catch(_) {}
+  try { await ensureDefaults(); } catch(e) { logError(ErrorCategory.INIT, 'd3Dashboard', e); }
   initChartControls();
   const controls = document.getElementById('charts-controls');
   const selected = (controls && controls.dataset && controls.dataset.type) ? controls.dataset.type : 'line';

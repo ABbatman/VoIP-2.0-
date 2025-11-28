@@ -1,6 +1,7 @@
 // static/js/charts/echarts/helpers/capsuleTooltip.js
 // Responsibility: attach separate DOM tooltip for capsule labels (ECharts custom series)
 import { formatTimeRange } from './time.js';
+import { logError, ErrorCategory } from '../../../utils/errorLogger.js';
 
 let el;
 
@@ -73,18 +74,18 @@ function fmtBlock({ time, suppliers, customers, destinations, metric, customersB
               if (s) return s;
             }
           }
-        } catch (_) { }
+        } catch (e) { logError(ErrorCategory.CHART, 'capsuleTooltip', e); }
         return '—';
       }
       return 'Multiple';
-    } catch (_) { return '—'; }
+    } catch (e) { logError(ErrorCategory.CHART, 'capsuleTooltip:pickName', e); return '—'; }
   };
   // normalize any iterable to array
   const toArr = (v) => {
     try {
       if (Array.isArray(v)) return v;
       if (v && typeof v !== 'string' && typeof v[Symbol.iterator] === 'function') return Array.from(v);
-    } catch (_) { }
+    } catch (e) { logError(ErrorCategory.CHART, 'capsuleTooltip', e); }
     return Array.isArray(v) ? v : [];
   };
   // get first value-array from map-like by target key or first entry
@@ -112,7 +113,7 @@ function fmtBlock({ time, suppliers, customers, destinations, metric, customersB
           if (list != null) return toArr(list);
         }
       }
-    } catch (_) { }
+    } catch (e) { logError(ErrorCategory.CHART, 'capsuleTooltip', e); }
     return null;
   };
   // pick top supplier name for targeted lookup
@@ -123,7 +124,7 @@ function fmtBlock({ time, suppliers, customers, destinations, metric, customersB
       const s = sup[0] || {};
       const name = (s.name ?? s.supplier ?? s.provider ?? s.id ?? s.supplierId);
       return name != null ? String(name) : null;
-    } catch (_) { return null; }
+    } catch (e) { logError(ErrorCategory.CHART, 'capsuleTooltip', e); return null; }
   })();
   // derive top destination/customer with fallback to per-supplier maps
   let custTop = (() => {
@@ -135,16 +136,16 @@ function fmtBlock({ time, suppliers, customers, destinations, metric, customersB
           return pickName([arr[0]]);
         }
       }
-    } catch (_) { }
+    } catch (e) { logError(ErrorCategory.CHART, 'capsuleTooltip', e); }
     // 2) original array
     try {
       const arr = toArr(customers);
       if (arr && arr.length) return pickName(arr);
-    } catch (_) { }
+    } catch (e) { logError(ErrorCategory.CHART, 'capsuleTooltip', e); }
     try {
       const arr = firstFromMapLike(customersBySupplier, null);
       if (arr && arr.length) return pickName([arr[0]]);
-    } catch (_) { }
+    } catch (e) { logError(ErrorCategory.CHART, 'capsuleTooltip', e); }
     return '—';
   })();
   let destTop = (() => {
@@ -160,12 +161,12 @@ function fmtBlock({ time, suppliers, customers, destinations, metric, customersB
         }
         if (first != null) return pickName([first]);
       }
-    } catch (_) { }
+    } catch (e) { logError(ErrorCategory.CHART, 'capsuleTooltip', e); }
     // 2) original array
     try {
       const arr = toArr(destinations);
       if (arr && arr.length) return pickName(arr);
-    } catch (_) { }
+    } catch (e) { logError(ErrorCategory.CHART, 'capsuleTooltip', e); }
     try {
       const arr = firstFromMapLike(destinationsBySupplier, null);
       if (arr && arr.length) {
@@ -177,7 +178,7 @@ function fmtBlock({ time, suppliers, customers, destinations, metric, customersB
         }
         return pickName([first]);
       }
-    } catch (_) { }
+    } catch (e) { logError(ErrorCategory.CHART, 'capsuleTooltip', e); }
     return '—';
   })();
   // 3) final fallback: read from supplier items
@@ -192,7 +193,7 @@ function fmtBlock({ time, suppliers, customers, destinations, metric, customersB
         if (custTop !== '—') break;
       }
     }
-  } catch (_) { }
+  } catch (e) { logError(ErrorCategory.CHART, 'capsuleTooltip', e); }
   try {
     if (destTop === '—' && Array.isArray(suppliers) && suppliers.length) {
       const sup = suppliers.slice().sort((a, b) => (Number(b?.value) || 0) - (Number(a?.value) || 0));
@@ -210,7 +211,7 @@ function fmtBlock({ time, suppliers, customers, destinations, metric, customersB
         if (destTop !== '—') break;
       }
     }
-  } catch (_) { }
+  } catch (e) { logError(ErrorCategory.CHART, 'capsuleTooltip', e); }
   const metricTop = metric ? String(metric) : '—';
 
   const supRows = (() => {
@@ -312,7 +313,7 @@ function readHoverValueFromEvent(e) {
       }
       t = t.parent;
     }
-  } catch (_) { }
+  } catch (e) { logError(ErrorCategory.CHART, 'capsuleTooltip', e); }
   return null;
 }
 
@@ -321,7 +322,7 @@ function toTimeLabel(ts) {
     const d = new Date(Number(ts));
     const pad = (n) => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  } catch (_) { return ''; }
+  } catch (e) { logError(ErrorCategory.CHART, 'capsuleTooltip:toTimeLabel', e); return ''; }
 }
 
 // Filter customers/destinations arrays to a specific supplier when structure allows (best-effort)
@@ -343,13 +344,13 @@ function narrowBySupplier(arr, supplierName) {
       }
     }
     return out.length ? out : arr;
-  } catch (_) { return arr; }
+  } catch (e) { logError(ErrorCategory.CHART, 'capsuleTooltip:narrowBySupplier', e); return arr; }
 }
 
 function makeHandlers(chart, { getCapsuleData, textColor, metricByGridIndex }) {
   const move = (e) => {
     // if capsule hover active, constantly suppress default chart tooltip
-    try { if (chart.__capsuleHoverActive) chart.dispatchAction({ type: 'hideTip' }); } catch (_) { }
+    try { if (chart.__capsuleHoverActive) chart.dispatchAction({ type: 'hideTip' }); } catch (e) { logError(ErrorCategory.CHART, 'capsuleTooltip', e); }
     if (!el || el.style.opacity === '0') return;
     const x = (e && e.event && Number.isFinite(e.event.event?.clientX)) ? e.event.event.clientX : (e?.offsetX || 0);
     const y = (e && e.event && Number.isFinite(e.event.event?.clientY)) ? e.event.event.clientY : (e?.offsetY || 0);
@@ -362,7 +363,7 @@ function makeHandlers(chart, { getCapsuleData, textColor, metricByGridIndex }) {
       // Hover over BAR series: when capsule hover is active, suppress bar tooltip entirely
       if (e.seriesType === 'bar') {
         if (chart.__capsuleHoverActive) {
-          try { chart.dispatchAction({ type: 'hideTip' }); } catch (_) { }
+          try { chart.dispatchAction({ type: 'hideTip' }); } catch (e) { logError(ErrorCategory.CHART, 'capsuleTooltip', e); }
           return;
         }
         if (el) el.style.opacity = '0';
@@ -385,7 +386,7 @@ function makeHandlers(chart, { getCapsuleData, textColor, metricByGridIndex }) {
             const val = Array.isArray(d) ? d[0] : (d && d.value ? d.value[0] : null);
             if (Number.isFinite(Number(val))) ts = Number(val);
           }
-        } catch (_) { }
+        } catch (e) { logError(ErrorCategory.CHART, 'capsuleTooltip', e); }
       }
       if (!Number.isFinite(ts)) {
         // last resort: convert from pixel X
@@ -396,7 +397,7 @@ function makeHandlers(chart, { getCapsuleData, textColor, metricByGridIndex }) {
             const arr = chart.convertFromPixel({ xAxisIndex }, [px, 0]);
             if (Array.isArray(arr) && Number.isFinite(arr[0])) ts = Number(arr[0]);
           }
-        } catch (_) { }
+        } catch (e) { logError(ErrorCategory.CHART, 'capsuleTooltip', e); }
       }
       if (!Number.isFinite(ts)) return;
       // detect step from overlay series data (fallback 1h)
@@ -410,11 +411,11 @@ function makeHandlers(chart, { getCapsuleData, textColor, metricByGridIndex }) {
           if (prev == null) { prev = t; continue; }
           if (t !== prev) { stepGuess = Math.abs(t - prev); break; }
         }
-      } catch (_) { /* keep default */ }
+      } catch (e) { logError(ErrorCategory.CHART, 'capsuleTooltip', e); /* keep default */ }
       let data = (typeof getCapsuleData === 'function') ? getCapsuleData({ metric, ts }) : null;
       if (!data) {
         // build minimal fallback with time only
-        try { data = { time: formatTimeRange(ts, stepGuess), suppliers: [], customers: [], destinations: [] }; } catch (_) { return; }
+        try { data = { time: formatTimeRange(ts, stepGuess), suppliers: [], customers: [], destinations: [] }; } catch (e) { logError(ErrorCategory.CHART, 'capsuleTooltip', e); return; }
       }
       // If suppliers are missing, read them from option.__labelsEffective (overlay data used for drawing)
       try {
@@ -426,7 +427,7 @@ function makeHandlers(chart, { getCapsuleData, textColor, metricByGridIndex }) {
             data.suppliers = cand;
           }
         }
-      } catch (_) { }
+      } catch (e) { logError(ErrorCategory.CHART, 'capsuleTooltip', e); }
       // best-effort: narrow to the hovered capsule value
       let hoverVal = readHoverValueFromEvent(e);
       if (!Number.isFinite(hoverVal)) {
@@ -443,7 +444,7 @@ function makeHandlers(chart, { getCapsuleData, textColor, metricByGridIndex }) {
               hoverVal = Number(pt[1]);
             }
           }
-        } catch (_) { }
+        } catch (e) { logError(ErrorCategory.CHART, 'capsuleTooltip', e); }
       }
       if (Number.isFinite(hoverVal) && Array.isArray(data.suppliers)) {
         const tol = 0.11; // tolerate rounding diff with overlay text (toFixed(1))
@@ -488,12 +489,12 @@ function makeHandlers(chart, { getCapsuleData, textColor, metricByGridIndex }) {
               if (data.customersBySupplier && Array.isArray(data.customersBySupplier[n])) {
                 for (const c of data.customersBySupplier[n]) pushUniq(customers, c);
               }
-            } catch (_) { }
+            } catch (e) { logError(ErrorCategory.CHART, 'capsuleTooltip', e); }
             try {
               if (data.destinationsBySupplier && Array.isArray(data.destinationsBySupplier[n])) {
                 for (const d of data.destinationsBySupplier[n]) pushUniq(destinations, d);
               }
-            } catch (_) { }
+            } catch (e) { logError(ErrorCategory.CHART, 'capsuleTooltip', e); }
           }
           // Fallback: best-effort filter original arrays when per-supplier maps are not present
           if (!customers.length) {
@@ -516,20 +517,20 @@ function makeHandlers(chart, { getCapsuleData, textColor, metricByGridIndex }) {
         data = { ...data, time: formatTimeRange(ts, stepGuess) };
       }
       // hide default ECharts tooltip (separate capsule tooltip only)
-      try { chart.dispatchAction({ type: 'hideTip' }); } catch (_) { }
+      try { chart.dispatchAction({ type: 'hideTip' }); } catch (e) { logError(ErrorCategory.CHART, 'capsuleTooltip', e); }
       ensureEl(textColor);
       el.innerHTML = fmtBlock({ ...data, metric });
       el.style.opacity = '1';
       move(e);
       // blur all; capsule overlay stays visible
-      try { chart.dispatchAction({ type: 'downplay' }); } catch (_) { }
+      try { chart.dispatchAction({ type: 'downplay' }); } catch (e) { logError(ErrorCategory.CHART, 'capsuleTooltip', e); }
       // highlight overlay series, optionally by dataIndex if available
-      try { chart.dispatchAction({ type: 'highlight', seriesIndex: e.seriesIndex, dataIndex: e.dataIndex }); } catch (_) { }
-    } catch (_) { }
+      try { chart.dispatchAction({ type: 'highlight', seriesIndex: e.seriesIndex, dataIndex: e.dataIndex }); } catch (e) { logError(ErrorCategory.CHART, 'capsuleTooltip', e); }
+    } catch (e) { logError(ErrorCategory.CHART, 'capsuleTooltip', e); }
   };
   const out = () => {
     if (el) el.style.opacity = '0';
-    try { chart.dispatchAction({ type: 'downplay' }); } catch (_) { }
+    try { chart.dispatchAction({ type: 'downplay' }); } catch (e) { logError(ErrorCategory.CHART, 'capsuleTooltip', e); }
     chart.__capsuleHoverActive = false;
   };
   return { over, out, move };
@@ -547,10 +548,10 @@ export function attachCapsuleTooltip(chart, { getCapsuleData, textColor = 'var(-
 export function detachCapsuleTooltip(chart) { // cleanup
   const h = chart && chart.__capsuleTooltip;
   if (!h) return;
-  try { chart.off('mouseover', h.over); } catch (_) { }
-  try { chart.off('mouseout', h.out); } catch (_) { }
-  try { chart.off('globalout', h.out); } catch (_) { }
-  try { chart.off('mousemove', h.move); } catch (_) { }
-  try { delete chart.__capsuleTooltip; } catch (_) { }
+  try { chart.off('mouseover', h.over); } catch (e) { logError(ErrorCategory.CHART, 'capsuleTooltip', e); }
+  try { chart.off('mouseout', h.out); } catch (e) { logError(ErrorCategory.CHART, 'capsuleTooltip', e); }
+  try { chart.off('globalout', h.out); } catch (e) { logError(ErrorCategory.CHART, 'capsuleTooltip', e); }
+  try { chart.off('mousemove', h.move); } catch (e) { logError(ErrorCategory.CHART, 'capsuleTooltip', e); }
+  try { delete chart.__capsuleTooltip; } catch (e) { logError(ErrorCategory.CHART, 'capsuleTooltip', e); }
   if (el) el.style.opacity = '0';
 }

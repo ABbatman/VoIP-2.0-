@@ -3,6 +3,7 @@
 
 import { subscribe } from "../state/eventBus.js";
 import { getState, toggleYColumnsVisible } from "../state/tableState.js";
+import { logError, logWarn, ErrorCategory } from "../utils/errorLogger.js";
 
 let floatingFooter;
 let onSyncBound;
@@ -45,7 +46,7 @@ function bindHeaderYToggle() {
   floatingHeader.addEventListener('click', (e) => {
     const btn = e.target && e.target.closest && e.target.closest('.y-column-toggle-btn');
     if (!btn) return;
-    try { toggleYColumnsVisible(); } catch(_) {
+    try { toggleYColumnsVisible(); } catch(e) { logError(ErrorCategory.DOM, 'stickyTableChrome', e);
     // Ignore sticky chrome errors
   }
   });
@@ -130,7 +131,7 @@ function syncFloatingHeader() {
   if (!tableVisibleInViewport || originalHeaderVisible) {
     if (_floatingHeaderShown) {
       floatingHeader.classList.add('is-hidden');
-      try { floatingHeader.style.pointerEvents = 'none'; } catch(_) {
+      try { floatingHeader.style.pointerEvents = 'none'; } catch(e) { logError(ErrorCategory.DOM, 'stickyTableChrome', e);
     // Ignore sticky chrome errors
   }
       _floatingHeaderShown = false;
@@ -140,7 +141,7 @@ function syncFloatingHeader() {
 
   if (!_floatingHeaderShown) {
     floatingHeader.classList.remove('is-hidden');
-    try { floatingHeader.style.pointerEvents = 'auto'; } catch(_) {
+    try { floatingHeader.style.pointerEvents = 'auto'; } catch(e) { logError(ErrorCategory.DOM, 'stickyTableChrome', e);
     // Ignore sticky chrome errors
   }
     _floatingHeaderShown = true;
@@ -195,7 +196,9 @@ function setupFloatingFooter() {
     try {
       selStart = active.selectionStart;
       selEnd = active.selectionEnd;
-    } catch (_) { /* intentional no-op: selection range not available */ }
+    } catch (e) { 
+      logWarn(ErrorCategory.DOM, 'setupFloatingFooter:selection', 'Selection range not available'); 
+    }
   }
 
   if (!floatingFooter) {
@@ -240,7 +243,11 @@ function setupFloatingFooter() {
       newInput.value = focusValue;
       newInput.focus();
       if (selStart != null && selEnd != null && newInput.setSelectionRange) {
-        try { newInput.setSelectionRange(selStart, selEnd); } catch (_) { /* intentional no-op: selection restore best-effort */ }
+        try { 
+          newInput.setSelectionRange(selStart, selEnd); 
+        } catch (e) { 
+          logWarn(ErrorCategory.DOM, 'setupFloatingFooter:restoreSelection', 'Could not restore selection'); 
+        }
       }
     }
   }
@@ -264,7 +271,9 @@ function syncFloatingFooter() {
     isInteracting = activeInFloating || activeInReal || _floatingEngaged;
     const { columnFilters = {} } = getState();
     hasActiveFilters = Object.values(columnFilters).some(v => (v || '').toString().trim().length > 0);
-  } catch (_) { /* ignore */ }
+  } catch (e) { 
+    logError(ErrorCategory.STATE, 'syncFloatingFooter:state', e); 
+  }
   const now = Date.now();
   const inGrace = (now - lastFloatingInteractionTs) < INTERACTION_GRACE_MS;
 
@@ -291,7 +300,9 @@ function syncFloatingFooter() {
             const pos = typeof activeEl.selectionStart === 'number' ? activeEl.selectionStart : (activeEl.value || '').length;
             realInput.focus();
             if (typeof realInput.setSelectionRange === 'function') realInput.setSelectionRange(pos, pos);
-          } catch(_) { /* noop */ }
+          } catch(e) { 
+            logWarn(ErrorCategory.DOM, 'syncFloatingFooter:transfer', 'Focus transfer failed'); 
+          }
         }
       }
     }
@@ -335,7 +346,7 @@ function syncFloatingFooter() {
 
   const dstTfoot = floatingFooter.querySelector("tfoot");
   syncFooterCellWidths(table, dstTfoot);
-  try { if (window.restoreFilterFocusIfPending) window.restoreFilterFocusIfPending(); } catch (_) { /* intentional no-op */ }
+  try { if (window.restoreFilterFocusIfPending) window.restoreFilterFocusIfPending(); } catch (e) { logError(ErrorCategory.DOM, 'stickyTableChrome', e); /* intentional no-op */ }
 }
 
 function attachVisibilityHooks() {
@@ -353,7 +364,7 @@ function attachVisibilityHooks() {
     if (floatingFooter) floatingFooter.classList.add('is-hidden');
     // Schedule a re-sync soon after reverse/find actions complete
     setTimeout(() => {
-      try { onSyncBound(); } catch (_) { /* intentional no-op: resync best-effort */ }
+      try { onSyncBound(); } catch (e) { logError(ErrorCategory.DOM, 'stickyTableChrome', e); /* intentional no-op: resync best-effort */ }
     }, 60);
   };
   const reverseBtn = document.getElementById('btnReverse');
@@ -426,7 +437,7 @@ function bindFooterInputs() {
         window._pendingFilterFocus = { key, fromFloating: true, cursorPosition: pos };
         lastFloatingInteractionTs = Date.now();
         _floatingEngaged = true;
-      } catch(_) { /* noop */ }
+      } catch(e) { logError(ErrorCategory.DOM, 'stickyTableChrome', e); /* noop */ }
     });
     inp.addEventListener('focusin', () => { _floatingEngaged = true; lastFloatingInteractionTs = Date.now(); });
     inp.addEventListener('blur', () => {

@@ -4,6 +4,7 @@ import { toPairs, withGapBreaks, shiftForwardPairs } from '../helpers/dataTransf
 import { getStepMs } from '../helpers/time.js';
 import { MAIN_BLUE } from '../helpers/colors.js';
 import { computeChartGrids } from '../../services/layout.js';
+import { logError, ErrorCategory } from '../../../utils/errorLogger.js';
 
 function computeGrids(heightPx) {
   return computeChartGrids(heightPx);
@@ -166,11 +167,11 @@ export function buildMultiOption({ data, fromTs, toTs, height, interval }) {
   const minutesPrev = seriesLine('Minutes -24h', withGapBreaks(shiftForwardPairs(pairsM, dayMs), stepMs), 2, 2, prevColor, prevProps);
   const acdPrev = seriesLine('ACD -24h', withGapBreaks(shiftForwardPairs(pairsC, dayMs), stepMs), 3, 3, prevColor, prevProps);
 
-  tcallsPrev.emphasis = { disabled: true };
-  asrPrev.emphasis = { disabled: true };
-  minutesPrev.emphasis = { disabled: true };
-  acdPrev.emphasis = { disabled: true };
-  tcallsPrev.hoverAnimation = false; asrPrev.hoverAnimation = false; minutesPrev.hoverAnimation = false; acdPrev.hoverAnimation = false;
+  // emphasis.scale replaces deprecated hoverAnimation
+  tcallsPrev.emphasis = { disabled: true, scale: false };
+  asrPrev.emphasis = { disabled: true, scale: false };
+  minutesPrev.emphasis = { disabled: true, scale: false };
+  acdPrev.emphasis = { disabled: true, scale: false };
   tcallsPrev.z = 1; asrPrev.z = 1; minutesPrev.z = 1; acdPrev.z = 1;
   tcallsPrev.tooltip = { show: false }; tcallsPrev.silent = true;
   asrPrev.tooltip = { show: false }; asrPrev.silent = true;
@@ -221,7 +222,7 @@ export function buildMultiOption({ data, fromTs, toTs, height, interval }) {
       return { type: 'text', left: 6, top: y, z: 10, style: { text: name, fill: '#6e7781', font: '600 12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif' } };
     });
     option.graphic = (option.graphic || []).concat(labels);
-  } catch (_) { }
+  } catch (e) { logError(ErrorCategory.CHART, 'MultiLineBuilder', e); }
 
   // Slider Option
   const sliderGrid = computeSliderGrid();

@@ -5,6 +5,7 @@ import { dashboardRenderer } from '../dom/renderer.js';
 import { stateManager } from '../state/stateManager.js';
 import { eventBus } from '../state/eventBus.js';
 import { getSearchDebounceMs } from '../state/tableState.js';
+import { logError, ErrorCategory } from './errorLogger.js';
 
 /**
  * DOM Patcher
@@ -32,7 +33,7 @@ export class DOMPatcher {
     try {
       const ms = typeof getSearchDebounceMs === 'function' ? getSearchDebounceMs() : this.debounceDelay;
       this.setDebounceDelay(ms);
-    } catch (_) { /* noop */ }
+    } catch (e) { logError(ErrorCategory.DOM, 'domPatcher', e); /* noop */ }
     this.isInitialized = true;
     console.log('✅ DOM Patcher: Initialized');
   }
@@ -107,7 +108,7 @@ export class DOMPatcher {
     eventBus.subscribe('tableState:columnsChanged', () => this._queuePatch());
     // Keep debounce in sync with tableState configuration
     eventBus.subscribe('tableState:searchDebounceChanged', (ms) => {
-      try { this.setDebounceDelay(ms); } catch (_) { /* noop */ }
+      try { this.setDebounceDelay(ms); } catch (e) { logError(ErrorCategory.DOM, 'domPatcher', e); /* noop */ }
     });
   }
 

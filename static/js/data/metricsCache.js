@@ -1,4 +1,5 @@
 // static/js/data/metricsCache.js
+import { logError, ErrorCategory } from '../utils/errorLogger.js';
 
 // Lightweight in-memory LRU cache for metrics responses
 const CACHE = new Map(); // key -> { data, size }
@@ -12,7 +13,7 @@ export function makeCacheKey(params) {
       .filter(([_k, v]) => v != null)
       .sort(([a], [b]) => a.localeCompare(b));
     return JSON.stringify(entries);
-  } catch (_) {
+  } catch (e) { logError(ErrorCategory.STATE, 'metricsCache', e);
     return null;
   }
 }
@@ -44,7 +45,7 @@ export function putCachedMetrics(params, data) {
       CACHE.delete(firstKey);
       BYTES -= ev && ev.size ? ev.size : 0;
     }
-  } catch (_) {
+  } catch (e) { logError(ErrorCategory.STATE, 'metricsCache', e);
     // Cache operation might fail
   }
 }

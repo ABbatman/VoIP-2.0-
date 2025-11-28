@@ -2,8 +2,8 @@
 // Build ECharts series for 4-panel bar chart (bars + prev + overlays)
 import { buildLabelOverlay } from '../helpers/labelOverlay.js';
 import { chooseBarWidthPx } from '../helpers/dataTransform.js';
-
 import { getHeatmapColor } from '../../../visualEnhancements/heatmapStyling.js';
+import { logError, ErrorCategory } from '../../../utils/errorLogger.js';
 
 import { detectTimeScale, getBarVisuals, clamp, mapSmooth } from '../../../visualEnhancements/visualMapping.js';
 
@@ -170,6 +170,6 @@ export function buildBarSeries({ setsT, setsA, setsM, setsC, centers, interval, 
     const tsList = Array.isArray(centers) && centers.length ? centers : (Array.isArray(setsA.curr) ? setsA.curr.map(p => p[0]) : []);
     list.push(buildLabelOverlay({ metric: 'ASR', timestamps: tsList, labels: labelsASR, colorMap, gridIndex: 1, xAxisIndex: 1, yAxisIndex: 1, secondary: false, stepMs, align: 'current', providerRows, providerKey }));
     list.push(buildLabelOverlay({ metric: 'ACD', timestamps: tsList, labels: labelsACD, colorMap, gridIndex: 3, xAxisIndex: 3, yAxisIndex: 3, secondary: false, stepMs, align: 'current', providerRows, providerKey }));
-  } catch (_) { /* overlay labels */ }
+  } catch (e) { logError(ErrorCategory.CHART, 'BarChartBuilder', e); /* overlay labels */ }
   return list;
 }

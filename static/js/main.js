@@ -21,8 +21,9 @@ import './state/moduleRegistry.js';
 import { setDashboard } from './state/moduleRegistry.js';
 
 import { MetricsDashboardModule, clearTableFilters, clearSpecificFilter } from './core/MetricsDashboardModule.js';
-import { initTypeaheadFilters } from './init/typeahead-init.js'; // Typeahead init
-import { initD3 } from './init/d3-init.js'; // D3 core init (now bootstraps dashboard lazily)
+import { initTypeaheadFilters } from './init/typeahead-init.js';
+import { initD3 } from './init/d3-init.js';
+import { logError, ErrorCategory } from './utils/errorLogger.js';
 
 const ready = (fn) => (document.readyState !== 'loading' ? fn() : document.addEventListener('DOMContentLoaded', fn));
 
@@ -40,11 +41,18 @@ ready(() => {
   window.clearTableFilters = clearTableFilters;
   window.clearSpecificFilter = clearSpecificFilter;
 
-  // Init filters typeahead (isolated module)
-  try { initTypeaheadFilters(); } catch (_) { /* no-op */ }
+  // Init filters typeahead
+  try { 
+    initTypeaheadFilters(); 
+  } catch (e) { 
+    logError(ErrorCategory.INIT, 'main:typeahead', e); 
+  }
+  
   // Init D3 (exposes window.d3; also lazy-loads dashboard)
-  try { initD3(); } catch (_) { /* no-op */ }
-  // Do not call initD3Dashboard directly — initD3 will import and run it lazily
-  // (avoid double initialization and race conditions)
+  try { 
+    initD3(); 
+  } catch (e) { 
+    logError(ErrorCategory.INIT, 'main:d3', e); 
+  }
 })
 ;

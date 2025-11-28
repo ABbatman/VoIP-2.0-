@@ -3,13 +3,14 @@
 import * as echarts from 'echarts';
 import { getStableColor, PROVIDER_COLORS } from './colors.js';
 import { calculateMarkerLayout } from '../../../visualEnhancements/adaptiveMarkers.js';
+import { logError, ErrorCategory } from '../../../utils/errorLogger.js';
 
 // read CSS variables once
 function readCssVar(name, fallback) { // read css var
   try {
     const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
     return v || fallback;
-  } catch (_) { return fallback; }
+  } catch (e) { logError(ErrorCategory.CHART, 'labelOverlay', e); return fallback; }
 }
 
 const CSS_BG = () => readCssVar('--ds-color-bg', '#ffffff');
@@ -37,7 +38,7 @@ function computeCompactGap(count, itemHeight, baseGap, availablePx) { // gap red
     if (need <= avail) return g0; // nothing to compact
     const g = Math.floor(avail / (n - 1) - h);
     return Math.max(1, Math.min(g0, Number.isFinite(g) ? g : g0));
-  } catch (_) {
+  } catch (e) { logError(ErrorCategory.CHART, 'labelOverlay', e);
     return Math.max(1, Number(baseGap) || 4);
   }
 }
@@ -50,7 +51,7 @@ function makeThrottled(fn, waitMs) { // simple throttle
   return function throttled(params, api) {
     const now = Date.now();
     let key = null;
-    try { key = Number(api && api.value ? api.value(0) : null); } catch (_) { key = (params && Number.isFinite(params.dataIndex)) ? params.dataIndex : null; }
+    try { key = Number(api && api.value ? api.value(0) : null); } catch (e) { logError(ErrorCategory.CHART, 'labelOverlay', e); key = (params && Number.isFinite(params.dataIndex)) ? params.dataIndex : null; }
     if (cached != null && key === lastKey && (now - last) < (waitMs || 80)) return cached;
     cached = fn(params, api);
     last = now;
@@ -131,7 +132,7 @@ export function buildLabelOverlay({ metric, timestamps, labels, colorMap, gridIn
       if (typeof window !== 'undefined' && window.__chartsDebug) {
         console.debug('[overlay] grouped.len', grouped.length, grouped.slice(0, 3));
       }
-    } catch (_) { }
+    } catch (e) { logError(ErrorCategory.CHART, 'labelOverlay', e); }
     let children = [];
     if (!grouped.length) return null;
     // measure constant capsule height using first label's text (font height is stable)
@@ -149,11 +150,11 @@ export function buildLabelOverlay({ metric, timestamps, labels, colorMap, gridIn
       yBase = Array.isArray(c0) ? Number(c0[1]) : 0;
       areaTop = (_params && _params.coordSys && Number.isFinite(_params.coordSys.y)) ? Number(_params.coordSys.y) : 0;
       areaBottom = (_params && _params.coordSys && Number.isFinite(_params.coordSys.height)) ? (areaTop + Number(_params.coordSys.height)) : (areaTop + 1e6);
-    } catch (_) { }
+    } catch (e) { logError(ErrorCategory.CHART, 'labelOverlay', e); }
     const baseGap = 4; // default visual gap between capsules
     const minGap = 1;  // minimal visual gap when space is tight
     // build ideal (value-tied) positions for current bar
-    const yList = grouped.map(g => { try { const c = api.coord([ts, g.value]); return Math.round(Array.isArray(c) ? Number(c[1]) : yBase); } catch (_) { return yBase; } });
+    const yList = grouped.map(g => { try { const c = api.coord([ts, g.value]); return Math.round(Array.isArray(c) ? Number(c[1]) : yBase); } catch (e) { logError(ErrorCategory.CHART, 'labelOverlay', e); return yBase; } });
     const yTop = Math.min(...yList);
     const yBottom = Math.max(...yList);
     const topBound = areaTop + Math.floor(h / 2);

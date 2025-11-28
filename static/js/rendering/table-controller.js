@@ -13,6 +13,7 @@ import { renderTableHeader, renderTableFooter as buildTableFooter, showTableCont
 import { initTableControls } from "../dom/table-controls.js";
 import { initStickyFooter, initStickyHeader } from "../dom/sticky-table-chrome.js";
 import { getChartsCurrentInterval } from "../state/runtimeFlags.js";
+import { logError, ErrorCategory } from "../utils/errorLogger.js";
 
 /**
  * Table Controller - Manages table rendering lifecycle
@@ -110,20 +111,20 @@ export class TableController {
     // Use coordinator; coalesce with Summary by sharing kind 'table'
     renderCoordinator.requestRender('table', async () => {
       // Prepare
-      try { renderTableHeader(); } catch (_) {
+      try { renderTableHeader(); } catch (e) { logError(ErrorCategory.TABLE, 'tableController', e);
         // Ignore table controller errors
       }
-      try { buildTableFooter(); } catch (_) {
+      try { buildTableFooter(); } catch (e) { logError(ErrorCategory.TABLE, 'tableController', e);
         // Ignore table controller errors
       }
-      try { showTableControls(); } catch (_) {
+      try { showTableControls(); } catch (e) { logError(ErrorCategory.TABLE, 'tableController', e);
         // Ignore table controller errors
       }
-      try { initTableControls(main_rows, peer_rows, hourly_rows); } catch (_) {
+      try { initTableControls(main_rows, peer_rows, hourly_rows); } catch (e) { logError(ErrorCategory.TABLE, 'tableController', e);
         // Ignore table controller errors
       }
       // Clear
-      try { const tb = document.getElementById('tableBody'); if (tb) tb.innerHTML = ''; } catch (_) {
+      try { const tb = document.getElementById('tableBody'); if (tb) tb.innerHTML = ''; } catch (e) { logError(ErrorCategory.TABLE, 'tableController', e);
         // Ignore table controller errors
       }
       // Render
@@ -133,19 +134,19 @@ export class TableController {
         renderGroupedTable(main_rows, peer_rows, hourly_rows);
       }
       // Post
-      try { initTableView(); } catch (_) {
+      try { initTableView(); } catch (e) { logError(ErrorCategory.TABLE, 'tableController', e);
         // Ignore table controller errors
       }
-      try { initStickyHeader(); } catch (_) {
+      try { initStickyHeader(); } catch (e) { logError(ErrorCategory.TABLE, 'tableController', e);
         // Ignore table controller errors
       }
-      try { initStickyFooter(); } catch (_) {
+      try { initStickyFooter(); } catch (e) { logError(ErrorCategory.TABLE, 'tableController', e);
         // Ignore table controller errors
       }
-      try { updateTableFooter(); } catch (_) {
+      try { updateTableFooter(); } catch (e) { logError(ErrorCategory.TABLE, 'tableController', e);
         // Ignore table controller errors
       }
-      try { initTooltips(); } catch (_) {
+      try { initTooltips(); } catch (e) { logError(ErrorCategory.TABLE, 'tableController', e);
         // Ignore table controller errors
       }
     }, { debounceMs: 200 });

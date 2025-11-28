@@ -1,5 +1,6 @@
 // static/js/virtual/scroller/diff.js
 // Responsibility: partial diff between existing TR and new row html
+import { logError, ErrorCategory } from '../../utils/errorLogger.js';
 
 export function applyRowDiff(tr, html, scratchTbody) {
   if (tr._htmlCache === html) return scratchTbody; // nothing to do
@@ -18,7 +19,7 @@ export function applyRowDiff(tr, html, scratchTbody) {
           dstCount: dstCells.length
         });
       }
-    } catch (_) {
+    } catch (e) { logError(ErrorCategory.RENDER, 'scrollerDiff', e);
     // Ignore diff calculation errors
   }
     tr.innerHTML = html;
@@ -51,7 +52,7 @@ export function applyRowDiff(tr, html, scratchTbody) {
               console.warn('⚠️ renderRowFn contract: filter cell missing data-* (data-filter-value or data-full-text)');
             }
           }
-        } catch (_) {
+        } catch (e) { logError(ErrorCategory.RENDER, 'scrollerDiff', e);
     // Ignore diff calculation errors
   }
       }

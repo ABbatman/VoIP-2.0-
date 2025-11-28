@@ -13,6 +13,7 @@ import { initTopScrollbar } from "../dom/top-scrollbar.js";
 import { initLayoutSync, updateReverseButtonState } from "../dom/layout.js";
 import { initUrlStateSync, loadStateFromUrl, hasUrlState } from "../state/urlState.js";
 import { hasShortLinkId, loadStateFromShortLink } from "../state/shortLinkState.js";
+import { logError, ErrorCategory } from "../utils/errorLogger.js";
 import { isReverseMode } from "../state/appState.js";
 import { subscribe } from "../state/eventBus.js";
 import { initStickyFooter } from "../dom/sticky-table-chrome.js";
@@ -167,7 +168,7 @@ export class AppInitializer {
             if (this.tableController && typeof this.tableController.redrawTable === 'function') {
               this.tableController.redrawTable(loadedState);
             }
-          } catch (_) {
+          } catch (e) { logError(ErrorCategory.INIT, 'appInitializer', e);
             // Table redraw might fail
           }
         });

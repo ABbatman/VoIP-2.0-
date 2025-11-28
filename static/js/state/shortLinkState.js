@@ -1,5 +1,6 @@
 // static/js/state/shortLinkState.js
 // Module for short link state persistence (replaces long URL hash encoding)
+import { logError, ErrorCategory } from '../utils/errorLogger.js';
 
 import {
   setFullState as setTableState,
@@ -203,7 +204,7 @@ export async function loadStateFromShortLink() {
         return null;
       }
     }
-  } catch (_) {
+  } catch (e) { logError(ErrorCategory.STATE, 'shortLinkState', e);
     // ignore
   }
 

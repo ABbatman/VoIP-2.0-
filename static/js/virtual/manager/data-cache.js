@@ -2,6 +2,7 @@
 // Layer: data + cache helpers (indices, keys, caches lifecycle)
 
 import { getState } from '../../state/tableState.js';
+import { logError, ErrorCategory } from '../../utils/errorLogger.js';
 
 function sanitizeIdPart(x) {
   return (x ?? '').toString().replace(/\s+/g, '-').replace(/[^a-z0-9\-_.]/gi, '');
@@ -25,7 +26,7 @@ export function attachData(vm) {
         global: (state.globalFilterQuery || '').trim().toLowerCase(),
         sort: tableState.multiSort || []
       });
-    } catch (_) {
+    } catch (e) { logError(ErrorCategory.TABLE, 'dataCache', e);
       return '';
     }
   }

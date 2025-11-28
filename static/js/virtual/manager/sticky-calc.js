@@ -2,6 +2,7 @@
 // Responsibility: compute layout values for sticky (page-fixed) header safely
 // Guards against atypical layouts (overflow, zero/invalid widths)
 import { getContainer, getTable } from '../selectors/dom-selectors.js';
+import { logError, ErrorCategory } from '../../utils/errorLogger.js';
 
 export function computeStickyLayout() {
   const container = getContainer();
@@ -25,7 +26,7 @@ export function computeStickyLayout() {
 
   // Container overflow guard: still allow sticky, but ensure horizontal transform follows container scroll
   let scrollLeft = 0;
-  try { scrollLeft = container ? (container.scrollLeft || 0) : 0; } catch (_) { scrollLeft = 0; }
+  try { scrollLeft = container ? (container.scrollLeft || 0) : 0; } catch (e) { logError(ErrorCategory.TABLE, 'stickyCalc', e); scrollLeft = 0; }
 
   return {
     ok: true,

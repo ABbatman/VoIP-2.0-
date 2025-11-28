@@ -1,5 +1,6 @@
 // static/js/charts/echarts/helpers/time.js
 // time helpers: step detection and predicates
+import { logError, ErrorCategory } from '../../../utils/errorLogger.js';
 export function getStepMs(interval, fallbackStep) {
   // move logic
   if (Number.isFinite(fallbackStep)) return Number(fallbackStep);
@@ -28,5 +29,5 @@ export function formatTimeRange(ts, stepMs) {
       return `${pad(dS.getHours())}:00 – ${pad(dE.getHours())}:00`;
     }
     return `${pad(dS.getHours())}:${pad(dS.getMinutes())} – ${pad(dE.getHours())}:${pad(dE.getMinutes())}`;
-  } catch(_) { return ''; }
+  } catch (e) { logError(ErrorCategory.CHART, 'time', e); return ''; }
 }

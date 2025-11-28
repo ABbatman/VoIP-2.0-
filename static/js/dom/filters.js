@@ -44,6 +44,7 @@ import {
   setManualFindInProgress,
 } from "../state/runtimeFlags.js";
 import { getVirtualManager, setVirtualManager } from "../state/moduleRegistry.js";
+import { logError, logWarn, ErrorCategory } from "../utils/errorLogger.js";
 
 export function initFilters(isStateLoaded) {
   const findButton = document.getElementById("findButton");
@@ -58,9 +59,11 @@ export function initFilters(isStateLoaded) {
 
   // Ensure date/time widgets are initialized (renderer hook may not run here)
   try {
-    initFlatpickr(); // init calendar widgets
-    initTimeControls(); // init time popup controls
-  } catch (_) { /* no-op if not available */ }
+    initFlatpickr();
+    initTimeControls();
+  } catch (e) { 
+    logWarn(ErrorCategory.INIT, 'initFilters:widgets', 'Date/time widgets not available'); 
+  }
 
   // (moved below) destroyTableHard declared at module scope
 
@@ -77,7 +80,7 @@ export function initFilters(isStateLoaded) {
     if (allEmpty) {
       setDefaultDateRange();
     }
-  } catch (_) { /* best-effort */ }
+  } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); /* best-effort */ }
 
   // Only set default date range if inputs are completely empty AND no URL state exists
   if (!isStateLoaded) {
@@ -153,7 +156,7 @@ export function initFilters(isStateLoaded) {
       }, false);
       setSummaryDelegationInstalled(true);
     }
-  } catch (_) { /* best-effort */ }
+  } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); /* best-effort */ }
 
   if (reverseButton) {
     reverseButton.addEventListener("click", (e) => {
@@ -183,7 +186,7 @@ export function initFilters(isStateLoaded) {
         }
         // Enforcement from Find flow: keep hidden until Summary is clicked
         if (hideUntilSummary) setShowTable(false);
-      } catch (_) {
+      } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
         // Ignore errors in UI update
       }
 
@@ -191,27 +194,27 @@ export function initFilters(isStateLoaded) {
       try {
         const overlayEl = document.getElementById('loading-overlay');
         if (overlayEl) overlayEl.classList.toggle('is-hidden', !(status === 'loading' && !isIntervalFetch && !isSummaryFetch));
-      } catch (_) {
+      } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
         // Ignore overlay toggle errors
       }
       // reinforce charts/mode controls visibility across patches
       if ((status === 'loading' || status === 'success') && !isSummaryFetch) {
-        try { setUI({ showCharts: true, showModeControls: true }); } catch (_) {
+        try { setUI({ showCharts: true, showModeControls: true }); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
           // Ignore UI state errors
         }
       }
       // disable/enable buttons while loading
-      try { if (findButton) findButton.disabled = (status === 'loading'); } catch (_) {
+      try { if (findButton) findButton.disabled = (status === 'loading'); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
         // Ignore button state errors
       }
-      try { if (reverseButton) reverseButton.disabled = (status === 'loading'); } catch (_) {
+      try { if (reverseButton) reverseButton.disabled = (status === 'loading'); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
         // Ignore button state errors
       }
-      try { if (summaryTableButton) summaryTableButton.disabled = (status === 'loading' && isSummaryFetch); } catch (_) {
+      try { if (summaryTableButton) summaryTableButton.disabled = (status === 'loading' && isSummaryFetch); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
         // Ignore button state errors
       }
     });
-  } catch (_) { /* best-effort */ }
+  } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); /* best-effort */ }
 
   // Auto-fetch data when user switches interval without pressing Find
   try {
@@ -225,7 +228,7 @@ export function initFilters(isStateLoaded) {
           if (getAppStatus && getAppStatus() === 'loading') return;
           if (isIntervalFetchInFlight()) return;
           setIntervalFetchInFlight(true);
-          try { refreshFilterValues(); } catch (_) {
+          try { refreshFilterValues(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
             // Ignore filter refresh errors
           }
           const base = buildFilterParams();
@@ -251,7 +254,7 @@ export function initFilters(isStateLoaded) {
         const userWants1h = effInterval === '1h';
         // Enforce rule: if > 5 days, block 5m and warn (English)
         if (userWants5m && diffDays > 5.0001) {
-          try { toast('5-minute interval is available only for ranges up to 5 days. Switching to 1 hour.', { type: 'warning', duration: 3500 }); } catch (_) {
+          try { toast('5-minute interval is available only for ranges up to 5 days. Switching to 1 hour.', { type: 'warning', duration: 3500 }); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
             // Toast might not be available
           }
           effInterval = '1h';
@@ -285,41 +288,41 @@ export function initFilters(isStateLoaded) {
         if (data) {
           setMetricsData(data);
           setAppStatus('success');
-          try { putCachedMetrics(params, data); } catch (_) {
+          try { putCachedMetrics(params, data); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
             // Ignore cache write errors
           }
         } else {
           setAppStatus('error');
         }
         setIntervalFetchInFlight(false);
-      } catch (_) {
+      } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
         setIntervalFetchInFlight(false);
       }
     });
     }
-  } catch (_) { /* best-effort */ }
+  } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); /* best-effort */ }
 
   // While typing in filters, do NOT hide charts or controls; re-assert visibility
   try {
     subscribe('appState:filtersChanged', () => {
-      try { setUI({ showCharts: true, showModeControls: true }); } catch (_) {
+      try { setUI({ showCharts: true, showModeControls: true }); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
         // Ignore UI state errors
       }
     });
-  } catch (_) { /* best-effort */ }
+  } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); /* best-effort */ }
 
   // After data changes, ensure charts stay visible (toast handled centrally by ui-feedback.js)
   try {
     subscribe("appState:dataChanged", () => {
       if (shouldHideTableUntilSummary()) setShowTable(false);
-      try { const overlayEl = document.getElementById('loading-overlay'); if (overlayEl) overlayEl.classList.add('is-hidden'); } catch (_) {
+      try { const overlayEl = document.getElementById('loading-overlay'); if (overlayEl) overlayEl.classList.add('is-hidden'); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
         // Ignore overlay errors
       }
-      try { const mount = document.getElementById('chart-area-1'); if (mount) { mount.classList.remove('chart-fade--out'); mount.classList.add('chart-fade--in'); mount.style.opacity = ''; } } catch (_) {
+      try { const mount = document.getElementById('chart-area-1'); if (mount) { mount.classList.remove('chart-fade--out'); mount.classList.add('chart-fade--in'); mount.style.opacity = ''; } } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
         // Ignore chart animation errors
       }
     });
-  } catch (_) { /* best-effort */ }
+  } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); /* best-effort */ }
 
   // Reflect appState.ui changes in the DOM (single place managing visibility)
   try {
@@ -327,35 +330,35 @@ export function initFilters(isStateLoaded) {
       try {
         const chartsContainer = document.getElementById('charts-container');
         if (chartsContainer) chartsContainer.style.display = ui?.showCharts ? '' : 'none';
-      } catch (_) {
+      } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
         // Ignore container visibility errors
       }
       try {
         const chartsControls = document.getElementById('charts-controls');
         if (chartsControls) chartsControls.style.display = ui?.showCharts ? '' : 'none';
-      } catch (_) {
+      } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
         // Ignore controls visibility errors
       }
       try {
         const chartSlider = document.getElementById('chart-slider');
         if (chartSlider) chartSlider.style.display = ui?.showCharts ? '' : 'none';
-      } catch (_) {
+      } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
         // Ignore slider visibility errors
       }
       try {
         const modeControls = document.getElementById('tableModeControls');
         if (modeControls) modeControls.style.display = ui?.showModeControls ? '' : 'none';
-      } catch (_) {
+      } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
         // Ignore mode controls errors
       }
       try {
         const resultsContainer = document.querySelector('.results-display');
         if (resultsContainer) resultsContainer.classList.toggle('is-hidden', !ui?.showTable);
-      } catch (_) {
+      } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
         // Ignore results display errors
       }
     });
-  } catch (_) { /* best-effort */ }
+  } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); /* best-effort */ }
 }
 
 /**
@@ -364,55 +367,68 @@ export function initFilters(isStateLoaded) {
  */
 function destroyTableHard() {
   try {
-    // hide table via UI state
-    try { setShowTable(false); } catch (_) {}
-    
-    // reset expansion state (main/peer groups)
-    try { resetExpansionState(); } catch (_) {}
-    
-    // reset table column filters
-    try { clearAllTableFilters(); } catch (_) {}
-    
-    // destroy tableRenderer completely
-    if (window.tableRenderer) {
-      try {
-        if (typeof window.tableRenderer.destroy === 'function') {
-          window.tableRenderer.destroy();
-        }
-        window.tableRenderer = null;
-      } catch (_) {}
+    setShowTable(false);
+  } catch (e) { 
+    logError(ErrorCategory.TABLE, 'destroyTableHard:showTable', e); 
+  }
+  
+  try {
+    resetExpansionState();
+  } catch (e) { 
+    logError(ErrorCategory.STATE, 'destroyTableHard:expansion', e); 
+  }
+  
+  try {
+    clearAllTableFilters();
+  } catch (e) { 
+    logError(ErrorCategory.FILTER, 'destroyTableHard:filters', e); 
+  }
+  
+  // destroy tableRenderer
+  if (window.tableRenderer) {
+    try {
+      if (typeof window.tableRenderer.destroy === 'function') {
+        window.tableRenderer.destroy();
+      }
+      window.tableRenderer = null;
+    } catch (e) { 
+      logError(ErrorCategory.RENDER, 'destroyTableHard:renderer', e); 
     }
-    
-    // destroy virtualManager completely
-    const vm = getVirtualManager();
-    if (vm) {
-      try {
-        if (typeof vm.destroy === 'function') {
-          vm.destroy();
-        }
-        setVirtualManager(null);
-      } catch (_) {}
+  }
+  
+  // destroy virtualManager
+  const vm = getVirtualManager();
+  if (vm) {
+    try {
+      if (typeof vm.destroy === 'function') {
+        vm.destroy();
+      }
+      setVirtualManager(null);
+    } catch (e) { 
+      logError(ErrorCategory.TABLE, 'destroyTableHard:vm', e); 
     }
-    
-    // restore DOM to clean state
-    const vwrap = document.getElementById('virtual-scroll-container');
-    if (vwrap) {
-      try {
-        vwrap.innerHTML = (
-          '<div id="virtual-scroll-spacer" style="position: absolute; top: 0; left: 0; right: 0; pointer-events: none;"></div>' +
-          '<table id="summaryTable" class="results-display__table" style="position: relative;">' +
-          '<thead id="tableHead"></thead>' +
-          '<tbody id="tableBody"></tbody>' +
-          '<tfoot><tr><td id="table-footer-info" colspan="24"></td></tr></tfoot>' +
-          '</table>'
-        );
-      } catch (_) {}
+  }
+  
+  // restore DOM to clean state
+  const vwrap = document.getElementById('virtual-scroll-container');
+  if (vwrap) {
+    try {
+      vwrap.innerHTML = (
+        '<div id="virtual-scroll-spacer" style="position: absolute; top: 0; left: 0; right: 0; pointer-events: none;"></div>' +
+        '<table id="summaryTable" class="results-display__table" style="position: relative;">' +
+        '<thead id="tableHead"></thead>' +
+        '<tbody id="tableBody"></tbody>' +
+        '<tfoot><tr><td id="table-footer-info" colspan="24"></td></tr></tfoot>' +
+        '</table>'
+      );
+    } catch (e) { 
+      logError(ErrorCategory.DOM, 'destroyTableHard:dom', e); 
     }
-    
-    // hide table controls
-    const controls = document.getElementById('table-controls');
-    if (controls) controls.style.display = 'none';
-  } catch (_) {}
+  }
+  
+  // hide table controls
+  const controls = document.getElementById('table-controls');
+  if (controls) controls.style.display = 'none';
 }
 
 /**
@@ -429,7 +445,7 @@ async function handleFindClick() {
   setAppStatus("loading");
   clearChartsZoomRange();
   // Ensure charts and mode controls remain visible across re-renders after Find
-  try { setUI({ showCharts: true, showModeControls: true }); } catch (_) {
+  try { setUI({ showCharts: true, showModeControls: true }); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
     // Ignore UI state errors
   }
   // Immediately unhide charts container and controls in DOM (defensive against late subscribers)
@@ -440,20 +456,20 @@ async function handleFindClick() {
     if (ctl) ctl.style.display = '';
     const mount = document.getElementById('chart-area-1');
     if (mount) { mount.classList.remove('chart-fade--out'); mount.classList.add('chart-fade--in'); mount.style.opacity = ''; }
-  } catch (_) {
+  } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
     // Ignore DOM manipulation errors
   }
   // Mark that charts were explicitly requested; charts module will honor this on init as well
   setChartsRenderRequested(true);
   // Explicitly request charts render tied to Find click
-  try { const { publish } = await import('../state/eventBus.js'); publish('charts:renderRequest'); } catch (_) {
+  try { const { publish } = await import('../state/eventBus.js'); publish('charts:renderRequest'); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
     // Ignore event bus errors
   }
   // Hide summary metrics while loading to avoid stale content
   try {
     const summary = document.getElementById("summaryMetrics");
     if (summary) summary.classList.add("is-hidden");
-  } catch (_) { /* intentional no-op: summary may not be present */ }
+  } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); /* intentional no-op: summary may not be present */ }
 
   // Hide UI elements immediately
   setHideTableUntilSummary(true);
@@ -463,7 +479,7 @@ async function handleFindClick() {
   try {
     // Validate filter parameters before making API call
     // Force-sync flatpickr -> inputs to avoid stale dates
-    try { refreshFilterValues(); } catch (_) {
+    try { refreshFilterValues(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
       // Ignore filter refresh errors
     }
     const validation = validateFilterParams();
@@ -493,12 +509,12 @@ async function handleFindClick() {
 
     // Persist original filters from inputs (including customer/supplier/destination)
     // (not the zoom override) so charts and UI keep user-entered values
-    try { setFilters(filterParams); } catch (_) {
+    try { setFilters(filterParams); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
       // Ignore filter state update errors
     }
 
     // remember that last fetch did not use zoom
-    try { window.__chartsUsedZoomForLastFetch = false; } catch (_) {
+    try { window.__chartsUsedZoomForLastFetch = false; } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
       // Ignore global flag errors
     }
     // Try cache before fetching
@@ -516,20 +532,20 @@ async function handleFindClick() {
       setMetricsData(data);
       setAppStatus("success");
       saveStateToUrl();
-      try { if (!cached) putCachedMetrics(cacheKeyParams, data); } catch (_) {
+      try { if (!cached) putCachedMetrics(cacheKeyParams, data); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
         // Ignore cache write errors
       }
       // Explicitly ensure summary metrics are visible after data arrives
       try {
         const summary = document.getElementById("summaryMetrics");
         if (summary) summary.classList.remove("is-hidden");
-      } catch (_) { /* intentional no-op: summary may not be present */ }
+      } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); /* intentional no-op: summary may not be present */ }
       // Keep table hidden until user explicitly opens Summary
-      try { setShowTable(false); } catch (_) {
+      try { setShowTable(false); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
         // Ignore table state errors
       }
       // Defensive: ensure overlay is hidden
-      try { const overlayEl = document.getElementById('loading-overlay'); if (overlayEl) overlayEl.classList.add('is-hidden'); } catch (_) {
+      try { const overlayEl = document.getElementById('loading-overlay'); if (overlayEl) overlayEl.classList.add('is-hidden'); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
         // Ignore overlay hide errors
       }
     } else {
@@ -564,8 +580,8 @@ async function handleSummaryClick() {
     try {
       const resultsContainer = document.querySelector('.results-display');
       if (resultsContainer) resultsContainer.classList.add('is-hidden');
-    } catch (_) { }
-    try { setShowTable(false); } catch (_) { }
+    } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); }
+    try { setShowTable(false); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); }
     return; // done, no fetch needed
   }
 
@@ -580,11 +596,11 @@ async function handleSummaryClick() {
   resetVirtualTableState();
 
   // Clear all saved table column filters before building the new table
-  try { clearAllTableFilters(); } catch (_) { }
+  try { clearAllTableFilters(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); }
 
   try {
     // Fetch fresh data with current filter values (force-sync first)
-    try { refreshFilterValues(); } catch (_) {
+    try { refreshFilterValues(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
       // Ignore filter refresh errors
     }
     const filterParams = buildFilterParams();
@@ -608,7 +624,7 @@ async function handleSummaryClick() {
         filterParams.to = fmt(zr.toTs);
         usedZoom = true;
       }
-    } catch (_) {
+    } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
       // Ignore zoom range parsing errors
     }
     // Note: usedZoom flag tracked locally, no global needed
@@ -631,14 +647,14 @@ async function handleSummaryClick() {
     const data = await fetchMetrics(filterParams);
 
     if (!data) {
-      try { renderTableHeader(); } catch (_) { }
-      try { renderTableFooter(); } catch (_) { }
-      try { showTableControls(); } catch (_) { }
+      try { renderTableHeader(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); }
+      try { renderTableFooter(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); }
+      try { showTableControls(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); }
       try {
         const tb = document.getElementById('tableBody');
         if (tb) tb.innerHTML = '<tr><td colspan="24">Error loading data. Please try again.</td></tr>';
-      } catch (_) { }
-      try { setShowTable(true); } catch (_) { }
+      } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); }
+      try { setShowTable(true); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); }
       saveStateToUrl();
       alert('Error loading data. Please try again.');
       return;
@@ -656,49 +672,49 @@ async function handleSummaryClick() {
         });
         main_rows = Array.from(map.values());
         console.debug('[summary] synthesized main_rows from peer_rows:', main_rows.length);
-      } catch (_) {
+      } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
         // Ignore main_rows synthesis errors
       }
     }
     if ((main_rows && main_rows.length) || (peer_rows && peer_rows.length)) {
       await renderCoordinator.requestRender('table', async () => {
         // Prepare
-        try { renderTableHeader(); } catch (_) {
+        try { renderTableHeader(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
           // Ignore header rendering errors
         }
-        try { renderTableFooter(); } catch (_) {
+        try { renderTableFooter(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
           // Ignore footer rendering errors
         }
-        try { showTableControls(); } catch (_) {
+        try { showTableControls(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
           // Ignore controls display errors
         }
         // Pass five_min_rows if available (for 5m granularity), otherwise hourly_rows
         const detailedRows = (data && data.five_min_rows && data.five_min_rows.length > 0) ? data.five_min_rows : (hourly_rows || []);
         initTableControls(main_rows || [], peer_rows || [], detailedRows);
         // Clear
-        try { const tb = document.getElementById('tableBody'); if (tb) tb.innerHTML = ''; } catch (_) {
+        try { const tb = document.getElementById('tableBody'); if (tb) tb.innerHTML = ''; } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
           // Ignore table clearing errors
         }
         // Render: always create fresh renderer to avoid stale state
         const mod = await import('../rendering/table-renderer.js');
         // destroy old renderer if exists
         if (window.tableRenderer) {
-          try { window.tableRenderer.destroy(); } catch (_) {}
+          try { window.tableRenderer.destroy(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);}
           window.tableRenderer = null;
         }
         const tr = new mod.TableRenderer();
-        try { await tr.initialize(); } catch (_) {}
+        try { await tr.initialize(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);}
         window.tableRenderer = tr;
         const res = await tr.renderTable(main_rows || [], peer_rows || [], hourly_rows || []);
         try {
           const tbody = document.getElementById('tableBody');
           const rowCount = tbody ? tbody.querySelectorAll('tr').length : 0;
           console.debug('[summary] TableRenderer rendered rows:', rowCount, 'mode:', res && res.mode);
-        } catch (_) {
+        } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
           // Ignore debug logging errors
         }
         // Post
-        try { setShowTable(true); } catch (_) {
+        try { setShowTable(true); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
           // Ignore table show errors
         }
         try {
@@ -708,36 +724,36 @@ async function handleSummaryClick() {
           if (controls) controls.style.display = 'flex';
           const tableFooter = document.querySelector('.results-display__footer');
           if (tableFooter) tableFooter.classList.remove('is-hidden');
-        } catch (_) {
+        } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
           // Ignore UI update errors
         }
-        try { setUI({ showTable: true }); } catch (_) {
+        try { setUI({ showTable: true }); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
           // Ignore UI state update errors
         }
-        try { initTableView(); } catch (_) {
+        try { initTableView(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
           // Ignore table view init errors
         }
-        try { initStickyHeader(); } catch (_) {
+        try { initStickyHeader(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
           // Ignore sticky header init errors
         }
-        try { initStickyFooter(); } catch (_) {
+        try { initStickyFooter(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
           // Ignore sticky footer init errors
         }
-        try { initTableInteractions(); } catch (_) {
+        try { initTableInteractions(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
           // Ignore table interactions init errors
         }
         console.log("✅ Summary Table loaded with fresh data");
       }, { debounceMs: 0, cooldownMs: 0 });
     } else {
       // Show empty state instead of hiding the table entirely
-      try { renderTableHeader(); } catch (_) { }
-      try { renderTableFooter(); } catch (_) { }
-      try { showTableControls(); } catch (_) { }
+      try { renderTableHeader(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); }
+      try { renderTableFooter(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); }
+      try { showTableControls(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); }
       try {
         const tb = document.getElementById('tableBody');
         if (tb) tb.innerHTML = '<tr><td colspan="24">No data found for current filters.</td></tr>';
-      } catch (_) { }
-      try { setShowTable(true); } catch (_) { }
+      } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); }
+      try { setShowTable(true); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); }
     }
 
     saveStateToUrl();
@@ -754,7 +770,7 @@ async function handleSummaryClick() {
  */
 function resetVirtualTableState() {
   // reset centralized expansion state
-  try { resetExpansionState(); } catch (_) {}
+  try { resetExpansionState(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);}
   
   // destroy virtualManager completely for fresh start
   const vm = getVirtualManager();
@@ -764,7 +780,7 @@ function resetVirtualTableState() {
         vm.destroy();
       }
       setVirtualManager(null);
-    } catch (_) {}
+    } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);}
   }
 }
 
@@ -782,11 +798,11 @@ function handleReverseClick() {
   try {
     const resultsContainer = document.querySelector('.results-display');
     if (resultsContainer) resultsContainer.classList.add('is-hidden');
-  } catch (_) { }
-  try { setShowTable(false); } catch (_) { }
+  } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); }
+  try { setShowTable(false); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); }
 
   // 3. Mark table as needing rebuild on next Summary click
-  try { window.__tableNeedsRebuild = true; } catch (_) { }
+  try { window.__tableNeedsRebuild = true; } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); }
 
   // 4. Animate button (rotation)
   try {
@@ -795,7 +811,7 @@ function handleReverseClick() {
       btn.classList.add('reverse-spin');
       setTimeout(() => btn.classList.remove('reverse-spin'), 300);
     }
-  } catch (_) { }
+  } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); }
 }
 
 /**

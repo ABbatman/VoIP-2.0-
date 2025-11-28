@@ -8,6 +8,7 @@ import { publish } from './eventBus.js';
 import { reducer as filtersReducer } from './reducers/filtersReducer.js';
 import { reducer as tableReducer } from './reducers/tableReducer.js';
 import { setFilters } from './appState.js';
+import { logError, ErrorCategory } from '../utils/errorLogger.js';
 import {
   setDisplaySettings,
   setColumnSettings,
@@ -122,7 +123,7 @@ export function dispatch(action) {
       // eslint-disable-next-line no-console
       console.log('[store.dispatch] next (reduced):', next);
     }
-  } catch (_) {
+  } catch (e) { logError(ErrorCategory.STATE, 'store', e);
     /* no-op: logging is optional */
   }
 
@@ -186,7 +187,7 @@ export function dispatch(action) {
         // eslint-disable-next-line no-console
         console.log('[store.dispatch] state after commit:', state.current);
       }
-    } catch (_) {
+    } catch (e) { logError(ErrorCategory.STATE, 'store', e);
       /* no-op: logging is optional */
     }
   });
@@ -196,7 +197,7 @@ export function dispatch(action) {
 function deepEqual(a, b) {
   try {
     return JSON.stringify(a) === JSON.stringify(b);
-  } catch (_) {
+  } catch (e) { logError(ErrorCategory.STATE, 'store', e);
     return a === b;
   }
 }

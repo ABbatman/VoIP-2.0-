@@ -1,6 +1,7 @@
 // static/js/virtual/scroller/measurement.js
 // Responsibility: row height measurement and spacer correction
 import { getVirtualConfig } from '../../config/virtual-config.js';
+import { logError, ErrorCategory } from '../../utils/errorLogger.js';
 
 export function recomputeRowHeight(vm) {
   const fixedHeight = getVirtualConfig().FIXED_ROW_HEIGHT === true;
@@ -12,7 +13,7 @@ export function recomputeRowHeight(vm) {
   vm.rowHeight = real;
   const corrected = vm.data.length * vm.rowHeight;
   vm.spacer.style.height = `${corrected}px`;
-  try { vm.render(true); } catch(_) {
+  try { vm.render(true); } catch (e) { logError(ErrorCategory.SCROLL, 'measurement', e);
     // Ignore measurement errors
   }
 }

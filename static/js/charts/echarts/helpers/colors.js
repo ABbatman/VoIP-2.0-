@@ -1,6 +1,6 @@
 // static/js/charts/echarts/helpers/colors.js
 // stable palette + mapping per supplier
-// Avoid greys to keep labels visibly distinct
+import { logError, ErrorCategory } from '../../../utils/errorLogger.js';
 export const PROVIDER_COLORS = [
   '#ff7f0e','#2ca02c','#d62728','#9467bd','#8c564b',
   '#e377c2','#bcbd22','#17becf','#4e79a7','#f28e2b',
@@ -22,7 +22,8 @@ export function getStableColor(name, suggested) {
     w.__supplierColorMap[key] = color;
     w.__supplierColorIdx = (w.__supplierColorIdx + 1) % pool.length;
     return color;
-  } catch(_) {
+  } catch (e) { 
+    logError(ErrorCategory.CHART, 'colors', e);
     return suggested || PROVIDER_COLORS[0];
   }
 }

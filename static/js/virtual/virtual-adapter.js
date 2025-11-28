@@ -5,6 +5,7 @@ import { VirtualScroller } from './virtual-scroller.js';
 import { isMainExpanded, isPeerExpanded } from '../state/expansionState.js';
 import { getContainer, getSpacer, getTbody, getTable } from './selectors/dom-selectors.js';
 import { parseNum, computeDeltaPercent, pickDeltaDisplay, formatMetricValue, getAnomalyClass } from '../utils/metrics.js';
+import { logError, ErrorCategory } from '../utils/errorLogger.js';
 
 /**
  * Virtual Table Adapter
@@ -74,7 +75,7 @@ export class VirtualTableAdapter {
     }
 
     this.virtualScroller.setData(data);
-    try { this.virtualScroller.render(true); } catch (_) { /* no-op */ }
+    try { this.virtualScroller.render(true); } catch (e) { logError(ErrorCategory.TABLE, 'virtualAdapter', e); /* no-op */ }
     return true;
   }
 

@@ -1,6 +1,7 @@
 // static/js/charts/echarts/helpers/dataTransform.js
 // pure data transforms (no ECharts)
 import { getStepMs } from './time.js';
+import { logError, ErrorCategory } from '../../../utils/errorLogger.js';
 
 export function parseRowTs(raw) {
   if (raw instanceof Date) return raw.getTime();
@@ -47,7 +48,7 @@ export function withGapBreaks(pairs, stepMs) {
       prevT = t;
     }
     return out;
-  } catch (_) {
+  } catch (e) { logError(ErrorCategory.CHART, 'dataTransform', e);
     return pairs || [];
   }
 }
@@ -56,7 +57,7 @@ export function shiftForwardPairs(pairs, deltaMs) {
   try {
     if (!Array.isArray(pairs) || pairs.length === 0 || !Number.isFinite(deltaMs)) return [];
     return pairs.map(([t, y]) => [Number(t) + deltaMs, y]);
-  } catch (_) {
+  } catch (e) { logError(ErrorCategory.CHART, 'dataTransform', e);
     return [];
   }
 }

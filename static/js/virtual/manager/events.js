@@ -1,6 +1,7 @@
 // Events module for VirtualManager
 // Responsibility: bind/unbind DOM event handlers (toggle, dblclick) idempotently
 import { getContainer, getTbody, getExpandAllButton } from '../selectors/dom-selectors.js';
+import { logError, ErrorCategory } from '../../utils/errorLogger.js';
 
 export function bindToggleHandlers(vm) {
   const container = getContainer();
@@ -17,7 +18,7 @@ export function bindToggleHandlers(vm) {
     return; // already bound to same element
   }
   if (vm._toggleBound && vm._toggleBoundElement && vm.boundToggleHandler && vm._toggleBoundElement !== tbody) {
-    try { vm._toggleBoundElement.removeEventListener('click', vm.boundToggleHandler); } catch (_) {
+    try { vm._toggleBoundElement.removeEventListener('click', vm.boundToggleHandler); } catch (e) { logError(ErrorCategory.UI, 'vmEvents', e);
       // Ignore event removal errors
     }
   }
@@ -27,7 +28,7 @@ export function bindToggleHandlers(vm) {
         if (vm.toggles && typeof vm.toggles.handleVirtualToggle === 'function') {
           return vm.toggles.handleVirtualToggle(event);
         }
-      } catch (_) {
+      } catch (e) { logError(ErrorCategory.UI, 'vmEvents', e);
         // Ignore toggle handler errors
       }
     };
@@ -39,7 +40,7 @@ export function bindToggleHandlers(vm) {
 
 export function unbindToggleHandlers(vm) {
   if (vm._toggleBound && vm._toggleBoundElement && vm.boundToggleHandler) {
-    try { vm._toggleBoundElement.removeEventListener('click', vm.boundToggleHandler); } catch (_) {
+    try { vm._toggleBoundElement.removeEventListener('click', vm.boundToggleHandler); } catch (e) { logError(ErrorCategory.UI, 'vmEvents', e);
       // Ignore event removal errors
     }
   }
@@ -58,7 +59,7 @@ export function bindDblClickHandlers(vm) {
     return; // already bound to same element
   }
   if (vm._dblFilterBound && vm._dblFilterElement && vm.boundDblFilterHandler && vm._dblFilterElement !== tbody) {
-    try { vm._dblFilterElement.removeEventListener('dblclick', vm.boundDblFilterHandler); } catch (_) {
+    try { vm._dblFilterElement.removeEventListener('dblclick', vm.boundDblFilterHandler); } catch (e) { logError(ErrorCategory.UI, 'vmEvents', e);
       // Ignore event removal errors
     }
   }
@@ -85,7 +86,7 @@ export function bindDblClickHandlers(vm) {
             window.applyFooterFilter(column, value, { append: true });
             handled = true;
           }
-        } catch (_) { /* no-op */ }
+        } catch (e) { logError(ErrorCategory.UI, 'vmEvents', e); /* no-op */ }
         if (!handled) {
           const ev = new CustomEvent('table:applyFooterFilter', { detail: { column, value, append: true } });
           document.dispatchEvent(ev);
@@ -104,7 +105,7 @@ export function bindDblClickHandlers(vm) {
 
 export function unbindDblClickHandlers(vm) {
   if (vm._dblFilterBound && vm._dblFilterElement && vm.boundDblFilterHandler) {
-    try { vm._dblFilterElement.removeEventListener('dblclick', vm.boundDblFilterHandler); } catch (_) {
+    try { vm._dblFilterElement.removeEventListener('dblclick', vm.boundDblFilterHandler); } catch (e) { logError(ErrorCategory.UI, 'vmEvents', e);
       // Ignore event removal errors
     }
   }
@@ -121,7 +122,7 @@ export function bindExpandCollapseAll(vm) {
     return;
   }
   if (vm._expandAllBound && vm._expandAllElement && vm.boundExpandAllHandler && vm._expandAllElement !== btn) {
-    try { vm._expandAllElement.removeEventListener('click', vm.boundExpandAllHandler); } catch (_) {}
+    try { vm._expandAllElement.removeEventListener('click', vm.boundExpandAllHandler); } catch (e) { logError(ErrorCategory.UI, 'vmEvents', e);}
   }
   if (!vm.boundExpandAllHandler) {
     vm.boundExpandAllHandler = async () => {
@@ -143,8 +144,8 @@ export function bindExpandCollapseAll(vm) {
           btn.textContent = 'Show All';
           btn.dataset.state = 'hidden';
         }
-        try { vm.updateAllToggleButtons && vm.updateAllToggleButtons(); } catch (_) {}
-        try { vm.syncExpandCollapseAllButton && vm.syncExpandCollapseAllButton(vm); } catch (_) {}
+        try { vm.updateAllToggleButtons && vm.updateAllToggleButtons(); } catch (e) { logError(ErrorCategory.UI, 'vmEvents', e);}
+        try { vm.syncExpandCollapseAllButton && vm.syncExpandCollapseAllButton(vm); } catch (e) { logError(ErrorCategory.UI, 'vmEvents', e);}
       } finally {
         btn.disabled = false;
       }
@@ -158,7 +159,7 @@ export function bindExpandCollapseAll(vm) {
 export function unbindExpandCollapseAll(vm) {
   const btn = vm._expandAllElement;
   if (vm._expandAllBound && btn && vm.boundExpandAllHandler) {
-    try { btn.removeEventListener('click', vm.boundExpandAllHandler); } catch (_) {
+    try { btn.removeEventListener('click', vm.boundExpandAllHandler); } catch (e) { logError(ErrorCategory.UI, 'vmEvents', e);
       // Ignore event removal errors
     }
   }

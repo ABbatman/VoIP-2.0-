@@ -7,9 +7,10 @@ import { getColumnConfig } from "./table-ui.js";
 import { generateSparkline, generateSparkbar } from "../visualEnhancements/microCharts.js";
 import { getHeatmapStyle } from "../visualEnhancements/heatmapStyling.js";
 import { getHierarchyVisuals, getHierarchyIndent, injectHierarchyStyles } from "../visualEnhancements/hierarchyGuides.js";
+import { logError, ErrorCategory } from "../utils/errorLogger.js";
 
 // Inject styles once
-try { injectHierarchyStyles(); } catch (_) { }
+try { injectHierarchyStyles(); } catch (e) { logError(ErrorCategory.TABLE, 'tableRenderers', e); }
 
 // --- Row Creation Functions (legacy DOM creators) ---
 // deprecated: prefer string renderers (renderMainRowString/renderPeerRowString/renderHourlyRowsString)

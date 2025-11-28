@@ -1,5 +1,6 @@
 // static/js/virtual/scroller/dom-callbacks.js
 // Responsibility: throttle and dispatch DOM update callbacks for VirtualScroller
+import { logError, ErrorCategory } from '../../utils/errorLogger.js';
 
 export function maybeNotifyDomUpdate(vm, { forceRender = false, structuralChange = false } = {}) {
   if (!vm || typeof vm.onDOMUpdate !== 'function') return;
@@ -16,7 +17,8 @@ export function maybeNotifyDomUpdate(vm, { forceRender = false, structuralChange
         // eslint-disable-next-line no-console
         console.warn(`⚠️ onDOMUpdate budget exceeded: ${Math.round(dur)}ms (>16ms)`);
       }
-    } catch(_) {
+    } catch (e) { 
+      logError(ErrorCategory.RENDER, 'domCallbacks', e);
     // Ignore DOM callback errors
   }
   }

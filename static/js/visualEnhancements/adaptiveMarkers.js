@@ -1,5 +1,6 @@
 // static/js/visualEnhancements/adaptiveMarkers.js
 import { clamp } from './visualMapping.js';
+import { logError, ErrorCategory } from '../utils/errorLogger.js';
 
 /**
  * Determines the visual state of the marker based on bar width.
@@ -104,7 +105,7 @@ export function calculateMarkerLayout(api, {
             // "Markers... MUST be horizontally centered on the BLUE bar (today)"
             // Blue is on the Left (negative offset) in our side-by-side layout
             x = Math.round(x - dx);
-        } catch (_) { }
+        } catch (e) { logError(ErrorCategory.CHART, 'adaptiveMarkers', e); }
 
         const y = Math.round(yPos[i]);
 
@@ -124,7 +125,7 @@ export function calculateMarkerLayout(api, {
                     color = getStableColor(sidStr || String(name || 'default'));
                 }
             }
-        } catch (_) {
+        } catch (e) { logError(ErrorCategory.CHART, 'adaptiveMarkers', e);
             color = getStableColor('default');
         }
         if (!color) color = PROVIDER_COLORS[i % PROVIDER_COLORS.length] || '#ff7f0e';

@@ -14,10 +14,11 @@
  */
 import { getState } from '../../state/tableState.js';
 import { getProcessedData } from '../../data/tableProcessor.js';
+import { logError, ErrorCategory } from '../../utils/errorLogger.js';
 
 // Lightweight logger mirroring VM behavior
 function logDebug(...args) {
-  try { if (typeof window !== 'undefined' && window.DEBUG) console.log(...args); } catch (_) {
+  try { if (typeof window !== 'undefined' && window.DEBUG) console.log(...args); } catch (e) { logError(ErrorCategory.TABLE, 'selectors', e);
     // Ignore debug logging errors
   }
 }
@@ -35,7 +36,7 @@ export function attachSelectors(vm) {
       const parts = keys.map(k => `${k}:${(cf[k] ?? '').toString().trim()}`);
       parts.push(`__g:${gf}`);
       return parts.join('|');
-    } catch(_) { return ''; }
+    } catch(e) { logError(ErrorCategory.TABLE, 'selectors:filtersKey', e); return ''; }
   }
   // Caches for normalized natural keys by raw index
   if (!vm._peerKeyCache) vm._peerKeyCache = new Map(); // idx -> key
@@ -93,13 +94,13 @@ export function attachSelectors(vm) {
       const key = vm._computeFilterSortKey();
       if (key !== vm._filterSortKey) {
         vm._filterSortKey = key;
-        try { vm._mainFilterPass?.clear(); } catch (_) {
+        try { vm._mainFilterPass?.clear(); } catch (e) { logError(ErrorCategory.TABLE, 'selectors', e);
           // Ignore cache clear errors
         }
-        try { vm._peerRowsCache?.clear(); } catch (_) {
+        try { vm._peerRowsCache?.clear(); } catch (e) { logError(ErrorCategory.TABLE, 'selectors', e);
           // Ignore cache clear errors
         }
-        try { vm._hourlyRowsCache?.clear(); } catch (_) {
+        try { vm._hourlyRowsCache?.clear(); } catch (e) { logError(ErrorCategory.TABLE, 'selectors', e);
           // Ignore cache clear errors
         }
       }
@@ -109,18 +110,18 @@ export function attachSelectors(vm) {
       const fk = filtersKey();
       if (vm._lastFiltersKey !== fk) {
         vm._lastFiltersKey = fk;
-        try { vm._mainFilterPass?.clear(); } catch (_) {
+        try { vm._mainFilterPass?.clear(); } catch (e) { logError(ErrorCategory.TABLE, 'selectors', e);
           // Ignore cache clear errors
         }
-        try { vm._peerRowsCache?.clear(); } catch (_) {
+        try { vm._peerRowsCache?.clear(); } catch (e) { logError(ErrorCategory.TABLE, 'selectors', e);
           // Ignore cache clear errors
         }
-        try { vm._hourlyRowsCache?.clear(); } catch (_) {
+        try { vm._hourlyRowsCache?.clear(); } catch (e) { logError(ErrorCategory.TABLE, 'selectors', e);
           // Ignore cache clear errors
         }
       }
-    } catch(_) {
-      // Ignore selector errors
+    } catch(e) { 
+      logError(ErrorCategory.TABLE, 'selectors:filtersKey', e);
     }
   }
 
@@ -145,7 +146,7 @@ export function attachSelectors(vm) {
       const state = getState();
       columnFilters = state.columnFilters || {};
       globalFilter = (state.globalFilterQuery || '').trim().toLowerCase();
-    } catch (_) {
+    } catch (e) { logError(ErrorCategory.TABLE, 'selectors', e);
       // Ignore filter state read errors
     }
 
@@ -153,7 +154,7 @@ export function attachSelectors(vm) {
     try {
       const { pagedData } = getProcessedData();
       if (!pagedData || pagedData.length === 0) return [];
-    } catch (_) {
+    } catch (e) { logError(ErrorCategory.TABLE, 'selectors', e);
       // Ignore processed data check errors
     }
 
@@ -233,7 +234,7 @@ export function attachSelectors(vm) {
     const cacheKey = `${vm._filterSortKey}|${filtersKey()}|${mainGroupId}`;
     // If main is open, bypass cache to avoid stale filtered slice
     let mainOpen = false;
-    try { mainOpen = !!(vm.openMainGroups && vm.openMainGroups.has && vm.openMainGroups.has(mainGroupId)); } catch(_) {}
+    try { mainOpen = !!(vm.openMainGroups && vm.openMainGroups.has && vm.openMainGroups.has(mainGroupId)); } catch(e) { logError(ErrorCategory.TABLE, 'selectors', e); }
     if (!mainOpen && vm._peerRowsCache.has(cacheKey)) return vm._peerRowsCache.get(cacheKey);
     const peerRows = [];
 
@@ -263,7 +264,7 @@ export function attachSelectors(vm) {
         vm._peerRowsCache.set(cacheKey, deduped);
         return deduped;
       }
-    } catch (_) { /* no-op */ }
+    } catch (e) { logError(ErrorCategory.TABLE, 'selectors', e); /* no-op */ }
 
     try {
       const { columnFilters, globalFilterQuery } = getState();
@@ -290,7 +291,7 @@ export function attachSelectors(vm) {
       const deduped = uniqueByKeyFn(out, peerKeyOf);
       vm._peerRowsCache.set(cacheKey, deduped);
       return deduped;
-    } catch (_) {
+    } catch (e) { logError(ErrorCategory.TABLE, 'selectors', e);
       // Ignore peer filtering errors
     }
 
@@ -304,7 +305,7 @@ export function attachSelectors(vm) {
     const cacheKey = `${vm._filterSortKey}|${filtersKey()}|${peerGroupId}`;
     // If peer is open, bypass cache to avoid stale filtered slice
     let peerOpen = false;
-    try { peerOpen = !!(vm.openHourlyGroups && vm.openHourlyGroups.has && vm.openHourlyGroups.has(peerGroupId)); } catch(_) {}
+    try { peerOpen = !!(vm.openHourlyGroups && vm.openHourlyGroups.has && vm.openHourlyGroups.has(peerGroupId)); } catch(e) { logError(ErrorCategory.TABLE, 'selectors', e); }
     if (!peerOpen && vm._hourlyRowsCache.has(cacheKey)) return vm._hourlyRowsCache.get(cacheKey);
     const hourlyRows = [];
 
@@ -336,7 +337,7 @@ export function attachSelectors(vm) {
         vm._hourlyRowsCache.set(cacheKey, deduped);
         return deduped;
       }
-    } catch (_) { /* no-op */ }
+    } catch (e) { logError(ErrorCategory.TABLE, 'selectors', e); /* no-op */ }
 
     try {
       const { columnFilters, globalFilterQuery } = getState();
@@ -362,7 +363,7 @@ export function attachSelectors(vm) {
       const deduped = uniqueByKeyFn(out, hourKeyOf);
       vm._hourlyRowsCache.set(cacheKey, deduped);
       return deduped;
-    } catch (_) {
+    } catch (e) { logError(ErrorCategory.TABLE, 'selectors', e);
       // Ignore hourly filtering errors
     }
 
@@ -378,13 +379,13 @@ export function attachSelectors(vm) {
     getHourlyRowsLazy,
     getFilterSortKey: () => (typeof vm._computeFilterSortKey === 'function' ? vm._computeFilterSortKey() : (vm._filterSortKey || '')),
     clearCaches: () => {
-      try { vm._mainFilterPass?.clear(); } catch (_) {
+      try { vm._mainFilterPass?.clear(); } catch (e) { logError(ErrorCategory.TABLE, 'selectors', e);
         // Ignore cache clear errors
       }
-      try { vm._peerRowsCache?.clear(); } catch (_) {
+      try { vm._peerRowsCache?.clear(); } catch (e) { logError(ErrorCategory.TABLE, 'selectors', e);
         // Ignore cache clear errors
       }
-      try { vm._hourlyRowsCache?.clear(); } catch (_) {
+      try { vm._hourlyRowsCache?.clear(); } catch (e) { logError(ErrorCategory.TABLE, 'selectors', e);
         // Ignore cache clear errors
       }
     }

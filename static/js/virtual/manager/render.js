@@ -4,6 +4,7 @@
 import { bindToggleHandlers, bindDblClickHandlers } from './events.js';
 import { initTooltips } from '../../dom/tooltip.js';
 import { connectFilterEventHandlers } from '../../dom/table-ui.js';
+import { logError, ErrorCategory } from '../../utils/errorLogger.js';
 
 export function attachRender(vm) {
   function initialRender(mainRows, peerRows, hourlyRows) {
@@ -24,17 +25,17 @@ export function attachRender(vm) {
       }
 
       if (!vm.headersInitialized) {
-        try { vm.renderTableHeaders && vm.renderTableHeaders(); } catch (_) {
+        try { vm.renderTableHeaders && vm.renderTableHeaders(); } catch (e) { logError(ErrorCategory.RENDER, 'vmRender', e);
           // Ignore header rendering errors
         }
         vm.headersInitialized = true;
       } else {
-        try { vm.updateSortArrowsAfterRefresh && vm.updateSortArrowsAfterRefresh(); } catch (_) {
+        try { vm.updateSortArrowsAfterRefresh && vm.updateSortArrowsAfterRefresh(); } catch (e) { logError(ErrorCategory.RENDER, 'vmRender', e);
           // Ignore sort arrow update errors
         }
       }
       // DOM handlers and sync via render layer's callback are already wired in setupDomCallbacks()
-      try { vm.processQueuedExpandCollapseAll && vm.processQueuedExpandCollapseAll(); } catch (_) {
+      try { vm.processQueuedExpandCollapseAll && vm.processQueuedExpandCollapseAll(); } catch (e) { logError(ErrorCategory.RENDER, 'vmRender', e);
         // Ignore expand/collapse queue processing errors
       }
       return true;
@@ -53,12 +54,12 @@ export function attachRender(vm) {
       const prevCY = container ? container.scrollTop : null;
       const prevWinY = window.scrollY;
       const prevWinX = window.scrollX;
-      try { if (container) container.style.overflowAnchor = 'none'; } catch(_) {}
+      try { if (container) container.style.overflowAnchor = 'none'; } catch(e) { logError(ErrorCategory.RENDER, 'vmRender', e); }
 
       const visibleData = vm.selectors ? vm.selectors.getLazyVisibleData() : vm.getLazyVisibleData();
       const ok = vm.adapter.setData(visibleData);
       if (ok) {
-        try { vm.syncExpandCollapseAllButtonLabel && vm.syncExpandCollapseAllButtonLabel(); } catch (_) {}
+        try { vm.syncExpandCollapseAllButtonLabel && vm.syncExpandCollapseAllButtonLabel(); } catch (e) { logError(ErrorCategory.RENDER, 'vmRender', e);}
       }
       
       // Restore scroll positions immediately and on next frame
@@ -70,7 +71,7 @@ export function attachRender(vm) {
             window.scrollTo(prevWinX, prevWinY);
           }
           if (container) container.style.overflowAnchor = '';
-        } catch(_) {}
+        } catch(e) { logError(ErrorCategory.RENDER, 'vmRender', e); }
       };
       restore();
       requestAnimationFrame(restore);
@@ -81,7 +82,7 @@ export function attachRender(vm) {
 
   function forceImmediateRender() {
     if (!vm.adapter) return;
-    try { vm.adapter.forceRender(); } catch (_) {
+    try { vm.adapter.forceRender(); } catch (e) { logError(ErrorCategory.RENDER, 'vmRender', e);
       // Ignore force render errors
     }
   }
@@ -89,25 +90,25 @@ export function attachRender(vm) {
   function setupDomCallbacks() {
     if (!vm.adapter || typeof vm.adapter.setDOMUpdateCallback !== 'function') return;
     vm.adapter.setDOMUpdateCallback(() => {
-      try { bindToggleHandlers(vm); } catch (_) {
+      try { bindToggleHandlers(vm); } catch (e) { logError(ErrorCategory.RENDER, 'vmRender', e);
         // Ignore toggle binding errors
       }
-      try { bindDblClickHandlers(vm); } catch (_) {
+      try { bindDblClickHandlers(vm); } catch (e) { logError(ErrorCategory.RENDER, 'vmRender', e);
         // Ignore double-click binding errors
       }
-      try { vm.updateAllToggleButtons && vm.updateAllToggleButtons(); } catch (_) {
+      try { vm.updateAllToggleButtons && vm.updateAllToggleButtons(); } catch (e) { logError(ErrorCategory.RENDER, 'vmRender', e);
         // Ignore toggle update errors
       }
-      try { vm.syncFloatingHeader && vm.syncFloatingHeader(); } catch (_) {
+      try { vm.syncFloatingHeader && vm.syncFloatingHeader(); } catch (e) { logError(ErrorCategory.RENDER, 'vmRender', e);
         // Ignore header sync errors
       }
-      try { if (window.restoreFilterFocusIfPending) window.restoreFilterFocusIfPending(); } catch (_) {
+      try { if (window.restoreFilterFocusIfPending) window.restoreFilterFocusIfPending(); } catch (e) { logError(ErrorCategory.RENDER, 'vmRender', e);
         // Ignore focus restore errors
       }
-      try { initTooltips(); } catch (_) {
+      try { initTooltips(); } catch (e) { logError(ErrorCategory.RENDER, 'vmRender', e);
         // Ignore tooltip init errors
       }
-      try { connectFilterEventHandlers(); } catch (_) {
+      try { connectFilterEventHandlers(); } catch (e) { logError(ErrorCategory.RENDER, 'vmRender', e);
         // Ignore filter event handler errors
       }
     });

@@ -29,6 +29,7 @@ import {
   resetExpansionState,
 } from "../state/expansionState.js";
 import { getVirtualManager } from "../state/moduleRegistry.js";
+import { logError, ErrorCategory } from "../utils/errorLogger.js";
 
 // Centralized expansion state proxies (shared with virtual table)
 const openMainGroups = getMainSetProxy();
@@ -81,7 +82,7 @@ export function renderGroupedTable(mainRows, peerRows, hourlyRows) {
   // Ensure visual state is refreshed; sorting clicks are handled by delegated handler
   try {
     updateSortArrows(); // refresh visual state (directions)
-  } catch (_) { /* no-op in virtual-only paths */ }
+  } catch (e) { logError(ErrorCategory.TABLE, 'table', e); /* no-op in virtual-only paths */ }
 
   const tbody = document.getElementById("tableBody");
   tbody.innerHTML = "";
@@ -215,7 +216,7 @@ export function initTableInteractions() {
     const targetButton = event.target.closest(".toggle-btn");
     if (targetButton) {
       // Prevent default behavior and blur the toggle to avoid focus-driven scroll changes
-      try { event.preventDefault(); event.stopPropagation(); if (typeof targetButton.blur === 'function') targetButton.blur(); } catch (_) {}
+      try { event.preventDefault(); event.stopPropagation(); if (typeof targetButton.blur === 'function') targetButton.blur(); } catch (e) { logError(ErrorCategory.TABLE, 'table', e);}
       const parentRow = targetButton.closest("tr");
       if (!parentRow) return;
       const groupId = targetButton.dataset.targetGroup;
@@ -240,7 +241,7 @@ export function initTableInteractions() {
             }
           } catch (e) { console.error('Error re-rendering table:', e); }
         }, { debounceMs: 0, cooldownMs: 0 });
-      } catch (_) {}
+      } catch (e) { logError(ErrorCategory.TABLE, 'table', e);}
       return;
     }
 
@@ -253,10 +254,10 @@ export function initTableInteractions() {
       // If the direct target wasn't the toggle button, delegate to the existing button logic
       const innerToggleBtn = clickedRow.querySelector(".toggle-btn");
       if (innerToggleBtn && !event.target.closest(".toggle-btn")) {
-        try { innerToggleBtn.click(); } catch (_) {
+        try { innerToggleBtn.click(); } catch (e) { logError(ErrorCategory.TABLE, 'table', e);
           // Ignore click errors
         }
-        try { event.preventDefault(); event.stopPropagation(); } catch (_) {
+        try { event.preventDefault(); event.stopPropagation(); } catch (e) { logError(ErrorCategory.TABLE, 'table', e);
           // Ignore event handling errors
         }
         return;

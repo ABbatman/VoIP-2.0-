@@ -2,6 +2,7 @@
 // Layer: sorting helpers for main/peer/hourly rows
 
 import { getState } from '../../state/tableState.js';
+import { logError, ErrorCategory } from '../../utils/errorLogger.js';
 
 function toLower(x) { return (x ?? '').toString().toLowerCase(); }
 
@@ -9,7 +10,7 @@ export function attachSorting() {
   // Memoization cache for mainRows sorting: WeakMap<Array, { key: string, out: Array }>
   const _mainSortCache = new WeakMap();
   function getCurrentTableState() {
-    try { return getState(); } catch (_) { return { multiSort: [] }; }
+    try { return getState(); } catch (e) { logError(ErrorCategory.TABLE, 'sorting', e); return { multiSort: [] }; }
   }
 
   function normalizeMultiSort(multiSort) {
@@ -56,7 +57,7 @@ export function attachSorting() {
         // eslint-disable-next-line no-console
         console.warn('⚠️ Sorting >10ms', { ms: Math.round(dt), count: rows?.length || 0, order });
       }
-    } catch (_) {
+    } catch (e) { logError(ErrorCategory.TABLE, 'sorting', e);
       // Ignore sorting errors
     }
     return result;
@@ -72,11 +73,11 @@ export function attachSorting() {
       if (cached && cached.key === orderKey && Array.isArray(cached.out)) {
         return cached.out;
       }
-    } catch (_) {
+    } catch (e) { logError(ErrorCategory.TABLE, 'sorting', e);
       // Ignore sorting errors
     }
     const out = applyOrderSort(mainRows, order);
-    try { _mainSortCache.set(mainRows, { key: orderKey, out }); } catch (_) {
+    try { _mainSortCache.set(mainRows, { key: orderKey, out }); } catch (e) { logError(ErrorCategory.TABLE, 'sorting', e);
       // Ignore sorting errors
     }
     return out;

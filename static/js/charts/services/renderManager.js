@@ -8,6 +8,7 @@ import { shapeChartPayload, intervalToStep } from '../engine/timeSeriesEngine.js
 import { parseUtc } from '../../utils/date.js';
 import { ensureFixedChartHeight } from './layout.js';
 import { getChartsCurrentInterval, setChartsCurrentInterval } from '../../state/runtimeFlags.js';
+import { logError, ErrorCategory } from '../../utils/errorLogger.js';
 
 function getMount() { return document.getElementById('chart-area-1'); }
 function getHost() { return document.getElementById('charts-container'); }
@@ -25,7 +26,12 @@ function initOnce() {
   }
   // minimal subscriptions (no business logic here)
   subscribe('charts:typeChanged', (payload) => {
-    try { currentType = String(payload?.type || 'line'); } catch(_) { currentType = 'line'; }
+    try { 
+      currentType = String(payload?.type || 'line'); 
+    } catch(e) { 
+      logError(ErrorCategory.CHART, 'renderManager:typeChanged', e);
+      currentType = 'line'; 
+    }
     render(currentType);
   });
   subscribe('charts:intervalChanged', () => { render(currentType); });
@@ -38,7 +44,11 @@ function initOnce() {
 export async function render(type) {
   initOnce();
   currentType = type || currentType || 'line';
-  try { await ensureDefaults(); } catch(_) {}
+  try { 
+    await ensureDefaults(); 
+  } catch(e) { 
+    logError(ErrorCategory.CHART, 'renderManager:ensureDefaults', e); 
+  }
 
   const host = getHost();
   const mount = getMount();
@@ -61,7 +71,7 @@ export async function render(type) {
   const rows = fiveRows.length ? fiveRows : hourRows;
   const { data, options } = shapeChartPayload(rows || [], { type: currentType, fromTs, toTs, stepMs, height: fixedH });
   const merged = { ...options, stepMs, interval, labels: (md && md.labels) || {}, providerRows: rows || [] };
-  renderer(mount, data, merged);
+  await renderer(mount, data, merged);
 }
 
 // no post-effects; renderers handle visuals

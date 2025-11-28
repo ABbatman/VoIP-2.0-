@@ -2,6 +2,7 @@
 // init + setOption + zoom sync (no business logic)
 import * as echarts from 'echarts';
 import { attach as attachZoom, applyRange as applyZoomRange } from '../services/zoomManager.js';
+import { logError, ErrorCategory } from '../../../utils/errorLogger.js';
 
 function ensureContainer(container) {
   // refactor
@@ -26,19 +27,40 @@ function getZoomRange(chart) {
       const toTs = Math.ceil(ext[1]);
       if (Number.isFinite(fromTs) && Number.isFinite(toTs) && toTs > fromTs) return { fromTs, toTs };
     }
-  } catch (_) {
+  } catch (e) { logError(ErrorCategory.CHART, 'EchartsRenderer', e);
     // ignore
   }
   return null;
 }
 
-export function initChart(container) {
-  // move logic
+// Wait for element to have dimensions
+async function waitForDimensions(el, maxWait = 500) {
+  return new Promise((resolve) => {
+    const check = () => {
+      const w = el.clientWidth || el.getBoundingClientRect().width;
+      const h = el.clientHeight || el.getBoundingClientRect().height;
+      if (w > 0 && h > 0) return resolve(true);
+      return false;
+    };
+    if (check()) return;
+    const start = Date.now();
+    const interval = setInterval(() => {
+      if (check() || Date.now() - start > maxWait) {
+        clearInterval(interval);
+        resolve(true);
+      }
+    }, 16);
+  });
+}
+
+export async function initChart(container) {
   const el = ensureContainer(container);
+  // Wait for container to have dimensions
+  await waitForDimensions(el);
   try {
     const existing = echarts.getInstanceByDom(el);
     if (existing) existing.dispose();
-  } catch (_) { }
+  } catch (e) { logError(ErrorCategory.CHART, 'EchartsRenderer', e); }
   const chart = echarts.init(el);
 
   // Adaptive resize observer with debounce to avoid resize during init
@@ -46,7 +68,7 @@ export function initChart(container) {
   const ro = new ResizeObserver(() => {
     if (resizeTimeout) clearTimeout(resizeTimeout);
     resizeTimeout = setTimeout(() => {
-      try { chart.resize(); } catch (_) { }
+      try { chart.resize(); } catch (e) { logError(ErrorCategory.CHART, 'EchartsRenderer', e); }
     }, 100);
   });
   ro.observe(el);
@@ -69,8 +91,8 @@ export function setOptionWithZoomSync(chart, option, { onAfterSet, onDataZoom } 
   // move logic
   chart.setOption(option, { notMerge: true, lazyUpdate: true });
   // apply persisted zoom range (if exists)
-  try { applyZoomRange(chart); } catch (_) { }
+  try { applyZoomRange(chart); } catch (e) { logError(ErrorCategory.CHART, 'EchartsRenderer', e); }
   // attach unified zoom handler
-  try { attachZoom(chart, { onZoom: onDataZoom }); } catch (_) { }
-  try { if (typeof onAfterSet === 'function') onAfterSet(); } catch (_) { }
+  try { attachZoom(chart, { onZoom: onDataZoom }); } catch (e) { logError(ErrorCategory.CHART, 'EchartsRenderer', e); }
+  try { if (typeof onAfterSet === 'function') onAfterSet(); } catch (e) { logError(ErrorCategory.CHART, 'EchartsRenderer', e); }
 }

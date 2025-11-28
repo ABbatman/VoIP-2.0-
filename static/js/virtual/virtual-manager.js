@@ -13,6 +13,7 @@ import { attachUI } from './manager/ui-state.js';
 import { attachSubscriptions } from './manager/subscriptions.js';
 import { setCurrentManager } from './registry.js';
 import { getMainSetProxy, getPeerSetProxy } from '../state/expansionState.js';
+import { logError, ErrorCategory } from '../utils/errorLogger.js';
 
 // Lightweight debug logger (controlled by window.DEBUG)
 function logDebug(...args) {
@@ -21,8 +22,8 @@ function logDebug(...args) {
       // eslint-disable-next-line no-console
       console.log(...args);
     }
-  } catch (_) {
-    /* no-op */
+  } catch (e) {
+    logError(ErrorCategory.TABLE, 'virtualManager', e);
   }
 }
 
@@ -64,7 +65,7 @@ export class VirtualManager {
     let tid = null;
     return (...args) => {
       if (tid) clearTimeout(tid);
-      tid = setTimeout(() => { tid = null; try { fn.apply(this, args); } catch(_) {
+      tid = setTimeout(() => { tid = null; try { fn.apply(this, args); } catch(e) { logError(ErrorCategory.TABLE, 'virtualManager', e);
       // Ignore virtual manager errors
     } }, delay);
     };
@@ -89,41 +90,37 @@ export class VirtualManager {
       if (initialized) {
         this.isActive = true;
         // Step A: attach selectors facade
-        try { this.selectors = attachSelectors(this); } catch (_) { this.selectors = null; }
+        try { this.selectors = attachSelectors(this); } catch (e) { logError(ErrorCategory.TABLE, 'virtualManager', e); this.selectors = null; }
         // Step B: attach toggles facade
-        try { this.toggles = attachToggles(this); } catch (_) { this.toggles = null; }
+        try { this.toggles = attachToggles(this); } catch (e) { logError(ErrorCategory.TABLE, 'virtualManager', e); this.toggles = null; }
         // Step C: attach render facade
-        try { this.render = attachRender(this); } catch (_) { this.render = null; }
+        try { this.render = attachRender(this); } catch (e) { logError(ErrorCategory.TABLE, 'virtualManager', e); this.render = null; }
         // Header/UI helpers
-        try { this.header = attachHeader(this); } catch (_) { this.header = null; }
+        try { this.header = attachHeader(this); } catch (e) { logError(ErrorCategory.TABLE, 'virtualManager', e); this.header = null; }
         // Sorting and data/cache layers
-        try { this.sorting = attachSorting(); } catch (_) { this.sorting = null; }
-        try { this.data = attachData(this); } catch (_) { this.data = null; }
+        try { this.sorting = attachSorting(); } catch (e) { logError(ErrorCategory.TABLE, 'virtualManager', e); this.sorting = null; }
+        try { this.data = attachData(this); } catch (e) { logError(ErrorCategory.TABLE, 'virtualManager', e); this.data = null; }
         
         // Set up DOM update callback via render layer
-        try { this.render && this.render.setupDomCallbacks && this.render.setupDomCallbacks(); } catch (_) {
+        try { this.render && this.render.setupDomCallbacks && this.render.setupDomCallbacks(); } catch (e) { logError(ErrorCategory.TABLE, 'virtualManager', e);
           // Ignore DOM callback setup errors
         }
         // Attach UI facade
-        try { this.ui = attachUI(); } catch (_) { this.ui = null; }
-        try { const { unsubs } = attachSubscriptions(this); this._unsubscribers.push(...(unsubs || [])); } catch (_) {
+        try { this.ui = attachUI(); } catch (e) { logError(ErrorCategory.TABLE, 'virtualManager', e); this.ui = null; }
+        try { const { unsubs } = attachSubscriptions(this); this._unsubscribers.push(...(unsubs || [])); } catch (e) { logError(ErrorCategory.TABLE, 'virtualManager', e);
           // Ignore subscription attachment errors
         }
         this.updateUI(true);
         // Ensure Expand/Collapse All button reflects current state on init
-        try { this.syncExpandCollapseAllButtonLabel(); } catch (_) { /* no-op */ }
+        try { this.syncExpandCollapseAllButtonLabel(); } catch (e) { logError(ErrorCategory.TABLE, 'virtualManager', e); /* no-op */ }
         // Register manager in module registry (no globals)
-        try { setCurrentManager(this); } catch (_) { /* no-op */ }
+        try { setCurrentManager(this); } catch (e) { logError(ErrorCategory.TABLE, 'virtualManager', e); /* no-op */ }
 
         // Обернуть refreshVirtualTable в лёгкий debounce, чтобы сгладить серии частых обновлений
         try {
           const originalRefresh = this.refreshVirtualTable.bind(this);
-          this.refreshVirtualTable = this._debounce(() => { try { originalRefresh(); } catch(_) {
-            // Ignore refresh errors
-          } }, 24);
-        } catch(_) {
-          // Ignore debounce wrap errors
-        }
+          this.refreshVirtualTable = this._debounce(() => { try { originalRefresh(); } catch(e) { logError(ErrorCategory.TABLE, 'virtualManager', e); } }, 24);
+        } catch(e) { logError(ErrorCategory.TABLE, 'virtualManager', e); }
         logDebug('✅ Virtual Manager: initialized successfully');
         return true;
       } else {
@@ -156,7 +153,7 @@ export class VirtualManager {
 
   // Thin wrapper: delegate sync to ui-sync module
   syncFloatingHeader() {
-    try { return syncFloatingHeader(this); } catch (_) {
+    try { return syncFloatingHeader(this); } catch (e) { logError(ErrorCategory.TABLE, 'virtualManager', e);
       // Ignore sync errors
     }
   }
@@ -413,10 +410,10 @@ export class VirtualManager {
       this.adapter.destroy();
       this.adapter = null;
     }
-    try { import('./manager/ui-sync.js').then(m => m.unbindFloatingHeader && m.unbindFloatingHeader(this)); } catch (_) {
+    try { import('./manager/ui-sync.js').then(m => m.unbindFloatingHeader && m.unbindFloatingHeader(this)); } catch (e) { logError(ErrorCategory.TABLE, 'virtualManager', e);
       // Ignore cleanup errors
     }
-    try { setCurrentManager(null); } catch (_) {
+    try { setCurrentManager(null); } catch (e) { logError(ErrorCategory.TABLE, 'virtualManager', e);
       // Ignore registry cleanup errors
     }
     

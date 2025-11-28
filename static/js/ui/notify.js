@@ -1,4 +1,5 @@
 // static/js/ui/notify.js
+import { logError, ErrorCategory } from '../utils/errorLogger.js';
 
 // Minimal toast utility without external CSS. Non-blocking, auto-dismiss.
 // Usage: import { toast } from '../ui/notify.js'; toast('Message', { type: 'warning', duration: 3000 });
@@ -86,7 +87,7 @@ export function toast(message, { type = 'warning', duration = 3000 } = {}) {
         t.style.opacity = '0';
         t.style.transform = 'translateY(-4px)';
         setTimeout(() => { if (item.parentNode) item.parentNode.removeChild(item); }, 180);
-      } catch(_) {
+      } catch(e) { logError(ErrorCategory.UI, 'notify', e);
       // Ignore notification errors
     }
     };
@@ -95,7 +96,7 @@ export function toast(message, { type = 'warning', duration = 3000 } = {}) {
     btn.addEventListener('click', () => { clearTimeout(timer); remove(); });
 
     return { dismiss: () => { clearTimeout(timer); remove(); } };
-  } catch (_) {
+  } catch (e) { logError(ErrorCategory.UI, 'notify', e);
     // last resort, avoid blocking alerts
     try { console.warn('[toast]', message); } catch(e) {
       // Ignore console errors

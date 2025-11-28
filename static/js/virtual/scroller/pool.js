@@ -1,5 +1,6 @@
 // static/js/virtual/scroller/pool.js
 // Responsibility: manage TR pool (create, detach, trim)
+import { logError, ErrorCategory } from '../../utils/errorLogger.js';
 
 export function ensurePool(rowPool, needCount) {
   const haveCount = rowPool.length;
@@ -30,9 +31,7 @@ export function trimPool(rowPool, maxPool, needCount, tbody) {
   for (let i = rowPool.length - 1; i >= targetSize; i--) {
     const tr = rowPool[i];
     if (tr && tr.parentNode === tbody) {
-      try { tbody.removeChild(tr); } catch(_) {
-      // Ignore pool cleanup errors
-    }
+      try { tbody.removeChild(tr); } catch (e) { logError(ErrorCategory.SCROLL, 'pool', e); }
     }
     rowPool.pop();
   }

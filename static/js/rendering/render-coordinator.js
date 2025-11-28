@@ -1,6 +1,7 @@
 // static/js/rendering/render-coordinator.js
 // Responsibility: serialize table renders (no races), de-duplicate same-kind requests in a short window
 import { setRenderingInProgress } from '../state/runtimeFlags.js';
+import { logError, ErrorCategory } from '../utils/errorLogger.js';
 
 const DEFAULT_DEBOUNCE_MS = 500; // coalesce sequential triggers from different sources
 
@@ -81,7 +82,7 @@ class RenderCoordinator {
             setRenderingInProgress(false);
           }
           this._pendingByKind.delete(item.kind);
-          try { this._lastCompletedByKind.set(item.kind, performance.now()); } catch(_) {
+          try { this._lastCompletedByKind.set(item.kind, performance.now()); } catch (e) { logError(ErrorCategory.RENDER, 'renderCoordinator', e);
             // Ignore render coordination errors
           }
           this._activeKinds.delete(item.kind);
