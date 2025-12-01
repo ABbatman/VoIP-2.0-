@@ -1,393 +1,360 @@
 // static/js/virtual/manager/selectors.js
-// Layer: selectors (visibility + data access)
-// Goal: encapsulate logic that computes the visible slice for virtualization and
-// provides lazy accessors for peer/hourly rows with memoization.
-//
-// Phase 1 (current): non-invasive shim. We expose a facade that binds to the
-// existing methods on VirtualManager so we can start calling through a stable
-// layer without changing behavior. In Phase 2 we'll move the implementations
-// here and delete the originals from VirtualManager.
-
-/**
- * Create a selectors facade bound to a given VirtualManager instance.
- * This is intentionally thin for Phase 1 to avoid behavior changes.
- */
+// Responsibility: Compute visible slice for virtualization with lazy accessors and memoization
 import { getState } from '../../state/tableState.js';
 import { getProcessedData } from '../../data/tableProcessor.js';
 import { logError, ErrorCategory } from '../../utils/errorLogger.js';
 
-// Lightweight logger mirroring VM behavior
-function logDebug(...args) {
-  try { if (typeof window !== 'undefined' && window.DEBUG) console.log(...args); } catch (e) { logError(ErrorCategory.TABLE, 'selectors', e);
-    // Ignore debug logging errors
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
+
+const norm = v => (v == null ? '' : String(v).trim().toLowerCase());
+
+const TWO_CHAR_OPS = new Set(['>=', '<=', '!=']);
+const ONE_CHAR_OPS = new Set(['>', '<', '=']);
+
+function parseNumber(val) {
+  if (val == null) return NaN;
+  if (typeof val === 'number') return val;
+  const n = parseFloat(val.toString().replace(/[\s,]/g, ''));
+  return isNaN(n) ? NaN : n;
+}
+
+function passesColumnFilter(value, filter) {
+  const trimmed = (filter || '').toString().trim();
+  if (!trimmed) return true;
+
+  const numVal = parseNumber(value);
+  const twoOp = trimmed.slice(0, 2);
+  const oneOp = trimmed[0];
+  const parseOp = str => parseFloat(str.trim());
+
+  if (TWO_CHAR_OPS.has(twoOp)) {
+    const num = parseOp(trimmed.slice(2));
+    if (isNaN(num) || isNaN(numVal)) return true;
+    if (twoOp === '>=') return numVal >= num;
+    if (twoOp === '<=') return numVal <= num;
+    if (twoOp === '!=') return numVal !== num;
+  }
+
+  if (ONE_CHAR_OPS.has(oneOp)) {
+    const num = parseOp(trimmed.slice(1));
+    if (isNaN(num) || isNaN(numVal)) return true;
+    if (oneOp === '>') return numVal > num;
+    if (oneOp === '<') return numVal < num;
+    if (oneOp === '=') return numVal === num;
+  }
+
+  // numeric comparison (>=) or substring match
+  const numFilter = parseOp(trimmed);
+  if (!isNaN(numFilter) && !isNaN(numVal)) return numVal >= numFilter;
+  return (value ?? '').toString().toLowerCase().includes(trimmed.toLowerCase());
+}
+
+function uniqueByKey(arr, keyFn) {
+  if (!Array.isArray(arr)) return [];
+  const seen = new Set();
+  return arr.filter(r => { const k = keyFn(r); if (seen.has(k)) return false; seen.add(k); return true; });
+}
+
+function filtersKey() {
+  try {
+    const st = getState();
+    const cf = st?.columnFilters || {};
+    const gf = (st?.globalFilterQuery || '').trim().toLowerCase();
+    const parts = Object.keys(cf).sort().map(k => `${k}:${(cf[k] ?? '').toString().trim()}`);
+    parts.push(`__g:${gf}`);
+    return parts.join('|');
+  } catch (e) {
+    logError(ErrorCategory.TABLE, 'selectors:filtersKey', e);
+    return '';
   }
 }
 
+// ─────────────────────────────────────────────────────────────
+// Attach to VirtualManager
+// ─────────────────────────────────────────────────────────────
+
 export function attachSelectors(vm) {
-  const norm = (v) => (v == null ? '' : String(v).trim().toLowerCase());
-  // Build a stable key representing current filter state for cache separation
-  function filtersKey() {
-    try {
-      const st = getState();
-      const cf = st && st.columnFilters ? st.columnFilters : {};
-      const gf = (st && st.globalFilterQuery ? String(st.globalFilterQuery) : '').trim().toLowerCase();
-      // Sort keys for stability
-      const keys = Object.keys(cf).sort();
-      const parts = keys.map(k => `${k}:${(cf[k] ?? '').toString().trim()}`);
-      parts.push(`__g:${gf}`);
-      return parts.join('|');
-    } catch(e) { logError(ErrorCategory.TABLE, 'selectors:filtersKey', e); return ''; }
-  }
-  // Caches for normalized natural keys by raw index
-  if (!vm._peerKeyCache) vm._peerKeyCache = new Map(); // idx -> key
-  if (!vm._hourKeyCache) vm._hourKeyCache = new Map(); // idx -> key (incl time)
-  const uniqueByKeyFn = (arr, keyFn) => {
-    if (!Array.isArray(arr)) return [];
-    const seen = new Set();
-    const out = [];
-    for (const r of arr) {
-      const k = keyFn(r);
-      if (!seen.has(k)) { seen.add(k); out.push(r); }
-    }
-    return out;
-  };
+  // ensure key caches
+  vm._peerKeyCache ??= new Map();
+  vm._hourKeyCache ??= new Map();
+  // ───────────────────────────────────────────────────────────
+  // Cache management
+  // ───────────────────────────────────────────────────────────
 
-  function _parseNumber(val) {
-    if (val == null) return NaN;
-    if (typeof val === 'number') return val;
-    const cleaned = val.toString().replace(/\s+/g, '').replace(/,/g, '');
-    const n = parseFloat(cleaned);
-    return isNaN(n) ? NaN : n;
+  function clearAllCaches() {
+    vm._mainFilterPass?.clear();
+    vm._peerRowsCache?.clear();
+    vm._hourlyRowsCache?.clear();
   }
 
-  function _passesColumnFilter(value, filter) {
-    const trimmed = (filter || '').toString().trim();
-    const numericValue = _parseNumber(value);
-    const twoCharOp = trimmed.slice(0, 2);
-    const oneCharOp = trimmed[0];
-    const tryNumber = (str) => parseFloat(str.trim());
-    if ([">=", "<=", "!="].includes(twoCharOp)) {
-      const number = tryNumber(trimmed.slice(2));
-      if (isNaN(number) || isNaN(numericValue)) return true;
-      switch (twoCharOp) {
-        case ">=": return numericValue >= number;
-        case "<=": return numericValue <= number;
-        case "!=": return numericValue !== number;
-      }
-    }
-    if ([">", "<", "="].includes(oneCharOp)) {
-      const number = tryNumber(trimmed.slice(1));
-      if (isNaN(number) || isNaN(numericValue)) return true;
-      switch (oneCharOp) {
-        case ">": return numericValue > number;
-        case "<": return numericValue < number;
-        case "=": return numericValue === number;
-      }
-    }
-    if (!isNaN(tryNumber(trimmed)) && !isNaN(numericValue)) {
-      return numericValue >= tryNumber(trimmed);
-    }
-    return (value ?? '').toString().toLowerCase().includes(trimmed.toLowerCase());
-  }
   function computeAndResetCachesIfNeeded() {
+    // check filter/sort key
     if (typeof vm._computeFilterSortKey === 'function') {
       const key = vm._computeFilterSortKey();
       if (key !== vm._filterSortKey) {
         vm._filterSortKey = key;
-        try { vm._mainFilterPass?.clear(); } catch (e) { logError(ErrorCategory.TABLE, 'selectors', e);
-          // Ignore cache clear errors
-        }
-        try { vm._peerRowsCache?.clear(); } catch (e) { logError(ErrorCategory.TABLE, 'selectors', e);
-          // Ignore cache clear errors
-        }
-        try { vm._hourlyRowsCache?.clear(); } catch (e) { logError(ErrorCategory.TABLE, 'selectors', e);
-          // Ignore cache clear errors
-        }
+        clearAllCaches();
       }
     }
-    // Also reset caches if filters have changed (independent of sort key)
+
+    // also check filters independently
     try {
       const fk = filtersKey();
       if (vm._lastFiltersKey !== fk) {
         vm._lastFiltersKey = fk;
-        try { vm._mainFilterPass?.clear(); } catch (e) { logError(ErrorCategory.TABLE, 'selectors', e);
-          // Ignore cache clear errors
-        }
-        try { vm._peerRowsCache?.clear(); } catch (e) { logError(ErrorCategory.TABLE, 'selectors', e);
-          // Ignore cache clear errors
-        }
-        try { vm._hourlyRowsCache?.clear(); } catch (e) { logError(ErrorCategory.TABLE, 'selectors', e);
-          // Ignore cache clear errors
-        }
+        clearAllCaches();
       }
-    } catch(e) { 
-      logError(ErrorCategory.TABLE, 'selectors:filtersKey', e);
+    } catch (e) {
+      logError(ErrorCategory.TABLE, 'selectors:cacheReset', e);
     }
   }
 
-  function getLazyVisibleData() {
-    const visibleData = [];
-    const seen = new Set();
-    const keyOf = (r) => {
-      const t = r.type || (Number.isFinite(r.level) ? (r.level === 0 ? 'main' : r.level === 1 ? 'peer' : 'hourly') : 'row');
-      if (t === 'main') return `m|${norm(r.main)}|${norm(r.destination)}`;
-      if (t === 'peer') return `p|${norm(r.main)}|${norm(r.peer)}|${norm(r.destination)}`;
-      const timeVal = r.time || r.hour || r.date || r.datetime || r.timestamp;
-      return `h|${norm(r.main)}|${norm(r.peer)}|${norm(r.destination)}|${norm(timeVal)}`;
-    };
-    const loadedCounts = { main: 0, peer: 0, hourly: 0 };
+  // ───────────────────────────────────────────────────────────
+  // Row key generation
+  // ───────────────────────────────────────────────────────────
 
+  function rowKey(r) {
+    const t = r.type || (Number.isFinite(r.level) ? (r.level === 0 ? 'main' : r.level === 1 ? 'peer' : 'hourly') : 'row');
+    if (t === 'main') return `m|${norm(r.main)}|${norm(r.destination)}`;
+    if (t === 'peer') return `p|${norm(r.main)}|${norm(r.peer)}|${norm(r.destination)}`;
+    const timeVal = r.time || r.hour || r.date || r.datetime || r.timestamp;
+    return `h|${norm(r.main)}|${norm(r.peer)}|${norm(r.destination)}|${norm(timeVal)}`;
+  }
+
+  // ───────────────────────────────────────────────────────────
+  // Main row filter check
+  // ───────────────────────────────────────────────────────────
+
+  function checkMainRowPass(mainRowData, mainMeta, columnFilters, globalFilter) {
+    // text filters
+    const mainFilter = (columnFilters?.main || '').trim().toLowerCase();
+    if (mainFilter && !(mainRowData.main || '').toString().toLowerCase().includes(mainFilter)) return false;
+
+    const destFilter = (columnFilters?.destination || '').trim().toLowerCase();
+    if (destFilter && !(mainRowData.destination || '').toString().toLowerCase().includes(destFilter)) return false;
+
+    // other column filters (except peer)
+    for (const k in columnFilters) {
+      if (k === 'peer') continue;
+      const f = (columnFilters[k] ?? '').toString();
+      if (f && !passesColumnFilter(mainRowData[k], f)) return false;
+    }
+
+    // peer filter: check children
+    const peerFilter = (columnFilters?.peer || '').toString().trim().toLowerCase();
+    if (peerFilter) {
+      const hasMatch = vm.lazyData.peerIndex.some(p => p.parentId === mainMeta.groupId && (p.peer ?? '').toString().toLowerCase().includes(peerFilter));
+      if (!hasMatch) return false;
+    }
+
+    // global filter
+    if (globalFilter) {
+      const mainText = norm(mainRowData.main);
+      const peerText = norm(mainRowData.peer);
+      const destText = norm(mainRowData.destination);
+      if (!mainText.includes(globalFilter) && !peerText.includes(globalFilter) && !destText.includes(globalFilter)) return false;
+    }
+
+    return true;
+  }
+
+  // ───────────────────────────────────────────────────────────
+  // getLazyVisibleData
+  // ───────────────────────────────────────────────────────────
+
+  function getLazyVisibleData() {
     computeAndResetCachesIfNeeded();
 
-    // Current filters
+    // get current filters
     let columnFilters = {};
     let globalFilter = '';
     try {
       const state = getState();
       columnFilters = state.columnFilters || {};
       globalFilter = (state.globalFilterQuery || '').trim().toLowerCase();
-    } catch (e) { logError(ErrorCategory.TABLE, 'selectors', e);
-      // Ignore filter state read errors
+    } catch (e) {
+      logError(ErrorCategory.TABLE, 'selectors:getFilters', e);
     }
 
-    // If processed says empty, short-circuit
+    // short-circuit if no data
     try {
       const { pagedData } = getProcessedData();
-      if (!pagedData || pagedData.length === 0) return [];
-    } catch (e) { logError(ErrorCategory.TABLE, 'selectors', e);
-      // Ignore processed data check errors
+      if (!pagedData?.length) return [];
+    } catch (e) {
+      logError(ErrorCategory.TABLE, 'selectors:getProcessed', e);
     }
 
-    // Iterate main rows lazily
+    const visibleData = [];
+    const seen = new Set();
+
     vm.lazyData.mainIndex.forEach(mainMeta => {
       const fullRow = vm.getMainRowLazy(mainMeta.index);
       const mainRowData = { ...fullRow, ...mainMeta, type: 'main' };
 
-      // Memoized pass per main group
-      const cacheHit = vm._mainFilterPass.has(mainMeta.groupId);
-      let pass = cacheHit ? vm._mainFilterPass.get(mainMeta.groupId) : undefined;
-      if (!cacheHit) {
-        pass = true;
-        const mainFilter = (columnFilters?.main || '').trim().toLowerCase();
-        if (pass && mainFilter) {
-          const mainText = (mainRowData.main || '').toString().toLowerCase();
-          if (!mainText.includes(mainFilter)) pass = false;
-        }
-        const destinationFilter = (columnFilters?.destination || '').trim().toLowerCase();
-        if (pass && destinationFilter) {
-          const destText = (mainRowData.destination || '').toString().toLowerCase();
-          if (!destText.includes(destinationFilter)) pass = false;
-        }
-        if (pass && columnFilters) {
-          for (const k in columnFilters) {
-            if (k === 'peer') continue;
-            const f = (columnFilters[k] ?? '').toString();
-            if (!f) continue;
-            if (!_passesColumnFilter(mainRowData[k], f)) { pass = false; break; }
-          }
-        }
-        const peerFilter = (columnFilters?.peer || '').toString().trim().toLowerCase();
-        if (pass && peerFilter) {
-          const hasMatchingPeer = vm.lazyData.peerIndex.some(p => p.parentId === mainMeta.groupId && ((p.peer ?? '').toString().toLowerCase().includes(peerFilter)));
-          if (!hasMatchingPeer) pass = false;
-        }
-        if (pass && globalFilter) {
-          const mainText2 = (mainRowData.main || '').toString().toLowerCase();
-          const peerText2 = (mainRowData.peer || '').toString().toLowerCase();
-          const destinationText2 = (mainRowData.destination || '').toString().toLowerCase();
-          if (!mainText2.includes(globalFilter) && !peerText2.includes(globalFilter) && !destinationText2.includes(globalFilter)) pass = false;
-        }
-        vm._mainFilterPass.set(mainMeta.groupId, !!pass);
+      // memoized filter pass
+      if (!vm._mainFilterPass.has(mainMeta.groupId)) {
+        vm._mainFilterPass.set(mainMeta.groupId, checkMainRowPass(mainRowData, mainMeta, columnFilters, globalFilter));
       }
-      // Strict filter: do not include non-passing main by children (no bypass)
-      // (User expectation: e.g., ACD 1 must hide rows with ACD < 1)
-      if (!pass) return;
+      if (!vm._mainFilterPass.get(mainMeta.groupId)) return;
 
-      if (loadedCounts.main === 0) logDebug('🧪 First main row groupId:', mainRowData.groupId);
-
-      const mk = keyOf(mainRowData);
+      // add main row
+      const mk = rowKey(mainRowData);
       if (!seen.has(mk)) { seen.add(mk); visibleData.push(mainRowData); }
-      loadedCounts.main++;
 
-      const isMainOpen = vm.openMainGroups.has(mainMeta.groupId);
-      if (isMainOpen) {
-        const peerRows = getPeerRowsLazy(mainMeta.groupId);
-        loadedCounts.peer += peerRows.length;
-        peerRows.forEach(peerRow => {
-          const pk = keyOf(peerRow);
+      // expanded peers
+      if (vm.openMainGroups.has(mainMeta.groupId)) {
+        getPeerRowsLazy(mainMeta.groupId).forEach(peerRow => {
+          const pk = rowKey(peerRow);
           if (!seen.has(pk)) { seen.add(pk); visibleData.push(peerRow); }
-          const isPeerOpen = vm.openHourlyGroups.has(peerRow.groupId);
-          if (isPeerOpen) {
-            const hourlyRows = getHourlyRowsLazy(peerRow.groupId);
-            loadedCounts.hourly += hourlyRows.length;
-            hourlyRows.forEach(h => { const hk = keyOf(h); if (!seen.has(hk)) { seen.add(hk); visibleData.push(h); } });
+
+          // expanded hourly
+          if (vm.openHourlyGroups.has(peerRow.groupId)) {
+            getHourlyRowsLazy(peerRow.groupId).forEach(h => {
+              const hk = rowKey(h);
+              if (!seen.has(hk)) { seen.add(hk); visibleData.push(h); }
+            });
           }
         });
       }
     });
 
-    logDebug(`🔍 getLazyVisibleData: Filtered result: ${visibleData.length} rows (main: ${loadedCounts.main}, peer: ${loadedCounts.peer}, hourly: ${loadedCounts.hourly})`);
     return visibleData;
   }
 
+  // ───────────────────────────────────────────────────────────
+  // Peer/Hourly key builders
+  // ───────────────────────────────────────────────────────────
+
+  function peerKeyOf(r) {
+    const idx = r.index ?? r._rawIndex ?? null;
+    if (idx != null) {
+      let k = vm._peerKeyCache.get(idx);
+      if (!k) { k = [norm(r.main), norm(r.peer), norm(r.destination)].join('|'); vm._peerKeyCache.set(idx, k); }
+      return k;
+    }
+    return [norm(r.main), norm(r.peer), norm(r.destination)].join('|');
+  }
+
+  function hourKeyOf(r, timeKey) {
+    const idx = r.index ?? r._rawIndex ?? null;
+    if (idx != null) {
+      let k = vm._hourKeyCache.get(idx);
+      if (!k) { k = [norm(r.main), norm(r.peer), norm(r.destination), norm(r[timeKey])].join('|'); vm._hourKeyCache.set(idx, k); }
+      return k;
+    }
+    return [norm(r.main), norm(r.peer), norm(r.destination), norm(r[timeKey])].join('|');
+  }
+
+  // ───────────────────────────────────────────────────────────
+  // Generic row filter
+  // ───────────────────────────────────────────────────────────
+
+  function filterRows(rows, columnFilters, globalFilter) {
+    return rows.filter(r => {
+      for (const k in columnFilters) {
+        const f = (columnFilters[k] ?? '').toString();
+        if (f && !passesColumnFilter(r[k], f)) return false;
+      }
+      if (globalFilter) {
+        const texts = [norm(r.main), norm(r.peer), norm(r.destination)];
+        if (!texts.some(t => t.includes(globalFilter))) return false;
+      }
+      return true;
+    });
+  }
+
+  // ───────────────────────────────────────────────────────────
+  // getPeerRowsLazy
+  // ───────────────────────────────────────────────────────────
+
   function getPeerRowsLazy(mainGroupId) {
     const cacheKey = `${vm._filterSortKey}|${filtersKey()}|${mainGroupId}`;
-    // If main is open, bypass cache to avoid stale filtered slice
-    let mainOpen = false;
-    try { mainOpen = !!(vm.openMainGroups && vm.openMainGroups.has && vm.openMainGroups.has(mainGroupId)); } catch(e) { logError(ErrorCategory.TABLE, 'selectors', e); }
+    const mainOpen = vm.openMainGroups?.has?.(mainGroupId);
+
     if (!mainOpen && vm._peerRowsCache.has(cacheKey)) return vm._peerRowsCache.get(cacheKey);
-    const peerRows = [];
 
+    // build peer rows
     const peerMetas = vm.lazyData.peerIndex.filter(p => p.parentId === mainGroupId);
-    peerMetas.forEach(peerMeta => {
-      const fullPeerRow = vm.rawData.peerRows[peerMeta.index];
-      peerRows.push({ ...fullPeerRow, ...peerMeta, type: 'peer' });
-    });
-    // Deduplicate peer rows by natural key to avoid duplicates in visible data
-    const peerKeyOf = (r) => {
-      const idx = r.index ?? r._rawIndex ?? null;
-      if (idx != null) {
-        let k = vm._peerKeyCache.get(idx);
-        if (!k) { k = [norm(r.main), norm(r.peer), norm(r.destination)].join('|'); vm._peerKeyCache.set(idx, k); }
-        return k;
-      }
-      return [norm(r.main), norm(r.peer), norm(r.destination)].join('|');
-    };
-    let base = uniqueByKeyFn(peerRows, peerKeyOf);
+    const peerRows = peerMetas.map(meta => ({ ...vm.rawData.peerRows[meta.index], ...meta, type: 'peer' }));
+    let base = uniqueByKey(peerRows, peerKeyOf);
 
-    // If parent MAIN is expanded, toggles must be independent from inputs -> skip filters
-    try {
-      const isMainOpen = vm.openMainGroups && vm.openMainGroups.has && vm.openMainGroups.has(mainGroupId);
-      if (isMainOpen) {
-        const out = vm.applySortingToPeerRows(base);
-        const deduped = uniqueByKeyFn(out, peerKeyOf);
-        vm._peerRowsCache.set(cacheKey, deduped);
-        return deduped;
-      }
-    } catch (e) { logError(ErrorCategory.TABLE, 'selectors', e); /* no-op */ }
+    // if main is open, skip filters
+    if (mainOpen) {
+      const result = uniqueByKey(vm.applySortingToPeerRows(base), peerKeyOf);
+      vm._peerRowsCache.set(cacheKey, result);
+      return result;
+    }
 
+    // apply filters
     try {
       const { columnFilters, globalFilterQuery } = getState();
       const globalFilter = (globalFilterQuery || '').trim().toLowerCase();
-      const filtered = base.filter(r => {
-        let ok = true;
-        if (columnFilters) {
-          for (const k in columnFilters) {
-            const f = (columnFilters[k] ?? '').toString();
-            if (!f) continue;
-            if (!_passesColumnFilter(r[k], f)) { ok = false; break; }
-          }
-        }
-        if (ok && globalFilter) {
-          const peerText = (r.peer || '').toString().toLowerCase();
-          const destinationText = (r.destination || '').toString().toLowerCase();
-          const mainText = (r.main || '').toString().toLowerCase();
-          if (!peerText.includes(globalFilter) && !destinationText.includes(globalFilter) && !mainText.includes(globalFilter)) ok = false;
-        }
-        return ok;
-      });
-      logDebug(`🔍 Peer rows after filtering: ${filtered.length}/${peerRows.length}`);
-      const out = vm.applySortingToPeerRows(filtered);
-      const deduped = uniqueByKeyFn(out, peerKeyOf);
-      vm._peerRowsCache.set(cacheKey, deduped);
-      return deduped;
-    } catch (e) { logError(ErrorCategory.TABLE, 'selectors', e);
-      // Ignore peer filtering errors
+      const filtered = filterRows(base, columnFilters || {}, globalFilter);
+      const result = uniqueByKey(vm.applySortingToPeerRows(filtered), peerKeyOf);
+      vm._peerRowsCache.set(cacheKey, result);
+      return result;
+    } catch (e) {
+      logError(ErrorCategory.TABLE, 'selectors:peerFilter', e);
     }
 
-    const sorted = vm.applySortingToPeerRows(base);
-    const dedupedSorted = uniqueByKeyFn(sorted, peerKeyOf);
-    vm._peerRowsCache.set(cacheKey, dedupedSorted);
-    return dedupedSorted;
+    const result = uniqueByKey(vm.applySortingToPeerRows(base), peerKeyOf);
+    vm._peerRowsCache.set(cacheKey, result);
+    return result;
   }
+
+  // ───────────────────────────────────────────────────────────
+  // getHourlyRowsLazy
+  // ───────────────────────────────────────────────────────────
 
   function getHourlyRowsLazy(peerGroupId) {
     const cacheKey = `${vm._filterSortKey}|${filtersKey()}|${peerGroupId}`;
-    // If peer is open, bypass cache to avoid stale filtered slice
-    let peerOpen = false;
-    try { peerOpen = !!(vm.openHourlyGroups && vm.openHourlyGroups.has && vm.openHourlyGroups.has(peerGroupId)); } catch(e) { logError(ErrorCategory.TABLE, 'selectors', e); }
+    const peerOpen = vm.openHourlyGroups?.has?.(peerGroupId);
+
     if (!peerOpen && vm._hourlyRowsCache.has(cacheKey)) return vm._hourlyRowsCache.get(cacheKey);
-    const hourlyRows = [];
 
+    // build hourly rows
     const hourlyMetas = vm.lazyData.hourlyIndex.filter(h => h.parentId === peerGroupId);
-    hourlyMetas.forEach(meta => {
-      const fullHourlyRow = vm.rawData.hourlyRows[meta.index];
-      const hourlyMeta = meta; // already contains fields
-      hourlyRows.push({ ...fullHourlyRow, ...hourlyMeta, type: 'hourly' });
-    });
-    // Deduplicate hourly rows by natural key (time or hour) to avoid duplicates
-    const timeKey = (hourlyRows && hourlyRows.length && Object.prototype.hasOwnProperty.call(hourlyRows[0], 'time')) ? 'time' : 'hour';
-    const hourKeyOf = (r) => {
-      const idx = r.index ?? r._rawIndex ?? null;
-      if (idx != null) {
-        let k = vm._hourKeyCache.get(idx);
-        if (!k) { k = [norm(r.main), norm(r.peer), norm(r.destination), norm(r[timeKey])].join('|'); vm._hourKeyCache.set(idx, k); }
-        return k;
-      }
-      return [norm(r.main), norm(r.peer), norm(r.destination), norm(r[timeKey])].join('|');
-    };
-    let base = uniqueByKeyFn(hourlyRows, hourKeyOf);
+    const hourlyRows = hourlyMetas.map(meta => ({ ...vm.rawData.hourlyRows[meta.index], ...meta, type: 'hourly' }));
 
-    // If parent PEER is expanded, toggles must be independent from inputs -> skip filters
-    try {
-      const isPeerOpen = vm.openHourlyGroups && vm.openHourlyGroups.has && vm.openHourlyGroups.has(peerGroupId);
-      if (isPeerOpen) {
-        const out = vm.applySortingToHourlyRows(base);
-        const deduped = uniqueByKeyFn(out, hourKeyOf);
-        vm._hourlyRowsCache.set(cacheKey, deduped);
-        return deduped;
-      }
-    } catch (e) { logError(ErrorCategory.TABLE, 'selectors', e); /* no-op */ }
+    const timeKey = hourlyRows[0]?.time !== undefined ? 'time' : 'hour';
+    const keyFn = r => hourKeyOf(r, timeKey);
+    let base = uniqueByKey(hourlyRows, keyFn);
 
-    try {
-      const { columnFilters, globalFilterQuery } = getState();
-      const glob = (globalFilterQuery || '').trim().toLowerCase();
-      const filtered = base.filter(r => {
-        let ok = true;
-        if (columnFilters) {
-          for (const k in columnFilters) {
-            const f = (columnFilters[k] ?? '').toString();
-            if (!f) continue;
-            if (!_passesColumnFilter(r[k], f)) { ok = false; break; }
-          }
-        }
-        if (ok && glob) {
-          const peerText = (r.peer || '').toString().toLowerCase();
-          const destinationText = (r.destination || '').toString().toLowerCase();
-          const mainText = (r.main || '').toString().toLowerCase();
-          if (!peerText.includes(glob) && !destinationText.includes(glob) && !mainText.includes(glob)) ok = false;
-        }
-        return ok;
-      });
-      const out = vm.applySortingToHourlyRows(filtered);
-      const deduped = uniqueByKeyFn(out, hourKeyOf);
-      vm._hourlyRowsCache.set(cacheKey, deduped);
-      return deduped;
-    } catch (e) { logError(ErrorCategory.TABLE, 'selectors', e);
-      // Ignore hourly filtering errors
+    // if peer is open, skip filters
+    if (peerOpen) {
+      const result = uniqueByKey(vm.applySortingToHourlyRows(base), keyFn);
+      vm._hourlyRowsCache.set(cacheKey, result);
+      return result;
     }
 
-    const sorted = vm.applySortingToHourlyRows(base);
-    const dedupedSorted = uniqueByKeyFn(sorted, hourKeyOf);
-    vm._hourlyRowsCache.set(cacheKey, dedupedSorted);
-    return dedupedSorted;
+    // apply filters
+    try {
+      const { columnFilters, globalFilterQuery } = getState();
+      const globalFilter = (globalFilterQuery || '').trim().toLowerCase();
+      const filtered = filterRows(base, columnFilters || {}, globalFilter);
+      const result = uniqueByKey(vm.applySortingToHourlyRows(filtered), keyFn);
+      vm._hourlyRowsCache.set(cacheKey, result);
+      return result;
+    } catch (e) {
+      logError(ErrorCategory.TABLE, 'selectors:hourlyFilter', e);
+    }
+
+    const result = uniqueByKey(vm.applySortingToHourlyRows(base), keyFn);
+    vm._hourlyRowsCache.set(cacheKey, result);
+    return result;
   }
+
+  // ───────────────────────────────────────────────────────────
+  // Public API
+  // ───────────────────────────────────────────────────────────
 
   return {
     getLazyVisibleData,
     getPeerRowsLazy,
     getHourlyRowsLazy,
-    getFilterSortKey: () => (typeof vm._computeFilterSortKey === 'function' ? vm._computeFilterSortKey() : (vm._filterSortKey || '')),
-    clearCaches: () => {
-      try { vm._mainFilterPass?.clear(); } catch (e) { logError(ErrorCategory.TABLE, 'selectors', e);
-        // Ignore cache clear errors
-      }
-      try { vm._peerRowsCache?.clear(); } catch (e) { logError(ErrorCategory.TABLE, 'selectors', e);
-        // Ignore cache clear errors
-      }
-      try { vm._hourlyRowsCache?.clear(); } catch (e) { logError(ErrorCategory.TABLE, 'selectors', e);
-        // Ignore cache clear errors
-      }
-    }
+    getFilterSortKey: () => vm._computeFilterSortKey?.() ?? vm._filterSortKey ?? '',
+    clearCaches: clearAllCaches
   };
 }

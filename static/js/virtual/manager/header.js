@@ -1,6 +1,5 @@
 // static/js/virtual/manager/header.js
-// Layer: header+UI helpers (render header/footer, sort arrows, Y-columns icon)
-
+// Responsibility: Header/footer rendering, sort arrows, Y-columns toggle
 import { renderTableHeader, renderTableFooter, updateSortArrows } from '../../dom/table-ui.js';
 import { areYColumnsVisible } from '../../state/tableState.js';
 import { getYColumnToggleIcon } from '../../dom/hideYColumns.js';
@@ -8,44 +7,31 @@ import { bindFloatingHeader } from './ui-sync.js';
 import { getYToggleButtons, getResultsTables } from '../selectors/dom-selectors.js';
 import { logError, ErrorCategory } from '../../utils/errorLogger.js';
 
-function logDebug(...args) {
-  try { if (typeof window !== 'undefined' && window.DEBUG) console.log(...args); } catch(e) { logError(ErrorCategory.TABLE, 'vmHeader', e);
-    // Ignore header sync errors
-  }
-}
+// ─────────────────────────────────────────────────────────────
+// Attach to VirtualManager
+// ─────────────────────────────────────────────────────────────
 
 export function attachHeader(vm) {
+  function syncYToggleIcons() {
+    const visible = areYColumnsVisible();
+    getYToggleButtons().forEach(btn => { btn.innerHTML = getYColumnToggleIcon(visible); });
+    getResultsTables().forEach(tbl => { tbl.classList.toggle('y-columns-hidden', !visible); });
+  }
+
   function renderTableHeaders() {
     try {
-      logDebug('🔄 Header: render with sorting');
       renderTableHeader();
       renderTableFooter();
       updateSortArrows();
       syncYToggleIcons();
-      try { bindFloatingHeader(vm); } catch(e) { logError(ErrorCategory.TABLE, 'vmHeader', e);
-    // Ignore header sync errors
-  }
-      logDebug('✅ Header: ready');
-    } catch (error) {
-      console.error('❌ Header: render failed', error);
+      try { bindFloatingHeader(vm); } catch (e) { logError(ErrorCategory.TABLE, 'vmHeader:bindFloating', e); }
+    } catch (e) {
+      logError(ErrorCategory.TABLE, 'vmHeader:render', e);
     }
   }
 
   function updateSortArrowsAfterRefresh() {
-    try { updateSortArrows(); } catch (error) {
-      console.error('❌ Header: updateSortArrowsAfterRefresh failed', error);
-    }
-  }
-
-  function syncYToggleIcons() {
-    const visible = areYColumnsVisible();
-    getYToggleButtons().forEach(btn => {
-      btn.innerHTML = getYColumnToggleIcon(visible);
-    });
-    getResultsTables().forEach(tbl => {
-      if (visible) tbl.classList.remove('y-columns-hidden');
-      else tbl.classList.add('y-columns-hidden');
-    });
+    try { updateSortArrows(); } catch (e) { logError(ErrorCategory.TABLE, 'vmHeader:sortArrows', e); }
   }
 
   return { renderTableHeaders, updateSortArrowsAfterRefresh, syncYToggleIcons };

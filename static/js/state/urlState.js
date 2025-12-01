@@ -1,209 +1,113 @@
 // static/js/state/urlState.js
-// DEPRECATED: This module now delegates to shortLinkState for persistence.
-// Kept for backward compatibility with existing imports.
+// Responsibility: URL state persistence (delegates to shortLinkState, legacy hash support)
 import { logError, ErrorCategory } from '../utils/errorLogger.js';
 import { getDateManuallyCommittedAt } from './runtimeFlags.js';
+import { setFullState as setTableState } from './tableState.js';
+import { setReverseMode, getMetricsData, updateFullState as setAppFullState } from './appState.js';
+import { populateFiltersFromState } from '../dom/filter-helpers.js';
+import { saveStateToShortLink, loadStateFromShortLink, hasShortLinkId, initShortLinkState } from './shortLinkState.js';
 
-import {
-  setFullState as setTableState,
-  getFullTableState,
-} from "./tableState.js";
-import { 
-  isReverseMode, 
-  setReverseMode, 
-  getMetricsData,
-  getFullState as getAppFullState,
-  updateFullState as setAppFullState,
-} from "./appState.js";
-import {
-  buildFilterParams,
-  populateFiltersFromState,
-} from "../dom/filter-helpers.js";
-import {
-  saveStateToShortLink,
-  loadStateFromShortLink,
-  hasShortLinkId,
-  initShortLinkState,
-} from "./shortLinkState.js";
-// --- REMOVED: State modules should not call DOM functions ---
+// ─────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────
 
-// Legacy encode/decode kept for backward compatibility with old hash URLs
-function encodeState(state) {
-  try {
-    const jsonString = JSON.stringify(state);
-    return btoa(jsonString);
-  } catch (e) { 
-    logError(ErrorCategory.STATE, 'urlState', e);
-    console.error("Failed to encode state:", e);
-    return "";
-  }
-}
+const HASH_PREFIX = '#state=';
+const MANUAL_COMMIT_THRESHOLD_MS = 5000;
+const VOLATILE_TABLE_KEYS = ['yColumnsVisible', 'multiSort'];
+
+// ─────────────────────────────────────────────────────────────
+// Helpers: Encoding (legacy hash support)
+// ─────────────────────────────────────────────────────────────
 
 function decodeState(encodedState) {
   try {
-    const jsonString = atob(encodedState);
-    return JSON.parse(jsonString);
-  } catch (e) { 
-    logError(ErrorCategory.STATE, 'urlState', e);
-    console.error("Failed to decode state from URL:", e);
+    return JSON.parse(atob(encodedState));
+  } catch (e) {
+    logError(ErrorCategory.STATE, 'urlState:decode', e);
     return null;
   }
 }
 
-/**
- * Gathers the current relevant state and saves it via short link API.
- * Now uses backend persistence instead of URL hash encoding.
- */
-export function saveStateToUrl() {
-  // Delegate to short link module (async, fire-and-forget)
-  saveStateToShortLink().catch((e) => {
-    console.error("Failed to save state to short link:", e);
-  });
+function cleanTableState(tableState) {
+  VOLATILE_TABLE_KEYS.forEach(k => delete tableState[k]);
 }
 
-/**
- * Loads state from short link (?s=ID) or legacy hash (#state=...).
- * Short link takes priority. Returns loaded state or null.
- * @returns {object|null} The loaded state object or null if nothing was loaded.
- */
+// ─────────────────────────────────────────────────────────────
+// Helpers: State application
+// ─────────────────────────────────────────────────────────────
+
+function applyDecodedState(state) {
+  if (!state) return;
+
+  if (state.appState) setAppFullState(state.appState);
+
+  if (state.tableState) {
+    cleanTableState(state.tableState);
+    setTableState(state.tableState);
+  }
+
+  if (state.filterParams) populateFiltersFromState(state.filterParams);
+  if (typeof state.isReversed === 'boolean') setReverseMode(state.isReversed);
+}
+
+function shouldSkipDueToRecentCommit() {
+  const committedAt = getDateManuallyCommittedAt();
+  if (!committedAt) return false;
+  return (Date.now() - committedAt) < MANUAL_COMMIT_THRESHOLD_MS;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Public API
+// ─────────────────────────────────────────────────────────────
+
+export function saveStateToUrl() {
+  saveStateToShortLink().catch(e => logError(ErrorCategory.STATE, 'urlState:save', e));
+}
+
 export function loadStateFromUrl() {
-  // Priority 1: short link (?s=ID)
+  // priority 1: short link (?s=ID)
   if (hasShortLinkId()) {
-    // Short link loading is async; return a marker and let caller handle
-    // For sync compatibility, we trigger async load and return null here
-    // The actual state will be applied by loadStateFromShortLink
-    loadStateFromShortLink().catch((e) => {
-      console.error("Failed to load state from short link:", e);
-    });
-    // Return marker to indicate state is being loaded
+    loadStateFromShortLink().catch(e => logError(ErrorCategory.STATE, 'urlState:loadShortLink', e));
     return { _loadingFromShortLink: true };
   }
 
-  // Priority 2: legacy hash (#state=...)
+  // priority 2: legacy hash (#state=...)
   const hash = window.location.hash;
-  if (hash && hash.startsWith("#state=")) {
-    const encodedState = hash.substring(7);
-    const decodedState = decodeState(encodedState);
+  if (!hash || !hash.startsWith(HASH_PREFIX)) return null;
 
-    // skip if data already loaded
-    const currentMetricsData = getMetricsData();
-    if (currentMetricsData && decodedState) {
-      return decodedState;
-    }
+  const decodedState = decodeState(hash.substring(HASH_PREFIX.length));
+  if (!decodedState) return null;
 
-    if (decodedState) {
-      // skip if manual date commit was recent
-      try {
-        const committedAt = getDateManuallyCommittedAt();
-        if (committedAt) {
-          const age = Date.now() - committedAt;
-          if (age >= 0 && age < 5000) {
-            console.log("⏳ loadStateFromUrl: Skip applying filters due to recent manual commit");
-            return decodedState;
-          }
-        }
-      } catch(e) { logError(ErrorCategory.STATE, 'urlState', e);
-        // ignore
-      }
+  // skip if data already loaded
+  if (getMetricsData()) return decodedState;
 
-      // apply state (new format)
-      if (decodedState.version === "2.0" || decodedState.appState) {
-        if (decodedState.appState) {
-          setAppFullState(decodedState.appState);
-        }
-        if (decodedState.tableState) {
-          delete decodedState.tableState.yColumnsVisible;
-          delete decodedState.tableState.multiSort;
-          setTableState(decodedState.tableState);
-        }
-        if (decodedState.filterParams) {
-          populateFiltersFromState(decodedState.filterParams);
-        }
-        if (typeof decodedState.isReversed === "boolean") {
-          setReverseMode(decodedState.isReversed);
-        }
-      } else {
-        // legacy format
-        if (decodedState.filterParams) {
-          populateFiltersFromState(decodedState.filterParams);
-        }
-        if (typeof decodedState.isReversed === "boolean") {
-          setReverseMode(decodedState.isReversed);
-        }
-        if (decodedState.tableState) {
-          delete decodedState.tableState.yColumnsVisible;
-          delete decodedState.tableState.multiSort;
-          setTableState(decodedState.tableState);
-        }
-      }
+  // skip if recent manual commit
+  if (shouldSkipDueToRecentCommit()) return decodedState;
 
-      // log state age
-      if (decodedState.timestamp) {
-        const age = Date.now() - decodedState.timestamp;
-        const ageMinutes = Math.floor(age / (1000 * 60));
-        console.log(`⏰ State age: ${ageMinutes} minutes`);
-      }
-
-      return decodedState;
-    }
-  }
-  return null;
+  applyDecodedState(decodedState);
+  return decodedState;
 }
 
-/**
- * Initializes the URL state module.
- * Sets up event listeners for browser navigation.
- */
 export function initUrlStateSync() {
-  // Init short link state module
   initShortLinkState();
-
-  // Listen for browser back/forward navigation
-  window.addEventListener('popstate', () => {
-    console.log("Browser navigation detected, loading state from URL");
-    loadStateFromUrl();
-  });
-
-  // Listen for hash changes (legacy URL changes)
-  window.addEventListener('hashchange', () => {
-    console.log("Hash change detected, loading state from URL");
-    loadStateFromUrl();
-  });
-
-  console.log("URL state synchronization initialized");
+  window.addEventListener('popstate', loadStateFromUrl);
+  window.addEventListener('hashchange', loadStateFromUrl);
 }
 
-/**
- * Clear state from URL hash
- */
 export function clearStateFromUrl() {
   try {
     if (window.location.hash) {
-      history.replaceState("", document.title, window.location.pathname + window.location.search);
+      history.replaceState('', document.title, window.location.pathname + window.location.search);
     }
-  } catch (error) {
-    console.error('❌ URL State: Failed to clear URL state', error);
+  } catch (e) {
+    logError(ErrorCategory.STATE, 'urlState:clear', e);
   }
 }
 
-/**
- * Gets the current state from the URL without applying it.
- * Useful for checking if there's saved state without loading it.
- * @returns {object|null} The current URL state or null if none exists.
- */
 export function getCurrentUrlState() {
   const hash = window.location.hash;
-  if (hash && hash.startsWith("#state=")) {
-    const encodedState = hash.substring(7);
-    return decodeState(encodedState);
-  }
-  return null;
+  if (!hash || !hash.startsWith(HASH_PREFIX)) return null;
+  return decodeState(hash.substring(HASH_PREFIX.length));
 }
 
-/**
- * Checks if there's a valid state in the URL (short link or legacy hash).
- * @returns {boolean} True if there's a valid state in the URL.
- */
-export function hasUrlState() {
-  return hasShortLinkId() || getCurrentUrlState() !== null;
-}
+export const hasUrlState = () => hasShortLinkId() || getCurrentUrlState() !== null;

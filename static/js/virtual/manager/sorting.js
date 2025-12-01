@@ -1,24 +1,48 @@
 // static/js/virtual/manager/sorting.js
-// Layer: sorting helpers for main/peer/hourly rows
-
+// Responsibility: Sorting helpers for main/peer/hourly rows
 import { getState } from '../../state/tableState.js';
 import { logError, ErrorCategory } from '../../utils/errorLogger.js';
 
-function toLower(x) { return (x ?? '').toString().toLowerCase(); }
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
+
+const toLower = x => (x ?? '').toString().toLowerCase();
+const perf = () => typeof performance !== 'undefined' ? performance.now() : Date.now();
+
+function compareValues(aVal, bVal, dir) {
+  const aNum = parseFloat(aVal);
+  const bNum = parseFloat(bVal);
+
+  if (!isNaN(aNum) && !isNaN(bNum)) {
+    if (aNum !== bNum) return dir === 'desc' ? bNum - aNum : aNum - bNum;
+  } else {
+    const aStr = toLower(aVal ?? '');
+    const bStr = toLower(bVal ?? '');
+    if (aStr !== bStr) return dir === 'asc' ? aStr.localeCompare(bStr) : bStr.localeCompare(aStr);
+  }
+  return 0;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Attach to VirtualManager
+// ─────────────────────────────────────────────────────────────
 
 export function attachSorting() {
-  // Memoization cache for mainRows sorting: WeakMap<Array, { key: string, out: Array }>
   const _mainSortCache = new WeakMap();
+
   function getCurrentTableState() {
-    try { return getState(); } catch (e) { logError(ErrorCategory.TABLE, 'sorting', e); return { multiSort: [] }; }
+    try { return getState(); } catch (e) { logError(ErrorCategory.TABLE, 'sorting:getState', e); return { multiSort: [] }; }
   }
 
   function normalizeMultiSort(multiSort) {
     const arr = Array.isArray(multiSort) ? [...multiSort] : [];
     if (arr.length === 0) return arr;
+
     const primary = arr[0]?.key;
     const hasMain = arr.some(s => s.key === 'main');
     const hasDest = arr.some(s => s.key === 'destination');
+
     if (hasMain && hasDest && (primary === 'main' || primary === 'destination')) {
       const destItem = arr.find(s => s.key === 'destination');
       const mainItem = arr.find(s => s.key === 'main');
@@ -31,75 +55,48 @@ export function attachSorting() {
   }
 
   function applyOrderSort(rows, order) {
-    if (!order || order.length === 0) return rows;
-    const t1 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    if (!order?.length) return rows;
+
+    const t1 = perf();
     const result = rows.slice().sort((a, b) => {
-      for (let i = 0; i < order.length; i++) {
-        const { key, dir } = order[i];
-        let aVal = a[key];
-        let bVal = b[key];
-        if (aVal == null) aVal = '';
-        if (bVal == null) bVal = '';
-        if (!isNaN(parseFloat(aVal)) && !isNaN(parseFloat(bVal))) {
-          aVal = parseFloat(aVal); bVal = parseFloat(bVal);
-          if (aVal !== bVal) return dir === 'desc' ? bVal - aVal : aVal - bVal;
-        } else {
-          aVal = toLower(aVal); bVal = toLower(bVal);
-          if (aVal !== bVal) return dir === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-        }
+      for (const { key, dir } of order) {
+        const cmp = compareValues(a[key], b[key], dir);
+        if (cmp !== 0) return cmp;
       }
       return 0;
     });
-    const t2 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-    const dt = t2 - t1;
-    try {
-      if (typeof window !== 'undefined' && window.DEBUG && dt > 10) {
-        // eslint-disable-next-line no-console
-        console.warn('⚠️ Sorting >10ms', { ms: Math.round(dt), count: rows?.length || 0, order });
-      }
-    } catch (e) { logError(ErrorCategory.TABLE, 'sorting', e);
-      // Ignore sorting errors
+    const dt = perf() - t1;
+
+    if (typeof window !== 'undefined' && window.DEBUG && dt > 10) {
+      logError(ErrorCategory.TABLE, 'sorting:slow', `${Math.round(dt)}ms for ${rows?.length || 0} rows`);
     }
     return result;
   }
 
+  function getSortOrder() {
+    return normalizeMultiSort(getCurrentTableState().multiSort);
+  }
+
   function applySortingToMainRows(mainRows) {
-    const { multiSort } = getCurrentTableState();
-    const order = normalizeMultiSort(multiSort);
-    // Memoization key based on order JSON
+    const order = getSortOrder();
     const orderKey = JSON.stringify(order);
-    try {
-      const cached = _mainSortCache.get(mainRows);
-      if (cached && cached.key === orderKey && Array.isArray(cached.out)) {
-        return cached.out;
-      }
-    } catch (e) { logError(ErrorCategory.TABLE, 'sorting', e);
-      // Ignore sorting errors
-    }
+
+    const cached = _mainSortCache.get(mainRows);
+    if (cached?.key === orderKey && Array.isArray(cached.out)) return cached.out;
+
     const out = applyOrderSort(mainRows, order);
-    try { _mainSortCache.set(mainRows, { key: orderKey, out }); } catch (e) { logError(ErrorCategory.TABLE, 'sorting', e);
-      // Ignore sorting errors
-    }
+    try { _mainSortCache.set(mainRows, { key: orderKey, out }); } catch (e) { logError(ErrorCategory.TABLE, 'sorting:cache', e); }
     return out;
   }
 
-  function applySortingToPeerRows(peerRows) {
-    const { multiSort } = getCurrentTableState();
-    const order = normalizeMultiSort(multiSort);
-    return applyOrderSort(peerRows, order);
-  }
-
-  function applySortingToHourlyRows(hourlyRows) {
-    const { multiSort } = getCurrentTableState();
-    const order = normalizeMultiSort(multiSort);
-    return applyOrderSort(hourlyRows, order);
-  }
+  const applySortingToPeerRows = peerRows => applyOrderSort(peerRows, getSortOrder());
+  const applySortingToHourlyRows = hourlyRows => applyOrderSort(hourlyRows, getSortOrder());
 
   return {
     getCurrentTableState,
     normalizeMultiSort,
     applySortingToMainRows,
     applySortingToPeerRows,
-    applySortingToHourlyRows,
+    applySortingToHourlyRows
   };
 }

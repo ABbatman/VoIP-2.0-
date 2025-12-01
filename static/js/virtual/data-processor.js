@@ -1,109 +1,71 @@
-// Virtual Data Processor Module - Single Responsibility: Prepare Data for Virtualization
-// Localized comments in English as requested
+// static/js/virtual/data-processor.js
+// Responsibility: Transform hierarchical data into flat structure for virtual scrolling
 
-/**
- * Virtual Data Processor
- * Responsibility: Transform hierarchical table data into flat structure for virtual scrolling
- */
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
+
+function matchesPeer(peer, mainRow) {
+  return peer.main === mainRow.main && peer.destination === mainRow.destination;
+}
+
+function matchesHour(hour, peerRow) {
+  return hour.main === peerRow.main && hour.peer === peerRow.peer && hour.destination === peerRow.destination;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Public API
+// ─────────────────────────────────────────────────────────────
+
 export class VirtualDataProcessor {
-  
-  /**
-   * Prepare hierarchical data for virtual scrolling
-   * Flattens main/peer/hourly structure into single array
-   */
+  // flatten main/peer/hourly into single array
   static prepareDataForVirtualization(mainRows, peerRows, hourlyRows) {
-    const virtualData = [];
-    
-    // Process each main row and its related data
-    mainRows.forEach((mainRow, mainIndex) => {
-      // Add main row
-      virtualData.push({
-        ...mainRow,
-        type: 'main',
-        groupId: `main-${mainIndex}`,
-        level: 0
-      });
-      
-      // Find related peer rows
-      const relatedPeers = peerRows.filter(peer => 
-        peer.main === mainRow.main && peer.destination === mainRow.destination
-      );
-      
-      // Add peer rows
-      relatedPeers.forEach((peerRow, peerIndex) => {
-        virtualData.push({
-          ...peerRow,
-          type: 'peer',
-          groupId: `peer-${mainIndex}-${peerIndex}`,
-          level: 1,
-          parentId: `main-${mainIndex}`
-        });
-        
-        // Find related hourly rows
-        const relatedHours = hourlyRows.filter(hour =>
-          hour.main === peerRow.main && 
-          hour.peer === peerRow.peer && 
-          hour.destination === peerRow.destination
-        );
-        
-        // Add hourly rows
-        relatedHours.forEach((hourRow, hourIndex) => {
-          virtualData.push({
+    const result = [];
+
+    mainRows.forEach((mainRow, mainIdx) => {
+      const mainGroupId = `main-${mainIdx}`;
+      result.push({ ...mainRow, type: 'main', groupId: mainGroupId, level: 0 });
+
+      const relatedPeers = peerRows.filter(p => matchesPeer(p, mainRow));
+
+      relatedPeers.forEach((peerRow, peerIdx) => {
+        const peerGroupId = `peer-${mainIdx}-${peerIdx}`;
+        result.push({ ...peerRow, type: 'peer', groupId: peerGroupId, level: 1, parentId: mainGroupId });
+
+        const relatedHours = hourlyRows.filter(h => matchesHour(h, peerRow));
+
+        relatedHours.forEach((hourRow, hourIdx) => {
+          result.push({
             ...hourRow,
             type: 'hourly',
-            groupId: `hour-${mainIndex}-${peerIndex}-${hourIndex}`,
+            groupId: `hour-${mainIdx}-${peerIdx}-${hourIdx}`,
             level: 2,
-            parentId: `peer-${mainIndex}-${peerIndex}`
+            parentId: peerGroupId
           });
         });
       });
     });
-    
-    console.log(`📊 Data Processor: Prepared ${virtualData.length} virtual rows from ${mainRows.length} main rows`);
-    return virtualData;
+
+    return result;
   }
 
-  /**
-   * Filter virtual data based on visibility state
-   * Can be extended to handle expand/collapse logic
-   */
+  // filter based on expand/collapse state
   static filterVisibleData(virtualData, expandedGroups = new Set()) {
     return virtualData.filter(item => {
-      // Main rows are always visible
       if (item.level === 0) return true;
-      
-      // Peer rows visible if parent main is expanded
-      if (item.level === 1) {
-        const parentExpanded = expandedGroups.has(item.parentId);
-        return parentExpanded;
-      }
-      
-      // Hourly rows visible if parent peer is expanded
-      if (item.level === 2) {
-        const parentExpanded = expandedGroups.has(item.parentId);
-        return parentExpanded;
-      }
-      
-      return true;
+      return expandedGroups.has(item.parentId);
     });
   }
 
-  /**
-   * Get summary statistics for virtual data
-   */
+  // summary statistics
   static getDataSummary(virtualData) {
-    const summary = {
-      total: virtualData.length,
-      main: 0,
-      peer: 0,
-      hourly: 0
-    };
+    const summary = { total: virtualData.length, main: 0, peer: 0, hourly: 0 };
 
-    virtualData.forEach(item => {
+    for (const item of virtualData) {
       if (item.type === 'main') summary.main++;
       else if (item.type === 'peer') summary.peer++;
       else if (item.type === 'hourly') summary.hourly++;
-    });
+    }
 
     return summary;
   }

@@ -1,59 +1,74 @@
 // static/js/visualEnhancements/heatmapStyling.js
+// Responsibility: Heatmap color styling for metrics
 
-/**
- * Returns CSS style string for heatmap shading.
- * @param {string} metric - Metric name (ASR, ACD, etc.)
- * @param {number} value - Metric value
- * @returns {string} CSS style string (background-color)
- */
-export function getHeatmapStyle(metric, value) {
-    if (value == null || value === '') return '';
-    const v = Number(value);
-    if (!Number.isFinite(v)) return '';
+// ─────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────
 
-    // Soft heatmap colors (Apple/TradingView style - subtle)
-    // ASR: Red (low) -> Green (high)
-    if (metric === 'ASR') {
-        if (v < 10) return 'background-color: rgba(255, 59, 48, 0.15);'; // Red
-        if (v < 30) return 'background-color: rgba(255, 149, 0, 0.15);'; // Orange
-        if (v > 60) return 'background-color: rgba(52, 199, 89, 0.15);'; // Green
-    }
+const COLORS = {
+  RED: { css: 'rgba(255, 59, 48, 0.15)', chart: 'rgba(255, 59, 48, 0.8)' },
+  ORANGE: { css: 'rgba(255, 149, 0, 0.15)', chart: 'rgba(255, 149, 0, 0.8)' },
+  GREEN: { css: 'rgba(52, 199, 89, 0.15)', chart: 'rgba(52, 199, 89, 0.8)' },
+  BLUE_STRONG: { css: 'rgba(0, 122, 255, 0.15)', chart: 'rgba(0, 122, 255, 0.9)' },
+  BLUE_LIGHT: { css: 'rgba(0, 122, 255, 0.08)', chart: 'rgba(0, 122, 255, 0.7)' }
+};
 
-    // ACD: Blue scale (higher is deeper blue)
-    if (metric === 'ACD') {
-        if (v > 5) return 'background-color: rgba(0, 122, 255, 0.15);';
-        if (v > 2) return 'background-color: rgba(0, 122, 255, 0.08);';
-    }
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
 
-    // PDD: Inverse (lower is better) - not strictly requested but good for completeness
-    if (metric === 'PDD') {
-        if (v > 2000) return 'background-color: rgba(255, 59, 48, 0.15);';
-    }
-
-    return '';
+function parseValue(value) {
+  if (value == null || value === '') return null;
+  const v = Number(value);
+  return Number.isFinite(v) ? v : null;
 }
 
-/**
- * Returns color string for ECharts itemStyle.
- * @param {string} metric 
- * @param {number} value 
- * @returns {string|undefined}
- */
+function getASRColor(v, forChart) {
+  const key = forChart ? 'chart' : 'css';
+  if (v < 10) return COLORS.RED[key];
+  if (v < 30) return COLORS.ORANGE[key];
+  if (v > 60) return COLORS.GREEN[key];
+  return null;
+}
+
+function getACDColor(v, forChart) {
+  const key = forChart ? 'chart' : 'css';
+  if (v > 5) return COLORS.BLUE_STRONG[key];
+  if (v > 2) return COLORS.BLUE_LIGHT[key];
+  return null;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Public API
+// ─────────────────────────────────────────────────────────────
+
+export function getHeatmapStyle(metric, value) {
+  const v = parseValue(value);
+  if (v === null) return '';
+
+  if (metric === 'ASR') {
+    const color = getASRColor(v, false);
+    return color ? `background-color: ${color};` : '';
+  }
+
+  if (metric === 'ACD') {
+    const color = getACDColor(v, false);
+    return color ? `background-color: ${color};` : '';
+  }
+
+  if (metric === 'PDD' && v > 2000) {
+    return `background-color: ${COLORS.RED.css};`;
+  }
+
+  return '';
+}
+
 export function getHeatmapColor(metric, value) {
-    if (value == null || value === '') return undefined;
-    const v = Number(value);
-    if (!Number.isFinite(v)) return undefined;
+  const v = parseValue(value);
+  if (v === null) return undefined;
 
-    if (metric === 'ASR') {
-        if (v < 10) return 'rgba(255, 59, 48, 0.8)'; // Red
-        if (v < 30) return 'rgba(255, 149, 0, 0.8)'; // Orange
-        if (v > 60) return 'rgba(52, 199, 89, 0.8)'; // Green
-    }
+  if (metric === 'ASR') return getASRColor(v, true) ?? undefined;
+  if (metric === 'ACD') return getACDColor(v, true) ?? undefined;
 
-    if (metric === 'ACD') {
-        if (v > 5) return 'rgba(0, 122, 255, 0.9)';
-        if (v > 2) return 'rgba(0, 122, 255, 0.7)';
-    }
-
-    return undefined;
+  return undefined;
 }

@@ -1,6 +1,7 @@
 // static/js/virtual/registry.js
-// Simple registry to avoid window globals for VirtualManager instance
+// Responsibility: VirtualManager singleton registry
 
-let __currentManager = null;
-export function setCurrentManager(vm) { __currentManager = vm || null; }
-export function getCurrentManager() { return __currentManager; }
+let _manager = null;
+
+export const setCurrentManager = vm => { _manager = vm ?? null; };
+export const getCurrentManager = () => _manager;

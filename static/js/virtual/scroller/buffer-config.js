@@ -1,14 +1,21 @@
 // static/js/virtual/scroller/buffer-config.js
-// Responsibility: central buffer tuning configuration for VirtualScroller viewport calculations
+// Responsibility: Buffer configuration for VirtualScroller viewport
 
-export const BASE_BUFFER_SIZE = 5; // minimal extra rows beyond viewport
-export const MAX_MULT = 3;        // max multiplier for dynamic buffer based on speed
+// ─────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────
 
-// Optionally adapt buffer to rowHeight or other runtime traits
+export const BASE_BUFFER_SIZE = 5;
+export const MAX_MULT = 3;
+
+const TALL_ROW_THRESHOLD = 60;
+const TALL_ROW_MAX_MULT = 3.5;
+
+// ─────────────────────────────────────────────────────────────
+// Public API
+// ─────────────────────────────────────────────────────────────
+
 export function getBufferConfig({ rowHeight } = {}) {
-  // For very tall rows, allow a slightly higher cap to avoid under-buffering on fast scrolls
-  if (rowHeight && rowHeight > 60) {
-    return { baseBufferSize: BASE_BUFFER_SIZE, maxMult: Math.max(MAX_MULT, 3.5) };
-  }
-  return { baseBufferSize: BASE_BUFFER_SIZE, maxMult: MAX_MULT };
+  const maxMult = rowHeight > TALL_ROW_THRESHOLD ? Math.max(MAX_MULT, TALL_ROW_MAX_MULT) : MAX_MULT;
+  return { baseBufferSize: BASE_BUFFER_SIZE, maxMult };
 }

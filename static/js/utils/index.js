@@ -1,11 +1,5 @@
 // static/js/utils/index.js
-// Export all utility modules
-
-// Core utilities
+// Responsibility: Re-export all utility modules
 export * from './helpers.js';
-
-// DOM Patcher with morphdom
 export * from './domPatcher.js';
-
-// Example usage
 export * from './domPatcher-example.js';

@@ -1,12 +1,14 @@
 // static/js/virtual/manager/subscriptions.js
-// Layer: central subscriptions wiring for VirtualManager
-
+// Responsibility: Event subscriptions for VirtualManager
 import { subscribe } from '../../state/eventBus.js';
 import { getExpandAllButton } from '../selectors/dom-selectors.js';
 import { isRenderingInProgress } from '../../state/runtimeFlags.js';
 import { logError, ErrorCategory } from '../../utils/errorLogger.js';
 
-// Export a reusable debounce for future signals
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
+
 export function debounce(fn, delay = 24) {
   let tid = null;
   return (...args) => {
@@ -15,54 +17,56 @@ export function debounce(fn, delay = 24) {
   };
 }
 
+function safeCall(fn, ctx) {
+  try { fn?.(); } catch (e) { logError(ErrorCategory.TABLE, ctx, e); }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Attach to VirtualManager
+// ─────────────────────────────────────────────────────────────
+
 export function attachSubscriptions(vm) {
   const unsubs = [];
 
-  // Y columns visibility changes
+  // Y columns visibility
   const onYVisibility = () => {
     if (isRenderingInProgress()) return;
-    try { vm.syncYToggleIcons && vm.syncYToggleIcons(); } catch (e) { logError(ErrorCategory.TABLE, 'vmSubscriptions', e); }
-    try { vm.syncFloatingHeader && vm.syncFloatingHeader(); } catch (e) { logError(ErrorCategory.TABLE, 'vmSubscriptions', e); }
-    try { if (window.initStickyFooter) window.initStickyFooter(); } catch (e) { logError(ErrorCategory.TABLE, 'vmSubscriptions', e); }
+    safeCall(() => vm.syncYToggleIcons?.(), 'vmSub:yIcons');
+    safeCall(() => vm.syncFloatingHeader?.(), 'vmSub:yHeader');
+    safeCall(() => window.initStickyFooter?.(), 'vmSub:yFooter');
   };
-  const unsubY = subscribe('tableState:yVisibilityChanged', debounce(onYVisibility, 16));
-  unsubs.push(unsubY);
+  unsubs.push(subscribe('tableState:yVisibilityChanged', debounce(onYVisibility, 16)));
 
-  // Table state changes (e.g. sorting) — keep groups as-is, rebuild indices and refresh
+  // Table state changes (sorting)
   const onChanged = () => {
     if (isRenderingInProgress()) return;
-    try { vm.updateSortArrowsAfterRefresh && vm.updateSortArrowsAfterRefresh(); } catch (e) { logError(ErrorCategory.TABLE, 'vmSubscriptions', e); }
-    try {
-      if (vm.rawData && Array.isArray(vm.rawData.mainRows)) {
-        const sortedMainRows = vm.applySortingToMainRows(vm.rawData.mainRows);
-        vm.rawData.mainRows = sortedMainRows;
-        vm.initializeLazyData();
-        vm.refreshVirtualTable();
-        try { vm.processQueuedExpandCollapseAll && vm.processQueuedExpandCollapseAll(); } catch (e) { logError(ErrorCategory.TABLE, 'vmSubscriptions', e); }
-        try { vm.syncExpandCollapseAllButtonLabel && vm.syncExpandCollapseAllButtonLabel(); } catch (e) { logError(ErrorCategory.TABLE, 'vmSubscriptions', e); }
-      }
-    } catch (e) { logError(ErrorCategory.TABLE, 'vmSubscriptions', e); }
-    try { vm.syncFloatingHeader && vm.syncFloatingHeader(); } catch (e) { logError(ErrorCategory.TABLE, 'vmSubscriptions', e); }
-  };
-  const debouncedChanged = debounce(onChanged, 24);
-  const unsubChanged = subscribe('tableState:changed', debouncedChanged);
-  unsubs.push(unsubChanged);
+    safeCall(() => vm.updateSortArrowsAfterRefresh?.(), 'vmSub:sortArrows');
 
-  // Reverse mode change — collapse all and reset button
+    if (vm.rawData?.mainRows) {
+      vm.rawData.mainRows = vm.applySortingToMainRows(vm.rawData.mainRows);
+      vm.initializeLazyData?.();
+      vm.refreshVirtualTable?.();
+      safeCall(() => vm.processQueuedExpandCollapseAll?.(), 'vmSub:queuedExpand');
+      safeCall(() => vm.syncExpandCollapseAllButtonLabel?.(), 'vmSub:syncBtn');
+    }
+
+    safeCall(() => vm.syncFloatingHeader?.(), 'vmSub:header');
+  };
+  unsubs.push(subscribe('tableState:changed', debounce(onChanged, 24)));
+
+  // Reverse mode change — collapse all
   const onReverse = () => {
     if (isRenderingInProgress()) return;
-    try { vm.openMainGroups && vm.openMainGroups.clear(); } catch (e) { logError(ErrorCategory.TABLE, 'vmSubscriptions', e); }
-    try { vm.openHourlyGroups && vm.openHourlyGroups.clear(); } catch (e) { logError(ErrorCategory.TABLE, 'vmSubscriptions', e); }
-    try {
-      const btn = getExpandAllButton();
-      if (btn) { btn.textContent = 'Show All'; btn.dataset.state = 'hidden'; }
-      vm.syncExpandCollapseAllButtonLabel && vm.syncExpandCollapseAllButtonLabel();
-    } catch (e) { logError(ErrorCategory.TABLE, 'vmSubscriptions', e); }
-    try { vm.initializeLazyData && vm.initializeLazyData(); } catch (e) { logError(ErrorCategory.TABLE, 'vmSubscriptions', e); }
-    try { vm.refreshVirtualTable && vm.refreshVirtualTable(); } catch (e) { logError(ErrorCategory.TABLE, 'vmSubscriptions', e); }
+    vm.openMainGroups?.clear();
+    vm.openHourlyGroups?.clear();
+
+    const btn = getExpandAllButton();
+    if (btn) { btn.textContent = 'Show All'; btn.dataset.state = 'hidden'; }
+    safeCall(() => vm.syncExpandCollapseAllButtonLabel?.(), 'vmSub:reverseBtn');
+    safeCall(() => vm.initializeLazyData?.(), 'vmSub:reverseLazy');
+    safeCall(() => vm.refreshVirtualTable?.(), 'vmSub:reverseRefresh');
   };
-  const unsubReverse = subscribe('appState:reverseModeChanged', debounce(onReverse, 24));
-  unsubs.push(unsubReverse);
+  unsubs.push(subscribe('appState:reverseModeChanged', debounce(onReverse, 24)));
 
   return { unsubs };
 }

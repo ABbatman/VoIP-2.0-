@@ -1,6 +1,10 @@
 // static/js/virtual/scroller/viewport.js
-// Responsibility: compute scroll-derived values and visible range
+// Responsibility: Compute scroll-derived values and visible range
 import { getBufferConfig } from './buffer-config.js';
+
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
 
 export function getScrollTop(container, usesPageScroll) {
   return usesPageScroll
@@ -10,18 +14,19 @@ export function getScrollTop(container, usesPageScroll) {
 
 export function computeSpeed(lastScrollTop, lastScrollTs, currentScrollTop, nowTs) {
   if (!lastScrollTs) return 0;
-  const dy = Math.abs(currentScrollTop - lastScrollTop);
-  const dt = Math.max(1, nowTs - lastScrollTs);
-  return dy / dt; // px/ms
+  return Math.abs(currentScrollTop - lastScrollTop) / Math.max(1, nowTs - lastScrollTs);
 }
 
 export function dynamicBufferMultiplier(speed, maxMult = 3) {
-  // Thresholds: ~0.5 px/ms, 1 px/ms, 2 px/ms
   if (speed > 2) return Math.min(2.5, maxMult);
   if (speed > 1) return Math.min(2, maxMult);
   if (speed > 0.5) return Math.min(1.5, maxMult);
   return 1;
 }
+
+// ─────────────────────────────────────────────────────────────
+// Public API
+// ─────────────────────────────────────────────────────────────
 
 export function computeVisibleRange({
   container,
@@ -32,7 +37,7 @@ export function computeVisibleRange({
   lastEndIndex,
   forceRender,
   lastScrollTop,
-  lastScrollTs,
+  lastScrollTs
 }) {
   const nowTs = performance.now();
   const scrollTop = getScrollTop(container, usesPageScroll);
@@ -46,10 +51,7 @@ export function computeVisibleRange({
   const effectiveBuffer = Math.max(base, Math.ceil(visibleRowsCount * mult));
 
   const startIndex = Math.max(0, Math.floor(scrollTop / rowHeight) - effectiveBuffer);
-  const endIndex = Math.min(
-    Number.MAX_SAFE_INTEGER,
-    startIndex + visibleRowsCount + effectiveBuffer * 2
-  );
+  const endIndex = Math.min(Number.MAX_SAFE_INTEGER, startIndex + visibleRowsCount + effectiveBuffer * 2);
 
   const minDelta = Math.max(1, Math.floor(visibleRowsCount / 2));
   const shouldSkip = !forceRender &&
@@ -57,14 +59,5 @@ export function computeVisibleRange({
     Math.abs((lastStartIndex ?? 0) - startIndex) < minDelta &&
     lastEndIndex === endIndex;
 
-  return {
-    scrollTop,
-    nowTs,
-    speed,
-    bufferMultiplier: mult,
-    visibleRowsCount,
-    startIndex,
-    endIndex,
-    shouldSkip,
-  };
+  return { scrollTop, nowTs, speed, bufferMultiplier: mult, visibleRowsCount, startIndex, endIndex, shouldSkip };
 }

@@ -1,6 +1,7 @@
-export function getAnomalyClass({ deltaPercent }) {
-  if (typeof deltaPercent === "number" && deltaPercent < -5) {
-    return "cell-negative";
-  }
-  return "";
-}
+// static/js/utils/helpers.js
+// Responsibility: Generic utility helpers
+
+const NEGATIVE_THRESHOLD = -5;
+
+export const getAnomalyClass = ({ deltaPercent }) =>
+  typeof deltaPercent === 'number' && deltaPercent < NEGATIVE_THRESHOLD ? 'cell-negative' : '';

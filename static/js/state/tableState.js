@@ -1,333 +1,256 @@
 // static/js/state/tableState.js
-import { publish } from "./eventBus.js";
+// Responsibility: Table state management (filters, columns, display, behavior)
+import { publish } from './eventBus.js';
 
-// --- NEW: Separate variable for the raw data from the API ---
-// This ensures that loading a state from a URL doesn't overwrite the original dataset.
-// --- NEW: Separate variable for the raw data from the API ---
-// This ensures that loading a state from a URL doesn't overwrite the original dataset.
-const rawData = {
-  mainRows: [],
-  peerRows: [],
-  hourlyRows: [], // Added hourlyRows
+// ─────────────────────────────────────────────────────────────
+// Constants: Default values
+// ─────────────────────────────────────────────────────────────
+
+const DEFAULT_COLUMNS = ['main', 'peer', 'destination', 'calls', 'duration', 'pdd', 'atime', 'asr', 'acd', 'mos'];
+
+const DEFAULT_COLUMN_WIDTHS = {
+  main: 150, peer: 150, destination: 200, calls: 80,
+  duration: 100, pdd: 80, atime: 80, asr: 80, acd: 80, mos: 80
 };
+
+const DEFAULT_DISPLAY = {
+  compactMode: false,
+  showRowNumbers: true,
+  showGroupHeaders: true,
+  showSummaryFooter: true,
+  rowHeight: 40,
+  fontSize: 14
+};
+
+const DEFAULT_COLUMNS_CONFIG = {
+  visible: [...DEFAULT_COLUMNS],
+  order: [...DEFAULT_COLUMNS],
+  widths: { ...DEFAULT_COLUMN_WIDTHS },
+  frozen: ['main', 'peer']
+};
+
+const DEFAULT_BEHAVIOR = {
+  autoExpandGroups: false,
+  rememberExpandedState: true,
+  showLoadingIndicators: true,
+  enableRowSelection: false,
+  enableMultiSelection: false,
+  enableDragAndDrop: false
+};
+
+const DEFAULT_PERFORMANCE = {
+  enableVirtualization: true,
+  enableLazyLoading: true,
+  enableDebouncedSearch: true,
+  searchDebounceMs: 300,
+  maxVisibleRows: 1000,
+  renderBatchSize: 50
+};
+
+const DEFAULT_EXPORT = {
+  defaultFormat: 'csv',
+  includeHeaders: true,
+  includeFilters: true,
+  includeSorting: true,
+  filenameTemplate: 'metrics_{date}_{time}'
+};
+
+const DEFAULT_SORT = [
+  { key: 'destination', dir: 'asc' },
+  { key: 'main', dir: 'asc' }
+];
+
+// ─────────────────────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────────────────────
+
+// raw data from API (not saved to URL)
+const rawData = { mainRows: [], peerRows: [], hourlyRows: [] };
 
 const tableState = {
-  globalFilterQuery: "",
+  globalFilterQuery: '',
   columnFilters: {},
-  // --- MODIFIED: fullData is no longer part of the saveable/loadable state ---
-  multiSort: [
-    { key: "destination", dir: "asc" },
-    { key: "main", dir: "asc" }
-  ],
-  textFields: ["main", "peer", "destination"],
+  multiSort: [...DEFAULT_SORT],
+  textFields: ['main', 'peer', 'destination'],
   yColumnsVisible: true,
-  // Virtual Table Integration: Track rendering mode (pagination removed)
-  renderingMode: 'virtual', // Always virtual now
+  renderingMode: 'virtual',
   virtualScrollEnabled: true,
 
-  // NEW: Table display settings
-  display: {
-    compactMode: false,
-    showRowNumbers: true,
-    showGroupHeaders: true,
-    showSummaryFooter: true,
-    rowHeight: 40,
-    fontSize: 14,
-  },
-
-  // NEW: Column management
-  columns: {
-    visible: [
-      "main", "peer", "destination", "calls", "duration",
-      "pdd", "atime", "asr", "acd", "mos"
-    ],
-    order: [
-      "main", "peer", "destination", "calls", "duration",
-      "pdd", "atime", "asr", "acd", "mos"
-    ],
-    widths: {
-      main: 150,
-      peer: 150,
-      destination: 200,
-      calls: 80,
-      duration: 100,
-      pdd: 80,
-      atime: 80,
-      asr: 80,
-      acd: 80,
-      mos: 80,
-    },
-    frozen: ["main", "peer"], // Columns that stay visible during horizontal scroll
-  },
-
-  // NEW: Table behavior settings
-  behavior: {
-    autoExpandGroups: false,
-    rememberExpandedState: true,
-    showLoadingIndicators: true,
-    enableRowSelection: false,
-    enableMultiSelection: false,
-    enableDragAndDrop: false,
-  },
-
-  // NEW: Performance settings
-  performance: {
-    enableVirtualization: true,
-    enableLazyLoading: true,
-    enableDebouncedSearch: true,
-    searchDebounceMs: 300,
-    maxVisibleRows: 1000,
-    renderBatchSize: 50,
-  },
-
-  // NEW: Export and sharing settings
-  export: {
-    defaultFormat: "csv", // "csv", "excel", "json"
-    includeHeaders: true,
-    includeFilters: true,
-    includeSorting: true,
-    filenameTemplate: "metrics_{date}_{time}",
-  }
+  display: { ...DEFAULT_DISPLAY },
+  columns: JSON.parse(JSON.stringify(DEFAULT_COLUMNS_CONFIG)),
+  behavior: { ...DEFAULT_BEHAVIOR },
+  performance: { ...DEFAULT_PERFORMANCE },
+  export: { ...DEFAULT_EXPORT }
 };
 
-// --- GETTERS ---
-export function getState() {
-  return { ...tableState };
-}
+// ─────────────────────────────────────────────────────────────
+// Getters: Core
+// ─────────────────────────────────────────────────────────────
 
-export function areYColumnsVisible() {
-  return tableState.yColumnsVisible;
-}
+export const getState = () => ({ ...tableState });
+export const areYColumnsVisible = () => tableState.yColumnsVisible;
+export const getRenderingMode = () => tableState.renderingMode;
+export const isVirtualScrollEnabled = () => tableState.virtualScrollEnabled;
+export const getFullData = () => rawData;
 
-export function getRenderingMode() {
-  return tableState.renderingMode;
-}
+// ─────────────────────────────────────────────────────────────
+// Getters: Display
+// ─────────────────────────────────────────────────────────────
 
-export function isVirtualScrollEnabled() {
-  return tableState.virtualScrollEnabled;
-}
+export const getDisplaySettings = () => ({ ...tableState.display });
+export const isCompactMode = () => tableState.display.compactMode;
+export const getRowHeight = () => tableState.display.rowHeight;
+export const getFontSize = () => tableState.display.fontSize;
 
-// NEW: Display getters
-export function getDisplaySettings() {
-  return { ...tableState.display };
-}
+// ─────────────────────────────────────────────────────────────
+// Getters: Columns
+// ─────────────────────────────────────────────────────────────
 
-export function isCompactMode() {
-  return tableState.display.compactMode;
-}
+export const getColumnSettings = () => ({ ...tableState.columns });
+export const getVisibleColumns = () => [...tableState.columns.visible];
+export const getColumnOrder = () => [...tableState.columns.order];
+export const getColumnWidth = columnKey => tableState.columns.widths[columnKey] || 100;
+export const getFrozenColumns = () => [...tableState.columns.frozen];
+export const isColumnVisible = columnKey => tableState.columns.visible.includes(columnKey);
 
-export function getRowHeight() {
-  return tableState.display.rowHeight;
-}
+// ─────────────────────────────────────────────────────────────
+// Getters: Behavior
+// ─────────────────────────────────────────────────────────────
 
-export function getFontSize() {
-  return tableState.display.fontSize;
-}
+export const getBehaviorSettings = () => ({ ...tableState.behavior });
+export const shouldAutoExpandGroups = () => tableState.behavior.autoExpandGroups;
+export const shouldRememberExpandedState = () => tableState.behavior.rememberExpandedState;
+export const isRowSelectionEnabled = () => tableState.behavior.enableRowSelection;
 
-// NEW: Column getters
-export function getColumnSettings() {
-  return { ...tableState.columns };
-}
+// ─────────────────────────────────────────────────────────────
+// Getters: Performance
+// ─────────────────────────────────────────────────────────────
 
-export function getVisibleColumns() {
-  return [...tableState.columns.visible];
-}
+export const getPerformanceSettings = () => ({ ...tableState.performance });
+export const isLazyLoadingEnabled = () => tableState.performance.enableLazyLoading;
+export const getSearchDebounceMs = () => tableState.performance.searchDebounceMs;
+export const getMaxVisibleRows = () => tableState.performance.maxVisibleRows;
 
-export function getColumnOrder() {
-  return [...tableState.columns.order];
-}
+// ─────────────────────────────────────────────────────────────
+// Getters: Export
+// ─────────────────────────────────────────────────────────────
 
-export function getColumnWidth(columnKey) {
-  return tableState.columns.widths[columnKey] || 100;
-}
+export const getExportSettings = () => ({ ...tableState.export });
+export const getDefaultExportFormat = () => tableState.export.defaultFormat;
 
-export function getFrozenColumns() {
-  return [...tableState.columns.frozen];
-}
+// ─────────────────────────────────────────────────────────────
+// Setters: Core
+// ─────────────────────────────────────────────────────────────
 
-export function isColumnVisible(columnKey) {
-  return tableState.columns.visible.includes(columnKey);
-}
-
-// NEW: Behavior getters
-export function getBehaviorSettings() {
-  return { ...tableState.behavior };
-}
-
-export function shouldAutoExpandGroups() {
-  return tableState.behavior.autoExpandGroups;
-}
-
-export function shouldRememberExpandedState() {
-  return tableState.behavior.rememberExpandedState;
-}
-
-export function isRowSelectionEnabled() {
-  return tableState.behavior.enableRowSelection;
-}
-
-// NEW: Performance getters
-export function getPerformanceSettings() {
-  return { ...tableState.performance };
-}
-
-export function isLazyLoadingEnabled() {
-  return tableState.performance.enableLazyLoading;
-}
-
-export function getSearchDebounceMs() {
-  return tableState.performance.searchDebounceMs;
-}
-
-export function getMaxVisibleRows() {
-  return tableState.performance.maxVisibleRows;
-}
-
-// NEW: Export getters
-export function getExportSettings() {
-  return { ...tableState.export };
-}
-
-export function getDefaultExportFormat() {
-  return tableState.export.defaultFormat;
-}
-
-// --- MODIFIED: getFullData now returns from the new rawData variable ---
-export function getFullData() {
-  return rawData;
-}
-
-// --- SETTERS ---
-
-// --- NEW: Function to set the entire state at once (from URL) ---
 export function setFullState(newState) {
-  // Overwrite all properties of tableState with the new ones
   Object.assign(tableState, newState);
-  console.log("🔄 Table state fully replaced from loaded state.", tableState);
-  // Notify all listeners that the state has fundamentally changed.
-  publish("tableState:changed");
+  publish('tableState:changed');
 }
 
 export function toggleYColumnsVisible() {
   tableState.yColumnsVisible = !tableState.yColumnsVisible;
-  publish("tableState:yVisibilityChanged", tableState.yColumnsVisible);
+  publish('tableState:yVisibilityChanged', tableState.yColumnsVisible);
 }
 
-// --- MODIFIED: setFullData now populates the new rawData variable ---
 export function setFullData(allMainRows, allPeerRows, allHourlyRows = []) {
   rawData.mainRows = allMainRows;
   rawData.peerRows = allPeerRows;
   rawData.hourlyRows = allHourlyRows;
 
-  // Reset parts of the state that depend on the data
-  // currentPage removed - no pagination
-  tableState.globalFilterQuery = "";
+  // reset filters when data changes
+  tableState.globalFilterQuery = '';
   tableState.columnFilters = {};
-
-  // Temporarily disable publish to prevent table reset loops
-  // publish("tableState:changed");
 }
-
-// Pagination functions removed - virtualization handles all data display
 
 export function setRenderingMode(mode) {
   if (['auto', 'virtual', 'standard'].includes(mode)) {
     tableState.renderingMode = mode;
-    publish("tableState:changed");
+    publish('tableState:changed');
   }
 }
 
 export function setVirtualScrollEnabled(enabled) {
   tableState.virtualScrollEnabled = Boolean(enabled);
-  publish("tableState:changed");
+  publish('tableState:changed');
 }
+
+// ─────────────────────────────────────────────────────────────
+// Setters: Filters
+// ─────────────────────────────────────────────────────────────
 
 export function setGlobalFilter(query) {
   tableState.globalFilterQuery = query;
-  console.log(`🔍 setGlobalFilter: Set global filter = "${query}"`);
-  // currentPage removed - no pagination
-  console.log(`🔍 setGlobalFilter: Publishing tableState:changed`);
-  publish("tableState:changed");
+  publish('tableState:changed');
 }
 
 export function setColumnFilter(key, value) {
   if (value) {
     tableState.columnFilters[key] = value;
-    console.log(`🔍 setColumnFilter: Set filter for "${key}" = "${value}"`);
   } else {
     delete tableState.columnFilters[key];
-    console.log(`🧹 setColumnFilter: Cleared filter for "${key}"`);
   }
-  // currentPage removed - no pagination
-  console.log(`🔍 setColumnFilter: Publishing tableState:changed`);
-  publish("tableState:changed");
+  publish('tableState:changed');
 }
 
 export function setMultiSort(sortArray) {
   tableState.multiSort = sortArray;
-  publish("tableState:changed");
+  publish('tableState:changed');
 }
 
 export function resetColumnFilters() {
   tableState.columnFilters = {};
-  publish("tableState:changed");
+  publish('tableState:changed');
 }
 
 export function resetAllFilters() {
-  console.log("🧹 resetAllFilters: Clearing all table filters");
-  // Reset column filters
   tableState.columnFilters = {};
-  // Reset global filter
-  tableState.globalFilterQuery = "";
-  console.log("🧹 resetAllFilters: All filters cleared, publishing tableState:changed");
-  publish("tableState:changed");
+  tableState.globalFilterQuery = '';
+  publish('tableState:changed');
 }
 
-// NEW: Display setters
+// ─────────────────────────────────────────────────────────────
+// Setters: Display
+// ─────────────────────────────────────────────────────────────
+
 export function setDisplaySettings(newSettings) {
   Object.assign(tableState.display, newSettings);
-  console.log("🎨 Display settings updated:", tableState.display);
-  publish("tableState:displayChanged", tableState.display);
+  publish('tableState:displayChanged', tableState.display);
 }
 
 export function setCompactMode(enabled) {
   tableState.display.compactMode = enabled;
   tableState.display.rowHeight = enabled ? 32 : 40;
-  console.log(`📱 Compact mode ${enabled ? 'enabled' : 'disabled'}`);
-  publish("tableState:compactModeChanged", enabled);
+  publish('tableState:compactModeChanged', enabled);
 }
 
 export function setRowHeight(height) {
   tableState.display.rowHeight = Math.max(20, Math.min(100, height));
-  console.log(`📏 Row height set to: ${tableState.display.rowHeight}px`);
-  publish("tableState:rowHeightChanged", tableState.display.rowHeight);
+  publish('tableState:rowHeightChanged', tableState.display.rowHeight);
 }
 
-// NEW: Column setters
+// ─────────────────────────────────────────────────────────────
+// Setters: Columns
+// ─────────────────────────────────────────────────────────────
+
 export function setColumnSettings(newSettings) {
   Object.assign(tableState.columns, newSettings);
-  console.log("📊 Column settings updated:", tableState.columns);
-  publish("tableState:columnsChanged", tableState.columns);
+  publish('tableState:columnsChanged', tableState.columns);
 }
 
 export function setVisibleColumns(columns) {
   tableState.columns.visible = [...columns];
-  console.log("👁️ Visible columns updated:", tableState.columns.visible);
-  publish("tableState:visibleColumnsChanged", tableState.columns.visible);
+  publish('tableState:visibleColumnsChanged', tableState.columns.visible);
 }
 
 export function setColumnOrder(order) {
   tableState.columns.order = [...order];
-  console.log("🔄 Column order updated:", tableState.columns.order);
-  publish("tableState:columnOrderChanged", tableState.columns.order);
+  publish('tableState:columnOrderChanged', tableState.columns.order);
 }
 
 export function setColumnWidth(columnKey, width) {
-  if (Object.prototype.hasOwnProperty.call(tableState.columns.widths, columnKey)) {
-    tableState.columns.widths[columnKey] = Math.max(50, Math.min(500, width));
-    console.log(`📏 Column "${columnKey}" width set to: ${tableState.columns.widths[columnKey]}px`);
-    publish("tableState:columnWidthChanged", { columnKey, width: tableState.columns.widths[columnKey] });
-  }
+  if (!(columnKey in tableState.columns.widths)) return;
+  tableState.columns.widths[columnKey] = Math.max(50, Math.min(500, width));
+  publish('tableState:columnWidthChanged', { columnKey, width: tableState.columns.widths[columnKey] });
 }
 
 export function toggleColumnVisibility(columnKey) {
@@ -337,70 +260,71 @@ export function toggleColumnVisibility(columnKey) {
   } else {
     tableState.columns.visible.push(columnKey);
   }
-  console.log(`👁️ Column "${columnKey}" visibility toggled`);
-  publish("tableState:columnVisibilityChanged", { columnKey, visible: index === -1 });
+  publish('tableState:columnVisibilityChanged', { columnKey, visible: index === -1 });
 }
 
 export function setFrozenColumns(columns) {
   tableState.columns.frozen = [...columns];
-  console.log("🧊 Frozen columns updated:", tableState.columns.frozen);
-  publish("tableState:frozenColumnsChanged", tableState.columns.frozen);
+  publish('tableState:frozenColumnsChanged', tableState.columns.frozen);
 }
 
-// NEW: Behavior setters
+// ─────────────────────────────────────────────────────────────
+// Setters: Behavior
+// ─────────────────────────────────────────────────────────────
+
 export function setBehaviorSettings(newSettings) {
   Object.assign(tableState.behavior, newSettings);
-  console.log("🎭 Behavior settings updated:", tableState.behavior);
-  publish("tableState:behaviorChanged", tableState.behavior);
+  publish('tableState:behaviorChanged', tableState.behavior);
 }
 
 export function setAutoExpandGroups(enabled) {
   tableState.behavior.autoExpandGroups = enabled;
-  console.log(`🔓 Auto-expand groups ${enabled ? 'enabled' : 'disabled'}`);
-  publish("tableState:autoExpandGroupsChanged", enabled);
+  publish('tableState:autoExpandGroupsChanged', enabled);
 }
 
 export function setRowSelectionEnabled(enabled) {
   tableState.behavior.enableRowSelection = enabled;
-  console.log(`✅ Row selection ${enabled ? 'enabled' : 'disabled'}`);
-  publish("tableState:rowSelectionChanged", enabled);
+  publish('tableState:rowSelectionChanged', enabled);
 }
 
-// NEW: Performance setters
+// ─────────────────────────────────────────────────────────────
+// Setters: Performance
+// ─────────────────────────────────────────────────────────────
+
 export function setPerformanceSettings(newSettings) {
   Object.assign(tableState.performance, newSettings);
-  console.log("⚡ Performance settings updated:", tableState.performance);
-  publish("tableState:performanceChanged", tableState.performance);
+  publish('tableState:performanceChanged', tableState.performance);
 }
 
 export function setLazyLoadingEnabled(enabled) {
   tableState.performance.enableLazyLoading = enabled;
-  console.log(`🦥 Lazy loading ${enabled ? 'enabled' : 'disabled'}`);
-  publish("tableState:lazyLoadingChanged", enabled);
+  publish('tableState:lazyLoadingChanged', enabled);
 }
 
 export function setSearchDebounceMs(ms) {
   tableState.performance.searchDebounceMs = Math.max(100, Math.min(1000, ms));
-  console.log(`⏱️ Search debounce set to: ${tableState.performance.searchDebounceMs}ms`);
-  publish("tableState:searchDebounceChanged", tableState.performance.searchDebounceMs);
+  publish('tableState:searchDebounceChanged', tableState.performance.searchDebounceMs);
 }
 
-// NEW: Export setters
+// ─────────────────────────────────────────────────────────────
+// Setters: Export
+// ─────────────────────────────────────────────────────────────
+
 export function setExportSettings(newSettings) {
   Object.assign(tableState.export, newSettings);
-  console.log("📤 Export settings updated:", tableState.export);
-  publish("tableState:exportChanged", tableState.export);
+  publish('tableState:exportChanged', tableState.export);
 }
 
 export function setDefaultExportFormat(format) {
-  if (["csv", "excel", "json"].includes(format)) {
-    tableState.export.defaultFormat = format;
-    console.log(`📤 Default export format set to: ${format}`);
-    publish("tableState:exportFormatChanged", format);
-  }
+  if (!['csv', 'excel', 'json'].includes(format)) return;
+  tableState.export.defaultFormat = format;
+  publish('tableState:exportFormatChanged', format);
 }
 
-// NEW: Utility functions
+// ─────────────────────────────────────────────────────────────
+// Utilities
+// ─────────────────────────────────────────────────────────────
+
 export function getFullTableState() {
   return {
     ...tableState,
@@ -413,69 +337,20 @@ export function getFullTableState() {
 }
 
 export function resetToDefaults() {
-  // Reset to default values
-  tableState.display = {
-    compactMode: false,
-    showRowNumbers: true,
-    showGroupHeaders: true,
-    showSummaryFooter: true,
-    rowHeight: 40,
-    fontSize: 14,
-  };
+  tableState.display = { ...DEFAULT_DISPLAY };
+  tableState.columns = JSON.parse(JSON.stringify(DEFAULT_COLUMNS_CONFIG));
+  tableState.behavior = { ...DEFAULT_BEHAVIOR };
+  tableState.performance = { ...DEFAULT_PERFORMANCE };
+  tableState.export = { ...DEFAULT_EXPORT };
+  tableState.multiSort = [...DEFAULT_SORT];
 
-  tableState.columns = {
-    visible: [
-      "main", "peer", "destination", "calls", "duration",
-      "pdd", "atime", "asr", "acd", "mos"
-    ],
-    order: [
-      "main", "peer", "destination", "calls", "duration",
-      "pdd", "atime", "asr", "acd", "mos"
-    ],
-    widths: {
-      main: 150, peer: 150, destination: 200, calls: 80,
-      duration: 100, pdd: 80, atime: 80, asr: 80, acd: 80, mos: 80,
-    },
-    frozen: ["main", "peer"],
-  };
-
-  tableState.behavior = {
-    autoExpandGroups: false,
-    rememberExpandedState: true,
-    showLoadingIndicators: true,
-    enableRowSelection: false,
-    enableMultiSelection: false,
-    enableDragAndDrop: false,
-  };
-
-  tableState.performance = {
-    enableVirtualization: true,
-    enableLazyLoading: true,
-    enableDebouncedSearch: true,
-    searchDebounceMs: 300,
-    maxVisibleRows: 1000,
-    renderBatchSize: 50,
-  };
-
-  tableState.export = {
-    defaultFormat: "csv",
-    includeHeaders: true,
-    includeFilters: true,
-    includeSorting: true,
-    filenameTemplate: "metrics_{date}_{time}",
-  };
-
-  // Reset sorting defaults
-  tableState.multiSort = [
-    { key: "destination", dir: "asc" },
-    { key: "main", dir: "asc" },
-  ];
-
-  console.log("🔄 Table state reset to defaults");
-  publish("tableState:resetToDefaults");
+  publish('tableState:resetToDefaults');
 }
 
-// Export convenience functions for backward compatibility
+// ─────────────────────────────────────────────────────────────
+// Convenience exports
+// ─────────────────────────────────────────────────────────────
+
 export const getMultiSort = () => tableState.multiSort;
 export const getColumnFilters = () => tableState.columnFilters;
 export const getGlobalFilterQuery = () => tableState.globalFilterQuery;

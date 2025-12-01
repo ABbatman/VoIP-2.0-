@@ -1,16 +1,13 @@
 // static/js/virtual/scroller/status.js
-// Responsibility: expose VirtualScroller status in a single place
+// Responsibility: VirtualScroller status exposure
 
 export function getStatus(vm) {
   return {
     initialized: !!vm.isInitialized,
-    dataCount: Array.isArray(vm.data) ? vm.data.length : 0,
+    dataCount: vm.data?.length ?? 0,
     rowHeight: vm.rowHeight,
     bufferSize: vm.bufferSize,
-    bufferMultiplier: vm._bufferMultiplier || 1,
-    lastWindow: {
-      start: vm.lastStartIndex,
-      end: vm.lastEndIndex,
-    },
+    bufferMultiplier: vm._bufferMultiplier ?? 1,
+    lastWindow: { start: vm.lastStartIndex, end: vm.lastEndIndex }
   };
 }

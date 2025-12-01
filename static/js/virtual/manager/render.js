@@ -1,122 +1,109 @@
 // static/js/virtual/manager/render.js
-// Layer: render (adapter <-> scroller integration, refresh & force render)
-
+// Responsibility: Render layer (adapter integration, refresh, DOM callbacks)
 import { bindToggleHandlers, bindDblClickHandlers } from './events.js';
 import { initTooltips } from '../../dom/tooltip.js';
 import { connectFilterEventHandlers } from '../../dom/table-ui.js';
 import { logError, ErrorCategory } from '../../utils/errorLogger.js';
 
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
+
+const CONTAINER_ID = 'virtual-scroll-container';
+
+function safeCall(fn, ctx) {
+  try { fn?.(); } catch (e) { logError(ErrorCategory.RENDER, ctx, e); }
+}
+
+function getVisibleData(vm) {
+  return vm.selectors?.getLazyVisibleData?.() ?? vm.getLazyVisibleData();
+}
+
+// ─────────────────────────────────────────────────────────────
+// Attach to VirtualManager
+// ─────────────────────────────────────────────────────────────
+
 export function attachRender(vm) {
   function initialRender(mainRows, peerRows, hourlyRows) {
-    if (!vm.isActive || !vm.adapter) {
-      console.warn('Virtual Manager: Not active, cannot render');
-      return false;
-    }
+    if (!vm.isActive || !vm.adapter) return false;
 
     try {
       const sortedMainRows = vm.applySortingToMainRows(mainRows);
       vm.rawData = { mainRows: sortedMainRows, peerRows, hourlyRows };
       vm.initializeLazyData();
-      const initialData = vm.selectors ? vm.selectors.getLazyVisibleData() : vm.getLazyVisibleData();
-      const success = vm.adapter.setData(initialData);
-      if (!success) {
-        console.warn('Virtual Manager: Failed to set data in adapter');
-        return false;
-      }
+
+      if (!vm.adapter.setData(getVisibleData(vm))) return false;
 
       if (!vm.headersInitialized) {
-        try { vm.renderTableHeaders && vm.renderTableHeaders(); } catch (e) { logError(ErrorCategory.RENDER, 'vmRender', e);
-          // Ignore header rendering errors
-        }
+        safeCall(() => vm.renderTableHeaders?.(), 'vmRender:headers');
         vm.headersInitialized = true;
       } else {
-        try { vm.updateSortArrowsAfterRefresh && vm.updateSortArrowsAfterRefresh(); } catch (e) { logError(ErrorCategory.RENDER, 'vmRender', e);
-          // Ignore sort arrow update errors
-        }
+        safeCall(() => vm.updateSortArrowsAfterRefresh?.(), 'vmRender:sortArrows');
       }
-      // DOM handlers and sync via render layer's callback are already wired in setupDomCallbacks()
-      try { vm.processQueuedExpandCollapseAll && vm.processQueuedExpandCollapseAll(); } catch (e) { logError(ErrorCategory.RENDER, 'vmRender', e);
-        // Ignore expand/collapse queue processing errors
-      }
+
+      safeCall(() => vm.processQueuedExpandCollapseAll?.(), 'vmRender:queuedExpand');
       return true;
-    } catch (error) {
-      console.error('❌ Virtual Manager: Render error', error);
+    } catch (e) {
+      logError(ErrorCategory.RENDER, 'vmRender:initial', e);
       return false;
     }
   }
+
   function refreshVirtualTable() {
     if (!vm.lazyData || !vm.adapter) return;
 
     try {
-      // Preserve container and window scroll to avoid jumps
-      const container = document.getElementById('virtual-scroll-container');
-      const prevCX = container ? container.scrollLeft : null;
-      const prevCY = container ? container.scrollTop : null;
-      const prevWinY = window.scrollY;
-      const prevWinX = window.scrollX;
-      try { if (container) container.style.overflowAnchor = 'none'; } catch(e) { logError(ErrorCategory.RENDER, 'vmRender', e); }
+      const container = document.getElementById(CONTAINER_ID);
+      const savedScroll = {
+        x: container?.scrollLeft ?? 0,
+        y: container?.scrollTop ?? 0,
+        winX: window.scrollX,
+        winY: window.scrollY
+      };
 
-      const visibleData = vm.selectors ? vm.selectors.getLazyVisibleData() : vm.getLazyVisibleData();
-      const ok = vm.adapter.setData(visibleData);
-      if (ok) {
-        try { vm.syncExpandCollapseAllButtonLabel && vm.syncExpandCollapseAllButtonLabel(); } catch (e) { logError(ErrorCategory.RENDER, 'vmRender', e);}
+      if (container) container.style.overflowAnchor = 'none';
+
+      if (vm.adapter.setData(getVisibleData(vm))) {
+        safeCall(() => vm.syncExpandCollapseAllButtonLabel?.(), 'vmRender:syncBtn');
       }
-      
-      // Restore scroll positions immediately and on next frame
+
+      // restore scroll
       const restore = () => {
-        try {
-          if (container && prevCY != null) container.scrollTop = prevCY;
-          if (container && prevCX != null) container.scrollLeft = prevCX;
-          if (window.scrollY !== prevWinY || window.scrollX !== prevWinX) {
-            window.scrollTo(prevWinX, prevWinY);
-          }
-          if (container) container.style.overflowAnchor = '';
-        } catch(e) { logError(ErrorCategory.RENDER, 'vmRender', e); }
+        if (container) {
+          container.scrollTop = savedScroll.y;
+          container.scrollLeft = savedScroll.x;
+          container.style.overflowAnchor = '';
+        }
+        if (window.scrollY !== savedScroll.winY || window.scrollX !== savedScroll.winX) {
+          window.scrollTo(savedScroll.winX, savedScroll.winY);
+        }
       };
       restore();
       requestAnimationFrame(restore);
     } catch (e) {
-      console.warn('render.refreshVirtualTable error', e);
+      logError(ErrorCategory.RENDER, 'vmRender:refresh', e);
     }
   }
 
   function forceImmediateRender() {
-    if (!vm.adapter) return;
-    try { vm.adapter.forceRender(); } catch (e) { logError(ErrorCategory.RENDER, 'vmRender', e);
-      // Ignore force render errors
-    }
+    safeCall(() => vm.adapter?.forceRender?.(), 'vmRender:force');
   }
 
   function setupDomCallbacks() {
-    if (!vm.adapter || typeof vm.adapter.setDOMUpdateCallback !== 'function') return;
+    if (typeof vm.adapter?.setDOMUpdateCallback !== 'function') return;
+
     vm.adapter.setDOMUpdateCallback(() => {
-      try { bindToggleHandlers(vm); } catch (e) { logError(ErrorCategory.RENDER, 'vmRender', e);
-        // Ignore toggle binding errors
-      }
-      try { bindDblClickHandlers(vm); } catch (e) { logError(ErrorCategory.RENDER, 'vmRender', e);
-        // Ignore double-click binding errors
-      }
-      try { vm.updateAllToggleButtons && vm.updateAllToggleButtons(); } catch (e) { logError(ErrorCategory.RENDER, 'vmRender', e);
-        // Ignore toggle update errors
-      }
-      try { vm.syncFloatingHeader && vm.syncFloatingHeader(); } catch (e) { logError(ErrorCategory.RENDER, 'vmRender', e);
-        // Ignore header sync errors
-      }
-      try { if (window.restoreFilterFocusIfPending) window.restoreFilterFocusIfPending(); } catch (e) { logError(ErrorCategory.RENDER, 'vmRender', e);
-        // Ignore focus restore errors
-      }
-      try { initTooltips(); } catch (e) { logError(ErrorCategory.RENDER, 'vmRender', e);
-        // Ignore tooltip init errors
-      }
-      try { connectFilterEventHandlers(); } catch (e) { logError(ErrorCategory.RENDER, 'vmRender', e);
-        // Ignore filter event handler errors
-      }
+      safeCall(() => bindToggleHandlers(vm), 'vmRender:toggleHandlers');
+      safeCall(() => bindDblClickHandlers(vm), 'vmRender:dblClickHandlers');
+      safeCall(() => vm.updateAllToggleButtons?.(), 'vmRender:updateToggles');
+      safeCall(() => vm.syncFloatingHeader?.(), 'vmRender:syncHeader');
+      safeCall(() => window.restoreFilterFocusIfPending?.(), 'vmRender:restoreFocus');
+      safeCall(() => initTooltips(), 'vmRender:tooltips');
+      safeCall(() => connectFilterEventHandlers(), 'vmRender:filterHandlers');
     });
   }
 
-  function teardown() {
-    // no-op for now; kept for symmetry/future
-  }
+  function teardown() {}
 
   return { initialRender, refreshVirtualTable, forceImmediateRender, setupDomCallbacks, teardown };
 }

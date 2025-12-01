@@ -1,5 +1,5 @@
-// Virtual Table Adapter Module - Single Responsibility: Bridge Virtual Scroller with Table System
-// Localized comments in English as requested
+// static/js/virtual/virtual-adapter.js
+// Responsibility: Bridge VirtualScroller with table rendering system
 
 import { VirtualScroller } from './virtual-scroller.js';
 import { isMainExpanded, isPeerExpanded } from '../state/expansionState.js';
@@ -7,10 +7,46 @@ import { getContainer, getSpacer, getTbody, getTable } from './selectors/dom-sel
 import { parseNum, computeDeltaPercent, pickDeltaDisplay, formatMetricValue, getAnomalyClass } from '../utils/metrics.js';
 import { logError, ErrorCategory } from '../utils/errorLogger.js';
 
-/**
- * Virtual Table Adapter
- * Responsibility: Bridge between virtual scroller and existing table rendering system
- */
+// ─────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────
+
+const DEFAULT_ROW_HEIGHT = 40;
+const DEFAULT_BUFFER_SIZE = 5;
+const METRICS = ['Min', 'ACD', 'ASR', 'SCall', 'TCall'];
+
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
+
+const pad2 = n => String(n).padStart(2, '0');
+const escapeAttr = v => (v ?? '').toString();
+
+function formatTime(date) {
+  if (!date) return '00:00';
+  const d = new Date(date);
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+function formatDate(date) {
+  if (!date) return '00:00:0000';
+  const d = new Date(date);
+  return `${pad2(d.getDate())}:${pad2(d.getMonth() + 1)}:${d.getFullYear()}`;
+}
+
+function toggleBtn(groupId, expanded) {
+  return `<button class="toggle-btn" data-target-group="${groupId}">${expanded ? '−' : '+'}</button>`;
+}
+
+function cell(cls, filterVal, content, attrs = '') {
+  const fv = escapeAttr(filterVal);
+  return `<td role="cell" class="${cls}" data-filter-value="${fv}" data-full-text="${fv}" ${attrs}>${content}</td>`;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Class
+// ─────────────────────────────────────────────────────────────
+
 export class VirtualTableAdapter {
   constructor() {
     this.virtualScroller = null;
@@ -18,9 +54,6 @@ export class VirtualTableAdapter {
     this.domUpdateCallback = null;
   }
 
-  /**
-   * Initialize virtual table with existing DOM structure
-   */
   initialize() {
     const container = getContainer();
     const spacer = getSpacer();
@@ -28,259 +61,124 @@ export class VirtualTableAdapter {
     const table = getTable();
 
     if (!container || !spacer || !tbody || !table) {
-      console.warn('Virtual Table Adapter: Required DOM elements not found');
+      logError(ErrorCategory.TABLE, 'virtualAdapter:init', 'Missing required DOM elements');
       return false;
     }
 
     this.virtualScroller = new VirtualScroller({
-      container,
-      spacer,
-      tbody,
-      table,
-      rowHeight: 40,
-      bufferSize: 5,
-      renderRow: (rowData) => this.renderTableRow(rowData),
-      onDOMUpdate: () => this.onDOMUpdated()
+      container, spacer, tbody, table,
+      rowHeight: DEFAULT_ROW_HEIGHT,
+      bufferSize: DEFAULT_BUFFER_SIZE,
+      renderRow: rowData => this.renderTableRow(rowData),
+      onDOMUpdate: () => this.domUpdateCallback?.()
     });
 
-    const initialized = this.virtualScroller.initialize();
-    this.isActive = initialized;
-    
-    return initialized;
+    this.isActive = this.virtualScroller.initialize();
+    return this.isActive;
   }
 
-  /**
-   * Set callback for DOM updates
-   */
-  setDOMUpdateCallback(callback) {
-    this.domUpdateCallback = callback;
-  }
+  setDOMUpdateCallback(callback) { this.domUpdateCallback = callback; }
 
-  /**
-   * Called when virtual scroller updates DOM
-   */
-  onDOMUpdated() {
-    if (this.domUpdateCallback) {
-      this.domUpdateCallback();
-    }
-  }
-
-  /**
-   * Set data for virtual rendering
-   */
   setData(data) {
-    if (!this.virtualScroller) {
-      console.warn('Virtual Table Adapter: Not initialized');
-      return false;
-    }
-
+    if (!this.virtualScroller) return false;
     this.virtualScroller.setData(data);
-    try { this.virtualScroller.render(true); } catch (e) { logError(ErrorCategory.TABLE, 'virtualAdapter', e); /* no-op */ }
+    try { this.virtualScroller.render(true); } catch (e) { logError(ErrorCategory.TABLE, 'virtualAdapter:setData', e); }
     return true;
   }
 
-  /**
-   * Force immediate re-render (for toggle operations)
-   */
   forceRender() {
-    if (!this.virtualScroller) {
-      console.warn('Virtual Table Adapter: Not initialized');
-      return false;
-    }
-    
-
-    this.virtualScroller.render(true); // forceRender = true
+    if (!this.virtualScroller) return false;
+    this.virtualScroller.render(true);
     return true;
   }
 
-  /**
-   * Render a single table row - integrates with existing table styling and tooltips
-   */
   renderTableRow(rowData) {
-    // IMPORTANT: VirtualScroller creates the <tr> element and sets its innerHTML.
-    // Therefore, this method must return ONLY the inner <td> cells, not a full <tr>.
-    const cells = this.generateRowCells(rowData);
-    return cells.join('');
-  }
-
-  /**
-   * Get CSS class for row based on its type
-   */
-  getRowClass(rowData) {
-    if (rowData.level === 0) return 'main-row';
-    if (rowData.level === 1) return 'peer-row';
-    if (rowData.level === 2) return 'hour-row';
+    if (rowData.level === 0) return this._mainRowHTML(rowData);
+    if (rowData.level === 1) return this._peerRowHTML(rowData);
+    if (rowData.level === 2) return this._hourlyRowHTML(rowData);
     return '';
   }
 
-  /**
-   * Generate all cells for a row
-   */
-  generateRowCells(rowData) {
-    const cells = [];
+  // ─────────────────────────────────────────────────────────────
+  // Row HTML generators
+  // ─────────────────────────────────────────────────────────────
 
-    if (rowData.level === 0) {
-      // Main row
-      cells.push(this.generateMainRowHTML(rowData));
-    } else if (rowData.level === 1) {
-      // Peer row
-      cells.push(this.generatePeerRowHTML(rowData));
-    } else if (rowData.level === 2) {
-      // Hourly row
-      cells.push(this.generateHourlyRowHTML(rowData));
-    }
-
-    return cells;
-  }
-
-  /**
-   * Generate main row HTML
-   */
-  generateMainRowHTML(rowData) {
-    const metricCells = this.generateMetricCells(rowData);
-    const toggle = isMainExpanded(rowData.groupId) ? '−' : '+';
-    const toggleBtn = `<button class="toggle-btn" data-target-group="${rowData.groupId}">${toggle}</button>`;
-
-    
+  _mainRowHTML(r) {
+    const btn = toggleBtn(r.groupId, isMainExpanded(r.groupId));
     return [
-      `<td role="cell" class="main-cell" data-filter-value="${rowData.main || ''}" data-full-text="${rowData.main || ''}">${toggleBtn} ${rowData.main || ''}</td>`,
+      cell('main-cell', r.main, `${btn} ${r.main || ''}`),
       `<td role="cell" class="peer-cell" data-filter-value=""></td>`,
-      `<td role="cell" class="destination-cell" data-filter-value="${rowData.destination || ''}" data-full-text="${rowData.destination || ''}">${rowData.destination || ''}</td>`,
-      ...metricCells
+      cell('destination-cell', r.destination, r.destination || ''),
+      ...this._metricCells(r)
     ].join('');
   }
 
-  /**
-   * Generate peer row HTML
-   */
-  generatePeerRowHTML(rowData) {
-    const metricCells = this.generateMetricCells(rowData);
-    const toggle = isPeerExpanded(rowData.groupId) ? '−' : '+';
-    const toggleBtn = `<button class="toggle-btn" data-target-group="${rowData.groupId}">${toggle}</button>`;
-    
+  _peerRowHTML(r) {
+    const btn = toggleBtn(r.groupId, isPeerExpanded(r.groupId));
     return [
       `<td role="cell" class="toggle-cell"></td>`,
-      `<td role="cell" class="peer-cell" data-filter-value="${rowData.peer || ''}" data-full-text="${rowData.peer || ''}">${toggleBtn} ${rowData.peer || ''}</td>`,
-      `<td role="cell" class="destination-cell" data-filter-value="${rowData.destination || ''}" data-full-text="${rowData.destination || ''}">${rowData.destination || ''}</td>`,
-      ...metricCells
+      cell('peer-cell', r.peer, `${btn} ${r.peer || ''}`),
+      cell('destination-cell', r.destination, r.destination || ''),
+      ...this._metricCells(r)
     ].join('');
   }
 
-  /**
-   * Generate hourly row HTML
-   */
-  generateHourlyRowHTML(rowData) {
-    const metricCells = this.generateMetricCells(rowData);
-    const timeKey = this.formatDateToKey(rowData.date);
-    const dateKey = this.formatDateToDateKey(rowData.date);
-    
+  _hourlyRowHTML(r) {
+    const time = formatTime(r.date);
+    const date = formatDate(r.date);
     return [
-      `<td role="cell" class="main-cell hour-datetime" data-filter-value="${dateKey} ${timeKey}">
-        <div class="hour-datetime-inner">
-          <span class="date-part">${dateKey}</span>
-          <span class="time-part">${timeKey}</span>
-        </div>
+      `<td role="cell" class="main-cell hour-datetime" data-filter-value="${date} ${time}">
+        <div class="hour-datetime-inner"><span class="date-part">${date}</span><span class="time-part">${time}</span></div>
       </td>`,
-      `<td role="cell" class="peer-cell" data-filter-value="${rowData.peer || ''}" data-full-text="${rowData.peer || ''}">${rowData.peer || ''}</td>`,
-      `<td role="cell" class="destination-cell" data-filter-value="${rowData.destination || ''}" data-full-text="${rowData.destination || ''}">${rowData.destination || ''}</td>`,
-      ...metricCells
+      cell('peer-cell', r.peer, r.peer || ''),
+      cell('destination-cell', r.destination, r.destination || ''),
+      ...this._metricCells(r)
     ].join('');
   }
 
-  /**
-   * Format date to time key (HH:MM)
-   */
-  formatDateToKey(date) {
-    if (!date) return '00:00';
-    const d = new Date(date);
-    const hours = d.getHours().toString().padStart(2, '0');
-    const minutes = d.getMinutes().toString().padStart(2, '0');
-    return `${hours}:${minutes}`;
-  }
+  // ─────────────────────────────────────────────────────────────
+  // Metric cells
+  // ─────────────────────────────────────────────────────────────
 
-  /**
-   * Format date to date key (DD:MM:YYYY)
-   */
-  formatDateToDateKey(date) {
-    if (!date) return '00:00:0000';
-    const d = new Date(date);
-    const day = d.getDate().toString().padStart(2, '0');
-    const month = (d.getMonth() + 1).toString().padStart(2, '0');
-    const year = d.getFullYear();
-    return `${day}:${month}:${year}`;
-  }
-
-  /**
-   * Generate metric cells with correct order and tooltip support
-   */
-  generateMetricCells(rowData) {
-    const metrics = ["Min", "ACD", "ASR", "SCall", "TCall"];
+  _metricCells(r) {
     const cells = [];
 
+    for (const m of METRICS) {
+      const val = parseNum(r[m]);
+      const yVal = parseNum(r[`Y${m}`]);
+      const delta = computeDeltaPercent(val, yVal);
+      const anomaly = getAnomalyClass(m, val, yVal, delta);
 
+      let cls = `metric-cell ${anomaly}`;
+      let attrs = '';
 
-    metrics.forEach((metricName) => {
-      const valueNum = parseNum(rowData[metricName]);
-      const yNum = parseNum(rowData[`Y${metricName}`]);
-      const providedDelta = rowData[`${metricName}_delta`];
-
-      const deltaPercent = computeDeltaPercent(valueNum, yNum);
-      const anomalyClass = getAnomalyClass(metricName, valueNum, yNum, deltaPercent);
-
-      // Main value cell with special handling for ASR (tooltips)
-      let mainCellClass = `metric-cell ${anomalyClass}`;
-      let mainCellAttributes = '';
-      if (metricName === 'ASR') {
-        mainCellClass += ' asr-cell-hover';
-        // Compute average ATime per successful call if possible
-        let atimeAvgStr = 'N/A';
-        const atimeNum = parseNum(rowData.ATime);
-        const sCallNum = parseNum(rowData.SCall);
-        if (Number.isFinite(atimeNum) && Number.isFinite(sCallNum) && sCallNum > 0) {
-          const avg = atimeNum / sCallNum;
-          atimeAvgStr = Number.isFinite(avg) ? avg.toFixed(2) : 'N/A';
-        } else if (Number.isFinite(atimeNum)) {
-          atimeAvgStr = atimeNum.toFixed(2);
-        }
-        mainCellAttributes = `data-pdd="${rowData.PDD || 'N/A'}" data-atime="${atimeAvgStr}"`;
+      if (m === 'ASR') {
+        cls += ' asr-cell-hover';
+        const atime = parseNum(r.ATime);
+        const scall = parseNum(r.SCall);
+        const avg = (Number.isFinite(atime) && Number.isFinite(scall) && scall > 0)
+          ? (atime / scall).toFixed(2)
+          : (Number.isFinite(atime) ? atime.toFixed(2) : 'N/A');
+        attrs = `data-pdd="${r.PDD || 'N/A'}" data-atime="${avg}"`;
       }
 
-      const displayValue = formatMetricValue(metricName, rowData[metricName]);
-      cells.push(`<td role="cell" class="${mainCellClass}" ${mainCellAttributes}>${displayValue}</td>`);
+      cells.push(`<td role="cell" class="${cls}" ${attrs}>${formatMetricValue(m, r[m])}</td>`);
+      cells.push(`<td role="cell" class="metric-cell" data-y-toggleable="true">${formatMetricValue(m, r[`Y${m}`])}</td>`);
 
-      const displayYValue = formatMetricValue(metricName, rowData[`Y${metricName}`]);
-      cells.push(`<td role="cell" class="metric-cell" data-y-toggleable="true">${displayYValue}</td>`);
-
-      const { display: deltaDisplay, className: deltaClass } = pickDeltaDisplay(rowData[metricName], rowData[`Y${metricName}`], providedDelta);
-      cells.push(`<td role="cell" class="metric-cell delta-cell ${deltaClass}">${deltaDisplay}</td>`);
-    });
+      const { display, className } = pickDeltaDisplay(r[m], r[`Y${m}`], r[`${m}_delta`]);
+      cells.push(`<td role="cell" class="metric-cell delta-cell ${className}">${display}</td>`);
+    }
 
     return cells;
   }
 
-  /**
-   * Get anomaly CSS class for metric cell
-   */
-  // getAnomalyClass method removed: using imported utility getAnomalyClass from '../utils/metrics.js'
-
-  /**
-   * Get current status
-   */
   getStatus() {
-    return {
-      active: this.isActive,
-      scroller: this.virtualScroller ? this.virtualScroller.getStatus() : null
-    };
+    return { active: this.isActive, scroller: this.virtualScroller?.getStatus() ?? null };
   }
 
-  /**
-   * Destroy virtual table adapter
-   */
   destroy() {
-    if (this.virtualScroller) {
-      this.virtualScroller.destroy();
-      this.virtualScroller = null;
-    }
+    this.virtualScroller?.destroy();
+    this.virtualScroller = null;
     this.isActive = false;
   }
 }

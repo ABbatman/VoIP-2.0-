@@ -1,63 +1,87 @@
 // static/js/table/features/sortControl.js
-// Ответственность: безопасно применять сортировку в стандартном и виртуальном режимах,
-// сохраняя состояние раскрытия групп и избегая двойных рендеров.
+// Responsibility: Apply sorting in standard and virtual modes
+import { getState, setMultiSort } from '../../state/tableState.js';
+import { renderCoordinator } from '../../rendering/render-coordinator.js';
+import { getVirtualManager } from '../../state/moduleRegistry.js';
+import { logError, ErrorCategory } from '../../utils/errorLogger.js';
 
-import { getState, setMultiSort } from "../../state/tableState.js";
-import { renderCoordinator } from "../../rendering/render-coordinator.js";
-import { getVirtualManager } from "../../state/moduleRegistry.js";
-import { logError, ErrorCategory } from "../../utils/errorLogger.js";
+// ─────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────
 
-function computeNextMultiSort(current, key, _textFields) {
+const MAX_SORT_KEYS = 3;
+const SORT_DEBOUNCE_MS = 120;
+const SCROLL_CONTAINER_ID = 'virtual-scroll-container';
+const SCROLL_CONTAINER_SELECTOR = '.results-display__table-wrapper';
+
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
+
+function computeNextMultiSort(current, key) {
   let ms = Array.isArray(current) ? [...current] : [];
-  const found = ms.find((s) => s.key === key);
+  const found = ms.find(s => s.key === key);
+
   if (!found) {
+    // new key — add at front
     ms.unshift({ key, dir: 'asc' });
-  } else if (ms[0] && ms[0].key === key) {
-    found.dir = (found.dir === 'asc') ? 'desc' : 'asc';
+  } else if (ms[0]?.key === key) {
+    // toggle direction if already primary
+    found.dir = found.dir === 'asc' ? 'desc' : 'asc';
   } else {
-    const rest = ms.filter((s) => s.key !== key);
-    const promoted = { key: found.key, dir: 'asc' };
-    ms = [promoted, ...rest];
+    // promote to primary with asc
+    ms = [{ key, dir: 'asc' }, ...ms.filter(s => s.key !== key)];
   }
-  return ms.slice(0, 3);
+
+  return ms.slice(0, MAX_SORT_KEYS);
 }
 
-function isVirtual() {
-  const vm = getVirtualManager();
-  return !!(vm && vm.isActive);
+function getScrollContainer() {
+  return document.getElementById(SCROLL_CONTAINER_ID) ||
+         document.querySelector(SCROLL_CONTAINER_SELECTOR);
 }
+
+async function renderStandardTable() {
+  const tb = document.getElementById('tableBody');
+  if (tb) tb.innerHTML = '';
+
+  const mod = await import('../../dom/table.js');
+  const app = await import('../../data/tableProcessor.js');
+  const { getMetricsData } = await import('../../state/appState.js');
+
+  const data = getMetricsData();
+  const { pagedData } = app.getProcessedData();
+  mod.renderGroupedTable(pagedData || [], data?.peer_rows || [], data?.hourly_rows || []);
+}
+
+// ─────────────────────────────────────────────────────────────
+// Public API
+// ─────────────────────────────────────────────────────────────
 
 export async function applySortSafe(key) {
-  const { multiSort, textFields } = getState();
-  const next = computeNextMultiSort(multiSort, key, textFields || []);
-  
-  const scrollContainer = document.getElementById('virtual-scroll-container') || 
-                          document.querySelector('.results-display__table-wrapper');
-  const savedScrollTop = scrollContainer ? scrollContainer.scrollTop : 0;
-  
+  const { multiSort } = getState();
+  const next = computeNextMultiSort(multiSort, key);
+
+  const scrollContainer = getScrollContainer();
+  const savedScrollTop = scrollContainer?.scrollTop ?? 0;
+
   await renderCoordinator.requestRender('table', async () => {
     try {
       setMultiSort(next);
+
       const vm = getVirtualManager();
-      if (vm && vm.isActive) {
+      if (vm?.isActive) {
         vm.refreshVirtualTable();
         requestAnimationFrame(() => {
           if (scrollContainer) scrollContainer.scrollTop = savedScrollTop;
         });
       } else {
-        // Standard mode
-        const tb = document.getElementById('tableBody');
-        if (tb) tb.innerHTML = '';
-        const mod = await import('../../dom/table.js');
-        const app = await import('../../data/tableProcessor.js');
-        const { getMetricsData } = await import('../../state/appState.js');
-        const data = getMetricsData();
-        const { pagedData } = app.getProcessedData();
-        mod.renderGroupedTable(pagedData || [], data?.peer_rows || [], data?.hourly_rows || []);
+        await renderStandardTable();
       }
-    } catch (e) { logError(ErrorCategory.TABLE, 'sortControl', e);
-      // Ignore render errors
+    } catch (e) {
+      logError(ErrorCategory.TABLE, 'sortControl:applySortSafe', e);
     }
-  }, { debounceMs: 120, cooldownMs: 0 }); // user-driven sort must not be throttled by cooldown
+  }, { debounceMs: SORT_DEBOUNCE_MS, cooldownMs: 0 });
+
   return true;
 }

@@ -1,19 +1,23 @@
 // static/js/virtual/scroller/measurement.js
-// Responsibility: row height measurement and spacer correction
+// Responsibility: Row height measurement and spacer correction
 import { getVirtualConfig } from '../../config/virtual-config.js';
 import { logError, ErrorCategory } from '../../utils/errorLogger.js';
 
+// ─────────────────────────────────────────────────────────────
+// Public API
+// ─────────────────────────────────────────────────────────────
+
 export function recomputeRowHeight(vm) {
-  const fixedHeight = getVirtualConfig().FIXED_ROW_HEIGHT === true;
-  if (fixedHeight) return;
-  const firstRow = vm.tbody.querySelector('tr');
+  if (getVirtualConfig().FIXED_ROW_HEIGHT) return;
+
+  const firstRow = vm.tbody?.querySelector('tr');
   if (!firstRow) return;
+
   const real = Math.round(firstRow.getBoundingClientRect().height);
   if (!real || real === vm.rowHeight) return;
+
   vm.rowHeight = real;
-  const corrected = vm.data.length * vm.rowHeight;
-  vm.spacer.style.height = `${corrected}px`;
-  try { vm.render(true); } catch (e) { logError(ErrorCategory.SCROLL, 'measurement', e);
-    // Ignore measurement errors
-  }
+  vm.spacer.style.height = `${vm.data.length * vm.rowHeight}px`;
+
+  try { vm.render(true); } catch (e) { logError(ErrorCategory.SCROLL, 'measurement', e); }
 }

@@ -1,39 +1,101 @@
 // static/js/virtual/manager/data-cache.js
-// Layer: data + cache helpers (indices, keys, caches lifecycle)
-
+// Responsibility: Data indices and cache lifecycle for virtualization
 import { getState } from '../../state/tableState.js';
 import { logError, ErrorCategory } from '../../utils/errorLogger.js';
 
-function sanitizeIdPart(x) {
-  return (x ?? '').toString().replace(/\s+/g, '-').replace(/[^a-z0-9\-_.]/gi, '');
-}
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
+
+const sanitize = x => (x ?? '').toString().replace(/\s+/g, '-').replace(/[^a-z0-9\-_.]/gi, '');
+const buildId = (prefix, ...parts) => `${prefix}-${parts.map(sanitize).join('-')}`;
+
+// ─────────────────────────────────────────────────────────────
+// Attach to VirtualManager
+// ─────────────────────────────────────────────────────────────
 
 export function attachData(vm) {
+  // ensure caches exist
   function ensureCaches() {
-    if (!vm._mainFilterPass) vm._mainFilterPass = new Map();
-    if (!vm._peerRowsCache) vm._peerRowsCache = new Map();
-    if (!vm._hourlyRowsCache) vm._hourlyRowsCache = new Map();
-    if (!vm.openMainGroups) vm.openMainGroups = new Set();
-    if (!vm.openHourlyGroups) vm.openHourlyGroups = new Set();
+    vm._mainFilterPass ??= new Map();
+    vm._peerRowsCache ??= new Map();
+    vm._hourlyRowsCache ??= new Map();
+    vm.openMainGroups ??= new Set();
+    vm.openHourlyGroups ??= new Set();
+  }
+
+  function clearCaches() {
+    vm._filterSortKey = '';
+    vm._mainFilterPass.clear();
+    vm._peerRowsCache.clear();
+    vm._hourlyRowsCache.clear();
   }
 
   function _computeFilterSortKey() {
     try {
       const state = getState();
-      const tableState = vm.sorting && vm.sorting.getCurrentTableState ? vm.sorting.getCurrentTableState() : { multiSort: [] };
+      const sortState = vm.sorting?.getCurrentTableState?.() || { multiSort: [] };
       return JSON.stringify({
         columnFilters: state.columnFilters || {},
         global: (state.globalFilterQuery || '').trim().toLowerCase(),
-        sort: tableState.multiSort || []
+        sort: sortState.multiSort || []
       });
-    } catch (e) { logError(ErrorCategory.TABLE, 'dataCache', e);
+    } catch (e) {
+      logError(ErrorCategory.TABLE, 'dataCache:filterSortKey', e);
       return '';
     }
   }
 
+  // ───────────────────────────────────────────────────────────
+  // Index builders
+  // ───────────────────────────────────────────────────────────
+
+  function createMainIndex(rows) {
+    return (rows || []).map((row, index) => ({
+      index,
+      groupId: buildId('main', row.main, row.destination),
+      main: row.main,
+      destination: row.destination,
+      level: 0,
+      hasChildren: true
+    }));
+  }
+
+  function createPeerIndex(rows) {
+    return (rows || []).map((row, index) => ({
+      index,
+      groupId: buildId('peer', row.main, row.peer, row.destination),
+      parentId: buildId('main', row.main, row.destination),
+      main: row.main,
+      peer: row.peer,
+      destination: row.destination,
+      level: 1,
+      hasChildren: true
+    }));
+  }
+
+  function createHourlyIndex(rows) {
+    return (rows || []).map((row, index) => ({
+      index,
+      groupId: buildId('hour', row.main, row.peer, row.destination, index),
+      parentId: buildId('peer', row.main, row.peer, row.destination),
+      main: row.main,
+      peer: row.peer,
+      destination: row.destination,
+      date: row.date || row.Date || row.time || row.datetime || row.timestamp,
+      level: 2,
+      hasChildren: false
+    }));
+  }
+
+  // ───────────────────────────────────────────────────────────
+  // Init
+  // ───────────────────────────────────────────────────────────
+
   function initializeLazyData() {
     ensureCaches();
-    const { mainRows, peerRows, hourlyRows } = vm.rawData || { mainRows: [], peerRows: [], hourlyRows: [] };
+    const { mainRows = [], peerRows = [], hourlyRows = [] } = vm.rawData || {};
+
     vm.lazyData = {
       mainRowsCount: mainRows.length,
       peerRowsCount: peerRows.length,
@@ -42,56 +104,13 @@ export function attachData(vm) {
       peerIndex: createPeerIndex(peerRows),
       hourlyIndex: createHourlyIndex(hourlyRows)
     };
-    // Reset caches when data changes
-    vm._filterSortKey = '';
-    vm._mainFilterPass.clear();
-    vm._peerRowsCache.clear();
-    vm._hourlyRowsCache.clear();
+
+    clearCaches();
   }
 
-  function createMainIndex(mainRows) {
-    return (mainRows || []).map((row, index) => ({
-      index,
-      groupId: `main-${sanitizeIdPart(row.main)}-${sanitizeIdPart(row.destination)}`,
-      main: row.main,
-      destination: row.destination,
-      level: 0,
-      hasChildren: true
-    }));
-  }
-
-  function createPeerIndex(peerRows) {
-    return (peerRows || []).map((row, globalIndex) => {
-      const parentId = `main-${sanitizeIdPart(row.main)}-${sanitizeIdPart(row.destination)}`;
-      return {
-        index: globalIndex,
-        groupId: `peer-${sanitizeIdPart(row.main)}-${sanitizeIdPart(row.peer)}-${sanitizeIdPart(row.destination)}`,
-        parentId,
-        main: row.main,
-        peer: row.peer,
-        destination: row.destination,
-        level: 1,
-        hasChildren: true
-      };
-    });
-  }
-
-  function createHourlyIndex(hourlyRows) {
-    return (hourlyRows || []).map((row, index) => {
-      const parentId = `peer-${sanitizeIdPart(row.main)}-${sanitizeIdPart(row.peer)}-${sanitizeIdPart(row.destination)}`;
-      return {
-        index,
-        groupId: `hour-${sanitizeIdPart(row.main)}-${sanitizeIdPart(row.peer)}-${sanitizeIdPart(row.destination)}-${index}`,
-        parentId,
-        main: row.main,
-        peer: row.peer,
-        destination: row.destination,
-        date: row.date || row.Date || row.time || row.datetime || row.timestamp,
-        level: 2,
-        hasChildren: false
-      };
-    });
-  }
+  // ───────────────────────────────────────────────────────────
+  // Public API
+  // ───────────────────────────────────────────────────────────
 
   return {
     _computeFilterSortKey,
@@ -101,12 +120,8 @@ export function attachData(vm) {
     createHourlyIndex,
     getTotalDataCount: () => {
       const ld = vm.lazyData;
-      if (!ld) return 0;
-      return (ld.mainRowsCount || 0) + (ld.peerRowsCount || 0) + (ld.hourlyRowsCount || 0);
+      return ld ? (ld.mainRowsCount || 0) + (ld.peerRowsCount || 0) + (ld.hourlyRowsCount || 0) : 0;
     },
-    getMainRowLazy: (index) => {
-      const rows = (vm.rawData && vm.rawData.mainRows) ? vm.rawData.mainRows : [];
-      return rows[index];
-    },
+    getMainRowLazy: index => vm.rawData?.mainRows?.[index]
   };
 }
