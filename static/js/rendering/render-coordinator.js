@@ -1,9 +1,17 @@
 // static/js/rendering/render-coordinator.js
-// Responsibility: serialize table renders (no races), de-duplicate same-kind requests in a short window
+// Responsibility: Serialize renders, debounce, prevent races
 import { setRenderingInProgress } from '../state/runtimeFlags.js';
-import { logError, ErrorCategory } from '../utils/errorLogger.js';
 
-const DEFAULT_DEBOUNCE_MS = 500; // coalesce sequential triggers from different sources
+// ─────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────
+
+const DEFAULT_DEBOUNCE_MS = 500;
+const DEFAULT_COOLDOWNS = { table: 800 };
+
+// ─────────────────────────────────────────────────────────────
+// RenderCoordinator class
+// ─────────────────────────────────────────────────────────────
 
 class RenderCoordinator {
   constructor() {
@@ -11,87 +19,90 @@ class RenderCoordinator {
     this._processing = false;
     this._pendingByKind = new Map();
     this._debounceMs = DEFAULT_DEBOUNCE_MS;
-    this._cooldownMsByKind = { table: 800 };
+    this._cooldownMsByKind = { ...DEFAULT_COOLDOWNS };
     this._lastCompletedByKind = new Map();
     this._activeKinds = new Set();
   }
 
-  setDebounceMs(ms) { this._debounceMs = Math.max(0, Number(ms) || DEFAULT_DEBOUNCE_MS); }
+  setDebounceMs(ms) {
+    this._debounceMs = Math.max(0, Number(ms) || DEFAULT_DEBOUNCE_MS);
+  }
 
-  // Enqueue a render task. Task must be an async function doing the full pipeline.
   async requestRender(kind, taskFn, options = {}) {
     const now = performance.now();
     const debounceMs = options.debounceMs ?? this._debounceMs;
     const cooldownMs = options.cooldownMs ?? this._cooldownMsByKind[kind] ?? 0;
 
-    // Cooldown: ignore if the same kind completed recently
+    // skip if same kind completed recently
     const lastDone = this._lastCompletedByKind.get(kind) || 0;
     if (cooldownMs && (now - lastDone) <= cooldownMs) {
-      return Promise.resolve(false);
+      return false;
     }
 
-    // Do NOT ignore user-driven requests while active.
-    // Instead, accept the request and either replace the pending task (same kind)
-    // or enqueue a new one to be executed right after the current run.
-
-    // Replace pending task of the same kind if it's within debounce window
+    // replace pending task within debounce window
     const pending = this._pendingByKind.get(kind);
     if (pending && (now - pending.enqueuedAt) <= debounceMs) {
-      pending.taskFn = taskFn; // replace with latest
+      pending.taskFn = taskFn;
       pending.enqueuedAt = now;
       return pending.promise;
     }
 
-    // Create a queue item
-    let resolve, reject;
-    const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
-    const item = { kind, taskFn, enqueuedAt: now, resolve, reject, promise };
-
+    // create queue item
+    const item = this._createQueueItem(kind, taskFn, now);
     this._pendingByKind.set(kind, item);
     this._queue.push(item);
     this._drain();
-    return promise;
+
+    return item.promise;
+  }
+
+  _createQueueItem(kind, taskFn, enqueuedAt) {
+    let resolve, reject;
+    const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
+    return { kind, taskFn, enqueuedAt, resolve, reject, promise };
   }
 
   async _drain() {
     if (this._processing) return;
     this._processing = true;
+
     try {
       while (this._queue.length > 0) {
         const item = this._queue.shift();
-        // If this item was replaced, pick the latest version from map
+
+        // skip stale items
         const latest = this._pendingByKind.get(item.kind);
-        if (latest && latest !== item) {
-          // skip stale item; continue, the latest is still in queue
-          continue;
-        }
-        // Execute single-flight
-        try {
-          // Mark global rendering in progress for table pipeline to let subscribers skip
-          if (item.kind === 'table') {
-            setRenderingInProgress(true);
-          }
-          this._activeKinds.add(item.kind);
-          await item.taskFn();
-          item.resolve(true);
-        } catch (err) {
-          console.warn('[RenderCoordinator] task failed:', err);
-          item.reject(err);
-        } finally {
-          if (item.kind === 'table') {
-            setRenderingInProgress(false);
-          }
-          this._pendingByKind.delete(item.kind);
-          try { this._lastCompletedByKind.set(item.kind, performance.now()); } catch (e) { logError(ErrorCategory.RENDER, 'renderCoordinator', e);
-            // Ignore render coordination errors
-          }
-          this._activeKinds.delete(item.kind);
-        }
+        if (latest && latest !== item) continue;
+
+        await this._executeItem(item);
       }
     } finally {
       this._processing = false;
     }
   }
+
+  async _executeItem(item) {
+    const isTable = item.kind === 'table';
+
+    try {
+      if (isTable) setRenderingInProgress(true);
+      this._activeKinds.add(item.kind);
+
+      await item.taskFn();
+      item.resolve(true);
+    } catch (err) {
+      item.reject(err);
+    } finally {
+      if (isTable) setRenderingInProgress(false);
+      this._pendingByKind.delete(item.kind);
+      this._lastCompletedByKind.set(item.kind, performance.now());
+      this._activeKinds.delete(item.kind);
+    }
+  }
 }
+
+// ─────────────────────────────────────────────────────────────
+// Export singleton
+// ─────────────────────────────────────────────────────────────
 
 export const renderCoordinator = new RenderCoordinator();

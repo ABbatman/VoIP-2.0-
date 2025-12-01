@@ -1,51 +1,90 @@
 // static/js/data/metricsCache.js
+// Responsibility: LRU cache for metrics API responses
 import { logError, ErrorCategory } from '../utils/errorLogger.js';
 
-// Lightweight in-memory LRU cache for metrics responses
-const CACHE = new Map(); // key -> { data, size }
-let BYTES = 0;
+// ─────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────
+
 const MAX_ENTRIES = 12;
 const MAX_BYTES = 2 * 1024 * 1024; // ~2MB
+
+// ─────────────────────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────────────────────
+
+const cache = new Map(); // key -> { data, size }
+let totalBytes = 0;
+
+// ─────────────────────────────────────────────────────────────
+// Key generation
+// ─────────────────────────────────────────────────────────────
 
 export function makeCacheKey(params) {
   try {
     const entries = Object.entries(params)
-      .filter(([_k, v]) => v != null)
+      .filter(([, v]) => v != null)
       .sort(([a], [b]) => a.localeCompare(b));
     return JSON.stringify(entries);
-  } catch (e) { logError(ErrorCategory.STATE, 'metricsCache', e);
+  } catch (e) {
+    logError(ErrorCategory.STATE, 'metricsCache:makeCacheKey', e);
     return null;
   }
 }
 
+// ─────────────────────────────────────────────────────────────
+// Cache operations
+// ─────────────────────────────────────────────────────────────
+
+function touchEntry(key, entry) {
+  cache.delete(key);
+  cache.set(key, entry);
+}
+
+function evictOldest() {
+  const firstKey = cache.keys().next().value;
+  if (!firstKey) return;
+
+  const entry = cache.get(firstKey);
+  cache.delete(firstKey);
+  totalBytes -= entry?.size || 0;
+}
+
+function evictWhileOverBudget() {
+  while (cache.size > MAX_ENTRIES || totalBytes > MAX_BYTES) {
+    evictOldest();
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Public API
+// ─────────────────────────────────────────────────────────────
+
 export function getCachedMetrics(params) {
   const key = makeCacheKey(params);
   if (!key) return null;
-  const hit = CACHE.get(key);
-  if (!hit) return null;
-  // Touch for LRU
-  CACHE.delete(key);
-  CACHE.set(key, hit);
-  return hit.data || null;
+
+  const entry = cache.get(key);
+  if (!entry) return null;
+
+  // touch for LRU
+  touchEntry(key, entry);
+  return entry.data || null;
 }
 
 export function putCachedMetrics(params, data) {
   const key = makeCacheKey(params);
   if (!key) return;
+
   try {
     const json = JSON.stringify(data);
-    const size = json ? json.length : 0;
-    CACHE.set(key, { data, size });
-    BYTES += size;
-    // Evict LRU while over budget
-    while (CACHE.size > MAX_ENTRIES || BYTES > MAX_BYTES) {
-      const firstKey = CACHE.keys().next().value;
-      if (!firstKey) break;
-      const ev = CACHE.get(firstKey);
-      CACHE.delete(firstKey);
-      BYTES -= ev && ev.size ? ev.size : 0;
-    }
-  } catch (e) { logError(ErrorCategory.STATE, 'metricsCache', e);
-    // Cache operation might fail
+    const size = json?.length || 0;
+
+    cache.set(key, { data, size });
+    totalBytes += size;
+
+    evictWhileOverBudget();
+  } catch (e) {
+    logError(ErrorCategory.STATE, 'metricsCache:putCachedMetrics', e);
   }
 }

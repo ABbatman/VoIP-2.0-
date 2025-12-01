@@ -1,28 +1,43 @@
 // static/js/dom/scroll-controls.js
-// Responsibility: Controls related to scrolling actions (e.g., scroll to top)
-import { logError, ErrorCategory } from '../utils/errorLogger.js';
+// Responsibility: Scroll-to-top button handler
+
+// ─────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────
+
+const SCROLL_TOP_BTN_SELECTOR = '.scroll-top-btn';
+const VIRTUAL_CONTAINER_ID = 'virtual-scroll-container';
+
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
+
+function smoothScrollToTop(el) {
+  try {
+    el.scrollTo({ top: 0, behavior: 'smooth' });
+  } catch {
+    // fallback for older browsers
+    if (el === window) {
+      window.scrollTo(0, 0);
+    } else {
+      el.scrollTop = 0;
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Public API
+// ─────────────────────────────────────────────────────────────
 
 export function initScrollControls() {
-  document.addEventListener('click', (event) => {
-    const btn = event.target.closest('.scroll-top-btn');
-    if (!btn) return;
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest(SCROLL_TOP_BTN_SELECTOR)) return;
 
-    // Scroll page and container to top
-    try {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    } catch (e) { logError(ErrorCategory.SCROLL, 'scrollControls', e);
-      window.scrollTo(0, 0);
-    }
+    smoothScrollToTop(window);
 
-    const container = document.getElementById('virtual-scroll-container');
+    const container = document.getElementById(VIRTUAL_CONTAINER_ID);
     if (container) {
-      try {
-        container.scrollTo({ top: 0, behavior: 'smooth' });
-      } catch (e) { logError(ErrorCategory.SCROLL, 'scrollControls', e);
-        container.scrollTop = 0;
-      }
+      smoothScrollToTop(container);
     }
   }, { passive: true });
 }
-
-

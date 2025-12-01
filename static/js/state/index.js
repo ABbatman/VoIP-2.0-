@@ -1,23 +1,20 @@
 // static/js/state/index.js
-// Central export file for all state management modules
+// Responsibility: Central re-export for state modules
 
-// Core state modules
+// ─────────────────────────────────────────────────────────────
+// Core state
+// ─────────────────────────────────────────────────────────────
+
 export * from './appState.js';
 export * from './tableState.js';
 export * from './eventBus.js';
 export * from './urlState.js';
 
+// ─────────────────────────────────────────────────────────────
 // State manager
+// ─────────────────────────────────────────────────────────────
+
 export { stateManager, StateManager } from './stateManager.js';
-
-// Store (centralized facade)
-export * from './store.js';
-
-// Reducers (pure state transforms used by store)
-export * from './reducers/filtersReducer.js';
-export * from './reducers/tableReducer.js';
-
-// Convenience functions
 export {
   getCompleteState,
   saveState,
@@ -28,5 +25,10 @@ export {
   importState
 } from './stateManager.js';
 
-// Example usage
+// ─────────────────────────────────────────────────────────────
+// Store and reducers
+// ─────────────────────────────────────────────────────────────
 
+export * from './store.js';
+export * from './reducers/filtersReducer.js';
+export * from './reducers/tableReducer.js';

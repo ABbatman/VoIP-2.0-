@@ -1,79 +1,66 @@
 // static/js/dom/top-scrollbar.js
+// Responsibility: Top scrollbar sync for wide tables
 
-/**
- * Updates the width and visibility of the top scrollbar based on the main table's state.
- */
+// ─────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────
+
+const IDS = {
+  container: 'top-scrollbar-container',
+  content: 'top-scrollbar-content'
+};
+
+const TABLE_WRAPPER_SELECTOR = '.results-display__table-wrapper';
+const HIDDEN_CLASS = 'is-hidden';
+
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
+
+function getElements() {
+  return {
+    container: document.getElementById(IDS.container),
+    content: document.getElementById(IDS.content),
+    wrapper: document.querySelector(TABLE_WRAPPER_SELECTOR)
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
+// Public API
+// ─────────────────────────────────────────────────────────────
+
 export function updateTopScrollbar() {
-  const topScrollbarContainer = document.getElementById(
-    "top-scrollbar-container"
-  );
-  const topScrollContent = document.getElementById("top-scrollbar-content");
-  const tableWrapper = document.querySelector(
-    ".results-display__table-wrapper"
-  );
+  const { container, content, wrapper } = getElements();
+  if (!container || !content || !wrapper) return;
 
-  if (!topScrollbarContainer || !topScrollContent || !tableWrapper) {
-    return; // Exit if elements are not on the page
-  }
-
-  const table = tableWrapper.querySelector("table");
+  const table = wrapper.querySelector('table');
   if (!table) {
-    // If table is not present, ensure scrollbar is hidden
-    topScrollbarContainer.classList.add("is-hidden");
+    container.classList.add(HIDDEN_CLASS);
     return;
   }
 
   const scrollWidth = table.scrollWidth;
-  const clientWidth = tableWrapper.clientWidth;
+  const clientWidth = wrapper.clientWidth;
 
-  // Set the fake content width to match the real table's scrollable width
-  topScrollContent.style.width = scrollWidth + "px";
-
-  // Show the top scrollbar ONLY if the table is actually wider than its container
-  if (scrollWidth > clientWidth) {
-    topScrollbarContainer.classList.remove("is-hidden");
-  } else {
-    topScrollbarContainer.classList.add("is-hidden");
-  }
+  content.style.width = `${scrollWidth}px`;
+  container.classList.toggle(HIDDEN_CLASS, scrollWidth <= clientWidth);
 }
 
-/**
- * Initializes two-way scroll synchronization and resize listeners.
- */
 export function initTopScrollbar() {
-  const topScrollbarContainer = document.getElementById(
-    "top-scrollbar-container"
-  );
-  const tableWrapper = document.querySelector(
-    ".results-display__table-wrapper"
-  );
+  const { container, wrapper } = getElements();
+  if (!container || !wrapper) return;
 
-  if (!topScrollbarContainer || !tableWrapper) {
-    console.warn("Top scrollbar elements not found. Sync disabled.");
-    return;
-  }
+  window.addEventListener('resize', updateTopScrollbar);
 
-  // Update on window resize
-  window.addEventListener("resize", updateTopScrollbar);
-
-  // Two-way scroll synchronization
-  let isSyncing = false;
+  // two-way sync
+  let syncing = false;
   const syncScroll = (source, target) => {
-    if (isSyncing) return;
-    isSyncing = true;
+    if (syncing) return;
+    syncing = true;
     target.scrollLeft = source.scrollLeft;
-    // Use requestAnimationFrame to prevent race conditions
-    requestAnimationFrame(() => {
-      isSyncing = false;
-    });
+    requestAnimationFrame(() => { syncing = false; });
   };
 
-  topScrollbarContainer.addEventListener("scroll", () =>
-    syncScroll(topScrollbarContainer, tableWrapper)
-  );
-  tableWrapper.addEventListener("scroll", () =>
-    syncScroll(tableWrapper, topScrollbarContainer)
-  );
-
-  console.log("✅ Top scrollbar event listeners initialized.");
+  container.addEventListener('scroll', () => syncScroll(container, wrapper));
+  wrapper.addEventListener('scroll', () => syncScroll(wrapper, container));
 }

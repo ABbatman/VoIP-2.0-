@@ -1,161 +1,240 @@
 // static/js/charts/engine/timeSeriesEngine.js
+// Responsibility: Time series binning and aggregation for charts
+import { parseRowTs } from '../echarts/helpers/dataTransform.js';
 
-import { parseUtc } from '../../utils/date.js';
-import { logError, ErrorCategory } from '../../utils/errorLogger.js';
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
 
-const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const METRIC_NAMES = ['TCalls', 'ASR', 'Minutes', 'ACD'];
+const TIME_KEYS = ['time', 'slot', 'hour', 'Time', 'timestamp'];
 
-function parseRowTs(raw) {
-  let t = NaN;
-  if (raw instanceof Date) return raw.getTime();
-  if (typeof raw === 'number') return Number.isFinite(raw) ? raw : NaN;
-  if (typeof raw === 'string') {
-    try {
-      let s = String(raw).trim().replace(' ', 'T');
-      if (/([+-]\d{2})(\d{2})$/.test(s)) s = s.replace(/([+-]\d{2})(\d{2})$/, '$1:$2');
-      if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(s)) s = s + ':00';
-      const hasTZ = /[zZ]$/.test(s) || /[+-]\d{2}:\d{2}$/.test(s);
-      if (!hasTZ) s = s + 'Z';
-      t = Date.parse(s);
-    } catch (e) { logError(ErrorCategory.CHART, 'timeSeriesEngine', e); }
-    if (!isFinite(t)) {
-      try { t = parseUtc(String(raw)); } catch (e) { logError(ErrorCategory.CHART, 'timeSeriesEngine', e); }
+function clamp(v, lo, hi) {
+  return Math.max(lo, Math.min(hi, v));
+}
+
+function getRowTimestamp(row) {
+  for (const k of TIME_KEYS) {
+    if (row[k] != null) return parseRowTs(row[k]);
+  }
+  return NaN;
+}
+
+function createEmptyBins(count, alignedFrom, stepMs) {
+  return Array.from({ length: count }, (_, i) => ({
+    x: alignedFrom + i * stepMs,
+    sum: 0,
+    count: 0
+  }));
+}
+
+// ─────────────────────────────────────────────────────────────
+// Metric extraction
+// ─────────────────────────────────────────────────────────────
+
+function extractMetrics(row) {
+  return {
+    tcall: Number(row.TCall ?? row.TCalls ?? row.total_calls ?? 0) || 0,
+    asr: Number(row.ASR ?? 0),
+    min: Number(row.Min ?? row.Minutes ?? 0) || 0,
+    acd: Number(row.ACD ?? 0)
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
+// Bin value computation
+// ─────────────────────────────────────────────────────────────
+
+function getBinValue(bin, isAverage) {
+  if (!bin || !bin.count) return null;
+  return isAverage ? bin.sum / bin.count : bin.sum;
+}
+
+function binsToSeries({ binsArr, binCount, alignedFrom, fromTs, toTs, stepMs, isAverage }) {
+  const out = [];
+
+  // add all bins
+  for (let i = 0; i < binCount; i++) {
+    const bin = binsArr[i];
+    if (bin) {
+      out.push({ x: bin.x, y: getBinValue(bin, isAverage) });
     }
   }
-  return Number.isFinite(t) ? t : NaN;
+
+  // add explicit edge points
+  const leftIdx = clamp(Math.floor((fromTs - alignedFrom) / stepMs), 0, binCount - 1);
+  const rightIdx = clamp(Math.floor((toTs - 1 - alignedFrom) / stepMs), 0, binCount - 1);
+
+  const leftBin = binsArr[leftIdx];
+  const rightBin = binsArr[rightIdx];
+
+  if (leftBin) out.push({ x: fromTs, y: getBinValue(leftBin, isAverage) });
+  if (rightBin) out.push({ x: toTs, y: getBinValue(rightBin, isAverage) });
+
+  // sort and dedupe
+  out.sort((a, b) => a.x - b.x);
+
+  const deduped = [];
+  for (const p of out) {
+    if (deduped.length && deduped[deduped.length - 1].x === p.x) {
+      deduped[deduped.length - 1] = p;
+    } else {
+      deduped.push(p);
+    }
+  }
+
+  return deduped;
 }
+
+// ─────────────────────────────────────────────────────────────
+// Main binning function
+// ─────────────────────────────────────────────────────────────
 
 export function computeBinsAndSeries(rows, { fromTs, toTs, stepMs }) {
   const alignedFrom = Math.floor((fromTs - stepMs) / stepMs) * stepMs;
   const alignedTo = Math.ceil((toTs + stepMs) / stepMs) * stepMs;
   const binCount = Math.max(1, Math.ceil((alignedTo - alignedFrom) / stepMs));
-  const makeBins = () => Array.from({ length: binCount }, (_, i) => ({ x: alignedFrom + i * stepMs, sum: 0, count: 0 }));
+
+  // create bins for each metric
   const bins = {
-    TCalls: makeBins(),
-    ASR: makeBins(),
-    Minutes: makeBins(),
-    ACD: makeBins(),
+    TCalls: createEmptyBins(binCount, alignedFrom, stepMs),
+    ASR: createEmptyBins(binCount, alignedFrom, stepMs),
+    Minutes: createEmptyBins(binCount, alignedFrom, stepMs),
+    ACD: createEmptyBins(binCount, alignedFrom, stepMs)
   };
 
   const includeLo = fromTs - 2 * stepMs;
   const includeHi = toTs + 2 * stepMs;
 
-  for (const r of (rows || [])) {
-    const raw = r.time || r.slot || r.hour || r.Time || r.timestamp;
-    const t = parseRowTs(raw);
+  // aggregate rows into bins
+  for (const r of rows || []) {
+    const t = getRowTimestamp(r);
     if (!Number.isFinite(t)) continue;
     if (t < includeLo || t > includeHi) continue;
+
     const idx = clamp(Math.floor((t - alignedFrom) / stepMs), 0, binCount - 1);
-    const tcall = Number(r.TCall ?? r.TCalls ?? r.total_calls ?? 0) || 0;
-    const asr = Number(r.ASR ?? 0);
-    const min = Number(r.Min ?? r.Minutes ?? 0) || 0;
-    const acd = Number(r.ACD ?? 0);
+    const { tcall, asr, min, acd } = extractMetrics(r);
+
     // totals (sum)
-    bins.TCalls[idx].sum += tcall; bins.TCalls[idx].count += 1;
-    bins.Minutes[idx].sum += min; bins.Minutes[idx].count += 1;
+    bins.TCalls[idx].sum += tcall;
+    bins.TCalls[idx].count += 1;
+    bins.Minutes[idx].sum += min;
+    bins.Minutes[idx].count += 1;
+
     // weighted averages
-    const asrW = tcall > 0 ? tcall : 0;
-    if (asrW > 0 && Number.isFinite(asr)) { bins.ASR[idx].sum += asr * asrW; bins.ASR[idx].count += asrW; }
-    const acdW = min > 0 ? min : 0;
-    if (acdW > 0 && Number.isFinite(acd)) { bins.ACD[idx].sum += acd * acdW; bins.ACD[idx].count += acdW; }
+    if (tcall > 0 && Number.isFinite(asr)) {
+      bins.ASR[idx].sum += asr * tcall;
+      bins.ASR[idx].count += tcall;
+    }
+    if (min > 0 && Number.isFinite(acd)) {
+      bins.ACD[idx].sum += acd * min;
+      bins.ACD[idx].count += min;
+    }
   }
 
-  const valOf = (b, avg) => (b && b.count ? (avg ? (b.sum / b.count) : b.sum) : null);
-  const toSeries = (name, avg) => {
-    const out = [];
-    const binsArr = bins[name] || [];
-    for (let i = 0; i < binCount; i++) {
-      const bin = binsArr[i];
-      if (bin) out.push({ x: bin.x, y: valOf(bin, avg) });
-    }
-    // explicit edges
-    const li = clamp(Math.floor((fromTs - alignedFrom) / stepMs), 0, binCount - 1);
-    const ri = clamp(Math.floor(((toTs - 1) - alignedFrom) / stepMs), 0, binCount - 1);
-    const leftBin = binsArr[li];
-    const rightBin = binsArr[ri];
-    if (leftBin) out.push({ x: fromTs, y: valOf(leftBin, avg) });
-    if (rightBin) out.push({ x: toTs, y: valOf(rightBin, avg) });
-    // sort and dedupe by x preferring last
-    out.sort((a,b) => a.x - b.x);
-    const dedup = [];
-    for (const p of out) {
-      if (dedup.length && dedup[dedup.length-1].x === p.x) dedup[dedup.length-1] = p; else dedup.push(p);
-    }
-    return dedup;
-  };
+  // convert bins to series
+  const toSeriesParams = { binCount, alignedFrom, fromTs, toTs, stepMs };
 
   const series = {
-    TCalls: toSeries('TCalls', false),
-    ASR: toSeries('ASR', true),
-    Minutes: toSeries('Minutes', false),
-    ACD: toSeries('ACD', true),
+    TCalls: binsToSeries({ binsArr: bins.TCalls, ...toSeriesParams, isAverage: false }),
+    ASR: binsToSeries({ binsArr: bins.ASR, ...toSeriesParams, isAverage: true }),
+    Minutes: binsToSeries({ binsArr: bins.Minutes, ...toSeriesParams, isAverage: false }),
+    ACD: binsToSeries({ binsArr: bins.ACD, ...toSeriesParams, isAverage: true })
   };
 
   return { bins, series, alignedFrom, alignedTo, binCount };
 }
 
+// ─────────────────────────────────────────────────────────────
+// Data builders
+// ─────────────────────────────────────────────────────────────
+
+function formatTime(ts) {
+  return new Date(ts).toISOString().slice(11, 16);
+}
+
 export function buildBarHybridData(bins, fromTs, toTs, stepMs) {
-  const fmt = (ts) => new Date(ts).toISOString().slice(11,16);
   const tol = stepMs / 2;
-  const bars = (bins.TCalls || []).filter(b => b.x >= (fromTs - tol) && b.x < (toTs + tol)).map(b => ({ x: fmt(b.x), y: b.sum }));
-  const line = (bins.Minutes || []).filter(b => b.x >= (fromTs - tol) && b.x <= (toTs + tol)).map(b => ({ x: b.x, y: b.sum }));
+
+  const bars = (bins.TCalls || [])
+    .filter(b => b.x >= fromTs - tol && b.x < toTs + tol)
+    .map(b => ({ x: formatTime(b.x), y: b.sum }));
+
+  const line = (bins.Minutes || [])
+    .filter(b => b.x >= fromTs - tol && b.x <= toTs + tol)
+    .map(b => ({ x: b.x, y: b.sum }));
+
   return { bars, line };
 }
 
 export function buildHeatmapData(bins) {
   const cellMap = new Map();
-  const keyOf = (day, hhmm) => `${day}|${hhmm}`;
-  (bins.TCalls || []).forEach(b => {
+
+  for (const b of bins.TCalls || []) {
     const d = new Date(b.x);
-    const day = d.toISOString().slice(0,10);
-    const hhmm = d.toISOString().slice(11,16);
-    const k = keyOf(day, hhmm);
-    const prev = cellMap.get(k) || 0;
-    cellMap.set(k, prev + (b.sum || 0));
-  });
-  return Array.from(cellMap.entries()).map(([k, v]) => {
-    const [day, hhmm] = k.split('|');
+    const day = d.toISOString().slice(0, 10);
+    const hhmm = d.toISOString().slice(11, 16);
+    const key = `${day}|${hhmm}`;
+
+    cellMap.set(key, (cellMap.get(key) || 0) + (b.sum || 0));
+  }
+
+  return Array.from(cellMap.entries()).map(([key, v]) => {
+    const [day, hhmm] = key.split('|');
     return { x: hhmm, y: day, v };
   });
 }
 
+// ─────────────────────────────────────────────────────────────
+// Interval conversion
+// ─────────────────────────────────────────────────────────────
+
+const INTERVAL_STEPS = {
+  '1m': 60e3,
+  '5m': 5 * 60e3,
+  '1h': 3600e3,
+  '1d': 24 * 3600e3,
+  '1w': 6 * 3600e3,
+  '1M': 24 * 3600e3
+};
+
 export function intervalToStep(interval) {
-  switch (interval) {
-    case '1m': return 60e3;
-    case '5m': return 5 * 60e3;
-    case '1h': return 3600e3;
-    case '1d': return 24 * 3600e3; // day view by day
-    case '1w': return 6 * 3600e3;  // 6-hour buckets
-    case '1M': return 24 * 3600e3; // daily buckets
-    default: return 3600e3;
-  }
+  return INTERVAL_STEPS[interval] || 3600e3;
 }
 
-// Unified helper for d3-dashboard thin facade
+// ─────────────────────────────────────────────────────────────
+// Payload shaping
+// ─────────────────────────────────────────────────────────────
+
 export function shapeChartPayload(rows, { type, fromTs, toTs, stepMs, height }) {
   const { bins, series } = computeBinsAndSeries(rows, { fromTs, toTs, stepMs });
-  let data = null;
-  let options = { height: height || 0 };
+
   if (type === 'line') {
-    data = {
-      TCalls: series.TCalls,
-      ASR: series.ASR,
-      Minutes: series.Minutes,
-      ACD: series.ACD,
-    };
-    options = { height, fromTs, toTs, xDomain: [fromTs, toTs] };
-  } else if (type === 'bar') {
-    data = buildBarHybridData(bins, fromTs, toTs, stepMs).bars;
-    options = {
-      height,
-      fromTs,
-      toTs,
-      // provide all series for ECharts bar multi-panel rendering
-      tCallsSeries: series.TCalls,
-      asrSeries: series.ASR,
-      minutesSeries: series.Minutes,
-      acdSeries: series.ACD,
+    return {
+      data: {
+        TCalls: series.TCalls,
+        ASR: series.ASR,
+        Minutes: series.Minutes,
+        ACD: series.ACD
+      },
+      options: { height, fromTs, toTs, xDomain: [fromTs, toTs] }
     };
   }
-  return { data, options };
+
+  if (type === 'bar') {
+    return {
+      data: buildBarHybridData(bins, fromTs, toTs, stepMs).bars,
+      options: {
+        height,
+        fromTs,
+        toTs,
+        tCallsSeries: series.TCalls,
+        asrSeries: series.ASR,
+        minutesSeries: series.Minutes,
+        acdSeries: series.ACD
+      }
+    };
+  }
+
+  return { data: null, options: { height: height || 0 } };
 }

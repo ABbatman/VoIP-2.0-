@@ -1,41 +1,66 @@
 // static/js/data/fetchMetrics.js
+// Responsibility: Fetch metrics from backend API
+import { isReverseMode } from '../state/appState.js';
+import { logError, ErrorCategory } from '../utils/errorLogger.js';
 
-import { isReverseMode } from "../state/appState.js";
+// ─────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────
 
-const API_URL_BASE = "/api/metrics";
+const API_BASE = '/api/metrics';
+const TIMEOUT_MS = 20000;
 
-/**
- * Fetch metrics from the backend. This function is now pure and does not depend on the DOM.
- * @param {Object} filterParams - An object containing the filter values.
- * @returns {Promise<Object|null>} Parsed response object or null on error.
- */
+const GRANULARITY_ENDPOINTS = {
+  '5m': `${API_BASE}/5m`,
+  '1h': `${API_BASE}/1h`
+};
+
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
+
+function getEndpoint(granularity) {
+  const g = String(granularity || '').toLowerCase();
+  return GRANULARITY_ENDPOINTS[g] || API_BASE;
+}
+
+function buildParams(filterParams) {
+  return {
+    ...filterParams,
+    reverse: isReverseMode() ? 'true' : 'false'
+  };
+}
+
+function createAbortController() {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  return { controller, timeoutId };
+}
+
+// ─────────────────────────────────────────────────────────────
+// Main export
+// ─────────────────────────────────────────────────────────────
+
 export async function fetchMetrics(filterParams) {
+  const params = buildParams(filterParams);
+  const endpoint = getEndpoint(params.granularity);
+  const queryString = new URLSearchParams(params).toString();
+  const url = `${endpoint}?${queryString}`;
+
+  const { controller, timeoutId } = createAbortController();
+
   try {
-    // Add the reverse mode to the params before creating the query string
-    const paramsWithReverse = {
-      ...filterParams,
-      reverse: isReverseMode() ? "true" : "false",
-    };
-
-    const g = String(paramsWithReverse?.granularity || "").toLowerCase();
-    let endpoint = API_URL_BASE;
-    if (g === '5m') endpoint = `${API_URL_BASE}/5m`;
-    else if (g === '1h') endpoint = `${API_URL_BASE}/1h`;
-
-    const queryString = new URLSearchParams(paramsWithReverse).toString();
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000); // 20s timeout
-    const response = await fetch(`${endpoint}?${queryString}`, { signal: controller.signal });
-    clearTimeout(timeout);
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       throw new Error(`Fetch failed: ${response.status}`);
     }
 
-    const data = await response.json();
-    return data;
+    return await response.json();
   } catch (err) {
-    console.error("❌ Fetch error:", err);
+    clearTimeout(timeoutId);
+    logError(ErrorCategory.DATA, 'fetchMetrics', err);
     return null;
   }
 }

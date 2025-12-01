@@ -1,42 +1,44 @@
 // static/js/charts/tooltipBar.js
-// BAR tooltip helpers (visual only)
+// Responsibility: Bar chart overlay tooltip formatter
+import { parseRowTs } from './echarts/helpers/dataTransform.js';
 import { logError, ErrorCategory } from '../utils/errorLogger.js';
 
-function parseRowTs(raw) {
-  if (raw instanceof Date) return raw.getTime();
-  if (typeof raw === 'number') return raw;
-  if (typeof raw === 'string') {
-    let s = raw.trim().replace(' ', 'T');
-    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(s)) s += ':00';
-    if (!(/[zZ]$/.test(s) || /[+-]\d{2}:\d{2}$/.test(s))) s += 'Z';
-    const t = Date.parse(s);
-    return Number.isFinite(t) ? t : NaN;
-  }
-  return NaN;
-}
+// ─────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────
 
-const CANDIDATE_DEST_KEYS = ['destination','Destination','dst','Dst','country','Country','prefix','Prefix','route','Route','direction','Direction'];
-const CANDIDATE_CUST_KEYS = ['customer','Customer','client','Client','account','Account','buyer','Buyer'];
+const DEST_KEYS = ['destination', 'Destination', 'dst', 'Dst', 'country', 'Country', 'prefix', 'Prefix', 'route', 'Route', 'direction', 'Direction'];
+const CUST_KEYS = ['customer', 'Customer', 'client', 'Client', 'account', 'Account', 'buyer', 'Buyer'];
+const TIME_KEYS = ['time', 'Time', 'timestamp', 'Timestamp', 'slot', 'Slot', 'hour', 'Hour', 'datetime', 'DateTime', 'ts', 'TS', 'period', 'Period', 'start', 'Start', 'start_time', 'StartTime'];
+
+// ─────────────────────────────────────────────────────────────
+// Key detection
+// ─────────────────────────────────────────────────────────────
 
 function detectKey(rows, candidates) {
   try {
-    const lowerPref = candidates.map(k => k.toLowerCase());
-    for (const r of (rows || [])) {
+    const lowerCandidates = candidates.map(k => k.toLowerCase());
+    for (const r of rows || []) {
       if (!r || typeof r !== 'object') continue;
       for (const k of Object.keys(r)) {
-        const kl = String(k).toLowerCase();
-        if (!lowerPref.includes(kl)) continue;
+        if (!lowerCandidates.includes(k.toLowerCase())) continue;
         const v = r[k];
         if (v == null) continue;
-        const s = typeof v === 'string' ? v.trim() : (typeof v === 'number' ? String(v) : '');
-        if (s) return k;
+        const str = typeof v === 'string' ? v.trim() : (typeof v === 'number' ? String(v) : '');
+        if (str) return k;
       }
     }
-  } catch (e) { logError(ErrorCategory.CHART, 'tooltipBar', e);}
+  } catch (e) {
+    logError(ErrorCategory.CHART, 'tooltipBar:detectKey', e);
+  }
   return null;
 }
 
-function metricValue(metric, row) {
+// ─────────────────────────────────────────────────────────────
+// Metric helpers
+// ─────────────────────────────────────────────────────────────
+
+function getMetricValue(metric, row) {
   if (metric === 'Minutes') return Number(row.Min ?? row.Minutes ?? 0) || 0;
   if (metric === 'TCalls') return Number(row.TCall ?? row.TCalls ?? row.total_calls ?? 0) || 0;
   if (metric === 'ASR') { const v = Number(row.ASR); return Number.isFinite(v) ? v : null; }
@@ -44,130 +46,230 @@ function metricValue(metric, row) {
   return null;
 }
 
-function formatValue(metric, v) {
+function formatMetricValue(metric, v) {
   if (!Number.isFinite(v)) return '';
   if (metric === 'ASR') return `${v.toFixed(2)}%`;
-  if (metric === 'ACD') return `${v.toFixed(2)}`;
-  return `${v}`;
+  if (metric === 'ACD') return v.toFixed(2);
+  return String(v);
 }
+
+function isAvgMetric(metric) {
+  return metric === 'ASR' || metric === 'ACD';
+}
+
+function computeAggValue(metric, agg) {
+  return isAvgMetric(metric) ? (agg.cnt ? agg.sum / agg.cnt : null) : agg.sum;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Row timestamp extraction
+// ─────────────────────────────────────────────────────────────
+
+function getRowTime(row) {
+  for (const k of TIME_KEYS) {
+    if (row[k] != null) return parseRowTs(row[k]);
+  }
+  return NaN;
+}
+
+function computeBucket(ts, stepMs) {
+  return Math.floor(ts / stepMs) * stepMs + Math.floor(stepMs / 2);
+}
+
+// ─────────────────────────────────────────────────────────────
+// Data aggregation
+// ─────────────────────────────────────────────────────────────
+
+function aggregateSupplierValues({ rows, ts, stepMs, provKey, metric, custKey, supplierName }) {
+  const supVals = new Map();
+  const custSet = new Set();
+
+  for (const r of rows) {
+    if (!r || typeof r !== 'object') continue;
+
+    const rt = getRowTime(r);
+    if (!Number.isFinite(rt)) continue;
+    if (computeBucket(rt, stepMs) !== ts) continue;
+
+    const prov = provKey ? String(r[provKey] || '').trim() : '';
+    if (!prov) continue;
+
+    const v = getMetricValue(metric, r);
+
+    // aggregate supplier value
+    if (isAvgMetric(metric)) {
+      if (v == null) continue;
+      const acc = supVals.get(prov) || { sum: 0, cnt: 0 };
+      acc.sum += v;
+      acc.cnt += 1;
+      supVals.set(prov, acc);
+    } else {
+      const acc = supVals.get(prov) || { sum: 0, cnt: 0 };
+      acc.sum += v || 0;
+      supVals.set(prov, acc);
+    }
+
+    // collect customers for hovered supplier
+    if (supplierName && prov === supplierName && custKey) {
+      const c = String(r[custKey] || '').trim();
+      if (c) custSet.add(c);
+    }
+  }
+
+  return { supVals, custSet };
+}
+
+function findSuppliersWithSameValue(supVals, hoveredVal, metric) {
+  if (!Number.isFinite(hoveredVal)) return [];
+
+  const EPS = 1e-9;
+  const result = [];
+
+  for (const [prov, agg] of supVals.entries()) {
+    const val = computeAggValue(metric, agg);
+    if (Number.isFinite(val) && Math.abs(val - hoveredVal) <= EPS) {
+      result.push({ prov, val });
+    }
+  }
+
+  return result;
+}
+
+function buildDirectionLines({ rows, ts, stepMs, provKey, supplierName, destKey, metric }) {
+  if (!supplierName) return [];
+
+  const groups = new Map();
+
+  for (const r of rows) {
+    if (!r || typeof r !== 'object') continue;
+    if (provKey && String(r[provKey] || '').trim() !== supplierName) continue;
+
+    const rt = getRowTime(r);
+    if (!Number.isFinite(rt)) continue;
+    if (computeBucket(rt, stepMs) !== ts) continue;
+
+    const dest = destKey ? String(r[destKey] || '').trim() : '';
+    let g = groups.get(dest);
+    if (!g) { g = { sum: 0, cnt: 0 }; groups.set(dest, g); }
+
+    const v = getMetricValue(metric, r);
+    if (isAvgMetric(metric)) {
+      if (v != null) { g.sum += v; g.cnt += 1; }
+    } else {
+      g.sum += v || 0;
+    }
+  }
+
+  return Array.from(groups.entries())
+    .sort((a, b) => computeAggValue(metric, b[1]) - computeAggValue(metric, a[1]))
+    .map(([dest, agg]) => {
+      const val = computeAggValue(metric, agg);
+      return `  - ${dest || '—'}: ${formatMetricValue(metric, val)}`;
+    });
+}
+
+function buildCustomerMapping({ rows, ts, stepMs, provKey, custKey, sameSuppliers }) {
+  if (!custKey || !sameSuppliers.length) return new Map();
+
+  const custMap = new Map();
+
+  for (const r of rows) {
+    const rt = getRowTime(r);
+    if (!Number.isFinite(rt)) continue;
+    if (computeBucket(rt, stepMs) !== ts) continue;
+
+    const prov = provKey ? String(r[provKey] || '').trim() : '';
+    if (!sameSuppliers.some(s => s.prov === prov)) continue;
+
+    const cust = String(r[custKey] || '').trim();
+    if (cust) custMap.set(cust, prov);
+  }
+
+  return custMap;
+}
+
+// ─────────────────────────────────────────────────────────────
+// HTML formatters
+// ─────────────────────────────────────────────────────────────
+
+function formatMultiSupplierTooltip({ hoveredVal, metric, sameSuppliers, custMap }) {
+  const head = `Suppliers (same value): ${formatMetricValue(metric, hoveredVal)} ${metric}`;
+  const supList = sameSuppliers.map(s => `  - ${s.prov}`).join('\n');
+
+  const custBlock = custMap.size
+    ? Array.from(custMap.entries()).map(([c, s]) => `  - ${c} → sends to ${s}`).join('<br/>')
+    : '  - —';
+
+  return [head, 'Suppliers:', supList, 'Customers:<br/>' + custBlock].join('<br/>');
+}
+
+function formatSingleSupplierTooltip({ supplierName, hoveredVal, metric, custLines, dirLines }) {
+  const valStr = Number.isFinite(hoveredVal) ? formatMetricValue(metric, hoveredVal) : '';
+  const lines = [
+    `Supplier: ${supplierName || ''}`,
+    `Value: ${valStr} ${metric}`,
+    'Customers:'
+  ];
+
+  if (custLines.length) {
+    lines.push(...custLines);
+  } else {
+    lines.push('  - —');
+  }
+
+  if (dirLines.length) {
+    lines.push('Directions:');
+    lines.push(...dirLines);
+  }
+
+  return lines.join('<br/>');
+}
+
+// ─────────────────────────────────────────────────────────────
+// Main export
+// ─────────────────────────────────────────────────────────────
 
 export function makeBarOverlayTooltipFormatter({ metricName, stepMs, providerKey, rows, supplierName }) {
   const allRows = Array.isArray(rows) ? rows : [];
   const provKey = String(providerKey || '').trim();
-  const destKey = detectKey(allRows, CANDIDATE_DEST_KEYS);
-  const custKey = detectKey(allRows, CANDIDATE_CUST_KEYS);
+  const destKey = detectKey(allRows, DEST_KEYS);
+  const custKey = detectKey(allRows, CUST_KEYS);
+  const metric = String(metricName);
 
   return (p) => {
     try {
       const ts = Number(p?.value?.[0]);
-      const dt = Number.isFinite(ts) ? new Date(ts).toISOString().replace('T',' ').replace('Z','') : '';
-      const metric = String(metricName);
+      if (!Number.isFinite(ts)) return '';
 
-      // compute supplier values at ts
-      const supVals = new Map(); // supplier -> {sum, cnt}
-      const custSet = new Set(); // all customers for hovered supplier
-      for (const r of allRows) {
-        if (!r || typeof r !== 'object') continue;
-        const rt = parseRowTs(r.time || r.Time || r.timestamp || r.Timestamp || r.slot || r.Slot || r.hour || r.Hour || r.datetime || r.DateTime || r.ts || r.TS || r.period || r.Period || r.start || r.Start || r.start_time || r.StartTime);
-        if (!Number.isFinite(rt)) continue;
-        const bucket = Math.floor(rt / stepMs) * stepMs + Math.floor(stepMs / 2);
-        if (bucket !== ts) continue;
-        const prov = provKey ? String(r[provKey] || '').trim() : '';
-        if (!prov) continue;
-        const v = metricValue(metric, r);
-        if (metric === 'ASR' || metric === 'ACD') {
-          if (v == null) continue;
-          const acc = supVals.get(prov) || { sum: 0, cnt: 0 };
-          acc.sum += v; acc.cnt += 1; supVals.set(prov, acc);
-        } else {
-          const acc = supVals.get(prov) || { sum: 0, cnt: 0 };
-          acc.sum += (v || 0); supVals.set(prov, acc);
-        }
-        if (supplierName && prov === supplierName && custKey) {
-          const c = String(r[custKey] || '').trim();
-          if (c) custSet.add(c);
-        }
-      }
+      // aggregate data
+      const { supVals, custSet } = aggregateSupplierValues({
+        rows: allRows, ts, stepMs, provKey, metric, custKey, supplierName
+      });
 
-      // value for hovered supplier
+      // get hovered supplier value
       let hoveredVal = null;
       if (supplierName && supVals.has(supplierName)) {
-        const a = supVals.get(supplierName);
-        hoveredVal = (metric === 'ASR' || metric === 'ACD') ? (a.cnt ? (a.sum / a.cnt) : null) : a.sum;
+        hoveredVal = computeAggValue(metric, supVals.get(supplierName));
       }
 
-      // detect suppliers with same value
-      let sameSuppliers = [];
-      if (Number.isFinite(hoveredVal)) {
-        const EPS = 1e-9;
-        for (const [prov, a] of supVals.entries()) {
-          const val = (metric === 'ASR' || metric === 'ACD') ? (a.cnt ? (a.sum / a.cnt) : null) : a.sum;
-          if (Number.isFinite(val) && Math.abs(val - hoveredVal) <= EPS) sameSuppliers.push({ prov, val });
-        }
+      // find suppliers with same value
+      const sameSuppliers = findSuppliersWithSameValue(supVals, hoveredVal, metric);
+
+      // multi-supplier case
+      if (sameSuppliers.length > 1 && Number.isFinite(hoveredVal)) {
+        const custMap = buildCustomerMapping({ rows: allRows, ts, stepMs, provKey, custKey, sameSuppliers });
+        return formatMultiSupplierTooltip({ hoveredVal, metric, sameSuppliers, custMap });
       }
 
-      // build directions for single supplier
-      const dirLines = [];
-      if (supplierName) {
-        const groups = new Map(); // dest -> {sum, cnt}
-        for (const r of allRows) {
-          if (!r || typeof r !== 'object') continue;
-          if (provKey && String(r[provKey] || '').trim() !== supplierName) continue;
-          const rt = parseRowTs(r.time || r.Time || r.timestamp || r.Timestamp || r.slot || r.Slot || r.hour || r.Hour || r.datetime || r.DateTime || r.ts || r.TS || r.period || r.Period || r.start || r.Start || r.start_time || r.StartTime);
-          if (!Number.isFinite(rt)) continue;
-          const bucket = Math.floor(rt / stepMs) * stepMs + Math.floor(stepMs / 2);
-          if (bucket !== ts) continue;
-          const dest = destKey ? String(r[destKey] || '').trim() : '';
-          let g = groups.get(dest);
-          if (!g) { g = { sum: 0, cnt: 0 }; groups.set(dest, g); }
-          const v = metricValue(metric, r);
-          if (metric === 'ASR' || metric === 'ACD') { if (v != null) { g.sum += v; g.cnt += 1; } }
-          else { g.sum += (v || 0); }
-        }
-        const entries = Array.from(groups.entries());
-        entries.sort((a,b) => (b[1].sum/(b[1].cnt||1)) - (a[1].sum/(a[1].cnt||1)));
-        for (const [dest, agg] of entries) {
-          const val = (metric === 'ASR' || metric === 'ACD') ? (agg.cnt ? (agg.sum / agg.cnt) : 0) : agg.sum;
-          const destName = dest || '—';
-          dirLines.push(`  - ${destName}: ${formatValue(metric, val)}`);
-        }
-      }
-
-      // build customers lines
+      // single supplier case
+      const dirLines = buildDirectionLines({ rows: allRows, ts, stepMs, provKey, supplierName, destKey, metric });
       const custLines = Array.from(custSet.values()).map(c => `  - ${c}`);
 
-      // Combined or single output
-      if (sameSuppliers.length > 1 && Number.isFinite(hoveredVal)) {
-        const head = `Suppliers (same value): ${formatValue(metric, hoveredVal)} ${metric}`;
-        const supList = sameSuppliers.map(s => `  - ${s.prov}`).join('\n');
-        // customers mapping to supplier at ts
-        const custMap = new Map(); // customer -> supplier
-        if (custKey) {
-          for (const r of allRows) {
-            const rt = parseRowTs(r.time || r.Time || r.timestamp || r.Timestamp || r.slot || r.Slot || r.hour || r.Hour || r.datetime || r.DateTime || r.ts || r.TS || r.period || r.Period || r.start || r.Start || r.start_time || r.StartTime);
-            if (!Number.isFinite(rt)) continue;
-            const bucket = Math.floor(rt / stepMs) * stepMs + Math.floor(stepMs / 2);
-            if (bucket !== ts) continue;
-            const prov = provKey ? String(r[provKey] || '').trim() : '';
-            if (!sameSuppliers.some(s => s.prov === prov)) continue;
-            const cust = String(r[custKey] || '').trim();
-            if (cust) custMap.set(cust, prov);
-          }
-        }
-        const custBlock = 'Customers:<br/>' + (custMap.size ? Array.from(custMap.entries()).map(([c, s]) => `  - ${c} → sends to ${s}`).join('<br/>') : '  - —');
-        return [head, 'Suppliers:', supList, custBlock].filter(Boolean).join('<br/>');
-      }
+      return formatSingleSupplierTooltip({ supplierName, hoveredVal, metric, custLines, dirLines });
 
-      // Single supplier output
-      const valStr = Number.isFinite(hoveredVal) ? formatValue(metric, hoveredVal) : '';
-      const lines = [];
-      lines.push(`Supplier: ${supplierName || ''}`);
-      lines.push(`Value: ${valStr} ${metric}`);
-      // Customers section is always present
-      lines.push('Customers:');
-      if (custLines.length) { lines.push(...custLines); } else { lines.push('  - —'); }
-      if (dirLines.length) { lines.push('Directions:'); lines.push(...dirLines); }
-      return lines.join('<br/>');
-    } catch (e) { logError(ErrorCategory.CHART, 'tooltipBar', e); return ''; }
+    } catch (e) {
+      logError(ErrorCategory.CHART, 'tooltipBar:formatter', e);
+      return '';
+    }
   };
 }

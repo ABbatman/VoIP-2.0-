@@ -1,175 +1,226 @@
 // static/js/charts/echarts/builders/BarChartBuilder.js
-// Build ECharts series for 4-panel bar chart (bars + prev + overlays)
+// Responsibility: Build ECharts series for 4-panel bar chart
 import { buildLabelOverlay } from '../helpers/labelOverlay.js';
 import { chooseBarWidthPx } from '../helpers/dataTransform.js';
 import { getHeatmapColor } from '../../../visualEnhancements/heatmapStyling.js';
 import { logError, ErrorCategory } from '../../../utils/errorLogger.js';
+import { detectTimeScale, getBarVisuals } from '../../../visualEnhancements/visualMapping.js';
 
-import { detectTimeScale, getBarVisuals, clamp, mapSmooth } from '../../../visualEnhancements/visualMapping.js';
+// ─────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────
 
-export function buildBarSeries({ setsT, setsA, setsM, setsC, centers, interval, stepMs, labels, colorMap, providerRows, providerKey }) {
-  // move logic: only assemble series from prepared data
-  const bw = chooseBarWidthPx(interval);
+const MAIN_COLOR = '#4f86ff';
+const PREV_COLOR = 'rgba(140,148,156,0.85)';
+const LOW_ASR_COLOR = 'rgba(255, 40, 40, 0.6)';
+const LOW_ASR_THRESHOLD = 30;
 
-  // 1. Scale & Adaptive Logic
-  // Estimate rangeMs from interval or data if available, fallback to interval string check
-  let rangeMs = 24 * 3600 * 1000; // default daily
-  if (interval === '5m') rangeMs = 8 * 3600 * 1000; // approx
-  if (interval === '1h') rangeMs = 2 * 3600 * 1000; // approx
-  // Better: use setsT.curr length * stepMs if available, but interval is reliable enough for now
+const METRIC_CONFIG = [
+  { id: 'tc', name: 'TCalls', axisIndex: 0, hasHeatmap: false },
+  { id: 'as', name: 'ASR', axisIndex: 1, hasHeatmap: true },
+  { id: 'mn', name: 'Minutes', axisIndex: 2, hasHeatmap: false },
+  { id: 'ac', name: 'ACD', axisIndex: 3, hasHeatmap: true }
+];
 
-  const scale = detectTimeScale(rangeMs); // 'hour', '5min', 'mixed', 'daily'
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
 
-  // 2. Consistent Bar Behavior
-  const { blueOpacity, grayOpacity, blueWidth, grayWidth } = getBarVisuals(bw, scale);
+function estimateRangeMs(interval) {
+  if (interval === '5m') return 8 * 3600 * 1000;
+  if (interval === '1h') return 2 * 3600 * 1000;
+  return 24 * 3600 * 1000;
+}
 
-  // 3. Value Emphasis (Anomalies)
-  const getColorWithStatus = (metric, val, defaultColor) => {
-    if (val == null || val === '') return defaultColor;
-    const v = Number(val);
-    if (metric === 'ASR' && v < 30) return 'rgba(255, 40, 40, 0.6)'; // Soft red tint
-    // PDD check could be added here if PDD data was available in this scope
+function getColorWithHeatmap(metric, val, defaultColor) {
+  if (val == null || val === '') return defaultColor;
 
-    // Heatmap override check
-    if (metric === 'ASR' || metric === 'ACD') {
-      const hm = getHeatmapColor(metric, v);
-      if (hm) return hm;
-    }
-    return defaultColor;
-  };
+  const v = Number(val);
 
-  const colorMain = '#4f86ff';
-  const colors = { TCalls: colorMain, ASR: colorMain, Minutes: colorMain, ACD: colorMain };
-  const list = [];
-
-  // I) Night-Shade (Context Layer)
-  // Add a background bar series for night hours if daily or mixed
-  if (scale === 'daily' || scale === 'mixed') {
-    // This would require data generation for night hours, skipping for now to avoid heavy loops 
-    // as per "No heavy loops" instruction, unless we can do it cheaply.
-    // Alternatively, use 'markArea' if we had access to grid, but we are building series here.
-    // Will skip strictly to avoid "heavy loops" unless explicitly simple.
+  // low ASR warning
+  if (metric === 'ASR' && v < LOW_ASR_THRESHOLD) {
+    return LOW_ASR_COLOR;
   }
 
-  // G) Hour Clustering (High Density Graceful Fallback)
-  // If barWidth < 4px, we might want to adjust gap to visually merge
-  const barCategoryGap = bw < 4 ? '0%' : '20%';
+  // heatmap override
+  if (metric === 'ASR' || metric === 'ACD') {
+    const hm = getHeatmapColor(metric, v);
+    if (hm) return hm;
+  }
 
-  // Helper for common props
-  const common = {
-    large: true, largeThreshold: 300,
-    barGap: '15%', // Side-by-side with slight gap
-    barCategoryGap: barCategoryGap,
-    label: { show: false, formatter: (item) => { if (item.value === undefined || item.value === null || item.value === '') { return ''; } return Number(item.value).toFixed(1); } }
+  return defaultColor;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Series props factories
+// ─────────────────────────────────────────────────────────────
+
+function createCommonProps(barCategoryGap) {
+  return {
+    large: true,
+    largeThreshold: 300,
+    barGap: '15%',
+    barCategoryGap,
+    label: { show: false }
   };
+}
 
-  // H) Cross-Chart Focus (Hover Enhancement)
-  // User Request: "Always bright" + "Larger on hover" + "Blue outline/shadow"
-  const emphasisStyle = {
-    focus: 'none', // Do NOT dim other bars
+function createEmphasisStyle() {
+  return {
+    focus: 'none',
     blurScope: 'coordinateSystem',
     itemStyle: {
       opacity: 1,
-      borderColor: '#4f86ff', // Explicit Blue as requested
+      borderColor: MAIN_COLOR,
       borderWidth: 2,
       shadowBlur: 8,
-      shadowColor: 'rgba(79, 134, 255, 0.6)' // Blue glow instead of gray shadow
+      shadowColor: 'rgba(79, 134, 255, 0.6)'
     },
-    z: 10 // Bring to front on hover
+    z: 10
   };
-  const blurStyle = {
-    itemStyle: { opacity: 1 } // No blurring allowed
-  };
+}
 
-  const prevStyle = { color: 'rgba(140,148,156,0.85)', opacity: grayOpacity };
-  const prevProps = {
+function createCurrentProps(common, blueWidth) {
+  return {
+    ...common,
+    barWidth: blueWidth,
+    emphasis: createEmphasisStyle(),
+    blur: { itemStyle: { opacity: 1 } },
+    z: 2
+  };
+}
+
+function createPrevProps(common, grayWidth, grayOpacity) {
+  return {
     ...common,
     barWidth: grayWidth,
-    itemStyle: prevStyle,
+    itemStyle: { color: PREV_COLOR, opacity: grayOpacity },
     emphasis: { disabled: true },
     tooltip: { show: false },
     silent: true,
-    z: 1 // Background layer
+    z: 1
   };
+}
 
-  const currProps = {
-    ...common,
-    barWidth: blueWidth,
-    emphasis: emphasisStyle,
-    blur: blurStyle,
-    z: 2 // Foreground layer
+// ─────────────────────────────────────────────────────────────
+// Series builders
+// ─────────────────────────────────────────────────────────────
+
+function createCurrentSeries({ config, currProps, blueOpacity, data }) {
+  const itemStyle = config.hasHeatmap
+    ? { color: (params) => getColorWithHeatmap(config.name, params.value, MAIN_COLOR), opacity: blueOpacity }
+    : { color: MAIN_COLOR, opacity: blueOpacity };
+
+  return {
+    id: config.id,
+    name: config.name,
+    type: 'bar',
+    xAxisIndex: config.axisIndex,
+    yAxisIndex: config.axisIndex,
+    ...currProps,
+    itemStyle,
+    data
   };
+}
 
-  // Optional tint behind blue bar (rgba(blue, 0.05)) - implemented as a separate stacked bar or just part of the design?
-  // Request says: "render tinted rectangle behind blue bar". 
-  // We can add a "shadow" series if needed, but might be overkill for performance. 
-  // Let's stick to the robust layering we have.
+function createPrevSeries({ config, prevProps, grayOpacity, data }) {
+  return {
+    id: `${config.id}Prev`,
+    name: `${config.name} -24h`,
+    type: 'bar',
+    xAxisIndex: config.axisIndex,
+    yAxisIndex: config.axisIndex,
+    ...prevProps,
+    itemStyle: { color: PREV_COLOR, opacity: grayOpacity },
+    data
+  };
+}
 
-  // 2. Layered Draw Order: ALWAYS draw BLUE (Today) first, then GRAY (Yesterday)
-  // This ensures strict draw order as requested.
+function buildMetricSeries({ config, currData, prevData, currProps, prevProps, blueOpacity, grayOpacity }) {
+  return [
+    createCurrentSeries({ config, currProps, blueOpacity, data: currData }),
+    createPrevSeries({ config, prevProps, grayOpacity, data: prevData })
+  ];
+}
 
-  // TCalls
-  list.push({
-    id: 'tc', name: 'TCalls', type: 'bar', xAxisIndex: 0, yAxisIndex: 0, ...currProps,
-    itemStyle: { color: colors.TCalls, opacity: blueOpacity },
-    data: setsT.curr
-  });
-  list.push({
-    id: 'tcPrev', name: 'TCalls -24h', type: 'bar', xAxisIndex: 0, yAxisIndex: 0, ...prevProps,
-    itemStyle: { color: 'rgba(140,148,156,0.85)', opacity: grayOpacity },
-    data: setsT.prev
-  });
+// ─────────────────────────────────────────────────────────────
+// Overlay labels
+// ─────────────────────────────────────────────────────────────
 
-  // ASR with Heatmap & Emphasis
-  list.push({
-    id: 'as', name: 'ASR', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, ...currProps,
-    itemStyle: {
-      color: (params) => getColorWithStatus('ASR', params.value, colors.ASR),
-      opacity: blueOpacity
-    },
-    data: setsA.curr
-  });
-  list.push({
-    id: 'asPrev', name: 'ASR -24h', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, ...prevProps,
-    itemStyle: { color: 'rgba(140,148,156,0.85)', opacity: grayOpacity },
-    data: setsA.prev
-  });
+function buildOverlayLabels({ labels, centers, setsA, colorMap, stepMs, providerRows, providerKey }) {
+  const tsList = centers?.length ? centers : (setsA.curr?.map(p => p[0]) || []);
 
-  // Minutes
-  list.push({
-    id: 'mn', name: 'Minutes', type: 'bar', xAxisIndex: 2, yAxisIndex: 2, ...currProps,
-    itemStyle: { color: colors.Minutes, opacity: blueOpacity },
-    data: setsM.curr
-  });
-  list.push({
-    id: 'mnPrev', name: 'Minutes -24h', type: 'bar', xAxisIndex: 2, yAxisIndex: 2, ...prevProps,
-    itemStyle: { color: 'rgba(140,148,156,0.85)', opacity: grayOpacity },
-    data: setsM.prev
-  });
+  return [
+    buildLabelOverlay({
+      metric: 'ASR',
+      timestamps: tsList,
+      labels: labels?.ASR || {},
+      colorMap,
+      gridIndex: 1,
+      xAxisIndex: 1,
+      yAxisIndex: 1,
+      secondary: false,
+      stepMs,
+      align: 'current',
+      providerRows,
+      providerKey
+    }),
+    buildLabelOverlay({
+      metric: 'ACD',
+      timestamps: tsList,
+      labels: labels?.ACD || {},
+      colorMap,
+      gridIndex: 3,
+      xAxisIndex: 3,
+      yAxisIndex: 3,
+      secondary: false,
+      stepMs,
+      align: 'current',
+      providerRows,
+      providerKey
+    })
+  ];
+}
 
-  // ACD with Heatmap & Emphasis
-  list.push({
-    id: 'ac', name: 'ACD', type: 'bar', xAxisIndex: 3, yAxisIndex: 3, ...currProps,
-    itemStyle: {
-      color: (params) => getColorWithStatus('ACD', params.value, colors.ACD),
-      opacity: blueOpacity
-    },
-    data: setsC.curr
-  });
-  list.push({
-    id: 'acPrev', name: 'ACD -24h', type: 'bar', xAxisIndex: 3, yAxisIndex: 3, ...prevProps,
-    itemStyle: { color: 'rgba(140,148,156,0.85)', opacity: grayOpacity },
-    data: setsC.prev
-  });
+// ─────────────────────────────────────────────────────────────
+// Main export
+// ─────────────────────────────────────────────────────────────
 
-  // preview series removed - slider has its own chart instance
-  // overlay labels (single call per metric) appended last
+export function buildBarSeries({ setsT, setsA, setsM, setsC, centers, interval, stepMs, labels, colorMap, providerRows, providerKey }) {
+  const bw = chooseBarWidthPx(interval);
+  const rangeMs = estimateRangeMs(interval);
+  const scale = detectTimeScale(rangeMs);
+
+  const { blueOpacity, grayOpacity, blueWidth, grayWidth } = getBarVisuals(bw, scale);
+  const barCategoryGap = bw < 4 ? '0%' : '20%';
+
+  const common = createCommonProps(barCategoryGap);
+  const currProps = createCurrentProps(common, blueWidth);
+  const prevProps = createPrevProps(common, grayWidth, grayOpacity);
+
+  // map data sets to configs
+  const dataSets = [setsT, setsA, setsM, setsC];
+
+  // build all metric series
+  const series = METRIC_CONFIG.flatMap((config, i) =>
+    buildMetricSeries({
+      config,
+      currData: dataSets[i].curr,
+      prevData: dataSets[i].prev,
+      currProps,
+      prevProps,
+      blueOpacity,
+      grayOpacity
+    })
+  );
+
+  // add overlay labels
   try {
-    const labelsASR = (labels && labels.ASR) || {};
-    const labelsACD = (labels && labels.ACD) || {};
-    const tsList = Array.isArray(centers) && centers.length ? centers : (Array.isArray(setsA.curr) ? setsA.curr.map(p => p[0]) : []);
-    list.push(buildLabelOverlay({ metric: 'ASR', timestamps: tsList, labels: labelsASR, colorMap, gridIndex: 1, xAxisIndex: 1, yAxisIndex: 1, secondary: false, stepMs, align: 'current', providerRows, providerKey }));
-    list.push(buildLabelOverlay({ metric: 'ACD', timestamps: tsList, labels: labelsACD, colorMap, gridIndex: 3, xAxisIndex: 3, yAxisIndex: 3, secondary: false, stepMs, align: 'current', providerRows, providerKey }));
-  } catch (e) { logError(ErrorCategory.CHART, 'BarChartBuilder', e); /* overlay labels */ }
-  return list;
+    const overlays = buildOverlayLabels({ labels, centers, setsA, colorMap, stepMs, providerRows, providerKey });
+    series.push(...overlays);
+  } catch (e) {
+    logError(ErrorCategory.CHART, 'BarChartBuilder:overlays', e);
+  }
+
+  return series;
 }

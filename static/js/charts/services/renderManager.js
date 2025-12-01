@@ -1,6 +1,5 @@
 // static/js/charts/services/renderManager.js
-// render manager: choose renderer and orchestrate chart render
-
+// Responsibility: Orchestrate chart rendering
 import { ensureDefaults, getRenderer } from '../registry.js';
 import { getFilters, getMetricsData } from '../../state/appState.js';
 import { subscribe } from '../../state/eventBus.js';
@@ -10,77 +9,163 @@ import { ensureFixedChartHeight } from './layout.js';
 import { getChartsCurrentInterval, setChartsCurrentInterval } from '../../state/runtimeFlags.js';
 import { logError, ErrorCategory } from '../../utils/errorLogger.js';
 
-function getMount() { return document.getElementById('chart-area-1'); }
-function getHost() { return document.getElementById('charts-container'); }
+// ─────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────
 
-let currentType = 'line';
-let currentInterval = '1h';
+const DEFAULT_TYPE = 'line';
+const DEFAULT_INTERVAL = '1h';
+const MOUNT_ID = 'chart-area-1';
+const HOST_ID = 'charts-container';
+
+// ─────────────────────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────────────────────
+
+let currentType = DEFAULT_TYPE;
 let initialized = false;
+
+// ─────────────────────────────────────────────────────────────
+// DOM helpers
+// ─────────────────────────────────────────────────────────────
+
+function getMount() {
+  return document.getElementById(MOUNT_ID);
+}
+
+function getHost() {
+  return document.getElementById(HOST_ID);
+}
+
+// ─────────────────────────────────────────────────────────────
+// Data helpers
+// ─────────────────────────────────────────────────────────────
+
+function getDataRows(metricsData) {
+  const fiveRows = Array.isArray(metricsData?.five_min_rows) ? metricsData.five_min_rows : [];
+  const hourRows = Array.isArray(metricsData?.hourly_rows) ? metricsData.hourly_rows : [];
+
+  // prefer 5-minute rows as single source of truth
+  return fiveRows.length ? fiveRows : hourRows;
+}
+
+function buildRenderOptions({ options, stepMs, interval, metricsData, rows }) {
+  return {
+    ...options,
+    stepMs,
+    interval,
+    labels: metricsData?.labels || {},
+    providerRows: rows
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
+// Event handlers
+// ─────────────────────────────────────────────────────────────
+
+function handleTypeChanged(payload) {
+  try {
+    currentType = String(payload?.type || DEFAULT_TYPE);
+  } catch (e) {
+    logError(ErrorCategory.CHART, 'renderManager:typeChanged', e);
+    currentType = DEFAULT_TYPE;
+  }
+  render(currentType);
+}
+
+function handleIntervalChanged() {
+  render(currentType);
+}
+
+function handleDataChanged() {
+  render(currentType);
+}
+
+function handleStatusChanged(status) {
+  if (status === 'success') {
+    render(currentType);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Initialization
+// ─────────────────────────────────────────────────────────────
 
 function initOnce() {
   if (initialized) return;
   initialized = true;
-  // Sync initial interval to centralized state
-  if (!getChartsCurrentInterval() || getChartsCurrentInterval() === '1h') {
-    setChartsCurrentInterval(currentInterval);
+
+  // sync initial interval
+  if (!getChartsCurrentInterval()) {
+    setChartsCurrentInterval(DEFAULT_INTERVAL);
   }
-  // minimal subscriptions (no business logic here)
-  subscribe('charts:typeChanged', (payload) => {
-    try { 
-      currentType = String(payload?.type || 'line'); 
-    } catch(e) { 
-      logError(ErrorCategory.CHART, 'renderManager:typeChanged', e);
-      currentType = 'line'; 
-    }
-    render(currentType);
-  });
-  subscribe('charts:intervalChanged', () => { render(currentType); });
-  subscribe('appState:dataChanged', () => { render(currentType); });
-  subscribe('appState:statusChanged', (status) => { if (status === 'success') render(currentType); });
+
+  // subscribe to events
+  subscribe('charts:typeChanged', handleTypeChanged);
+  subscribe('charts:intervalChanged', handleIntervalChanged);
+  subscribe('appState:dataChanged', handleDataChanged);
+  subscribe('appState:statusChanged', handleStatusChanged);
 }
 
-// no pickRowsByInterval; engine handles shaping
+// ─────────────────────────────────────────────────────────────
+// Main render
+// ─────────────────────────────────────────────────────────────
 
 export async function render(type) {
   initOnce();
-  currentType = type || currentType || 'line';
-  try { 
-    await ensureDefaults(); 
-  } catch(e) { 
-    logError(ErrorCategory.CHART, 'renderManager:ensureDefaults', e); 
+  currentType = type || currentType || DEFAULT_TYPE;
+
+  try {
+    await ensureDefaults();
+  } catch (e) {
+    logError(ErrorCategory.CHART, 'renderManager:ensureDefaults', e);
   }
 
   const host = getHost();
   const mount = getMount();
   if (!host || !mount) return;
 
-  const fixedH = ensureFixedChartHeight(host, mount);
-  const renderer = getRenderer(currentType) || getRenderer('line');
+  const renderer = getRenderer(currentType) || getRenderer(DEFAULT_TYPE);
   if (!renderer) return;
 
+  // get time range
   const { from, to } = getFilters();
   const fromTs = parseUtc(from);
   const toTs = parseUtc(to);
-  const interval = getChartsCurrentInterval() || currentInterval;
+
+  // get interval and step
+  const interval = getChartsCurrentInterval() || DEFAULT_INTERVAL;
   const stepMs = intervalToStep(interval);
-  const md = getMetricsData() || {};
-  const fiveRows = Array.isArray(md.five_min_rows) ? md.five_min_rows : [];
-  const hourRows = Array.isArray(md.hourly_rows) ? md.hourly_rows : [];
-  // Always prefer 5-minute raw rows as a single source of truth for shaping
-  // This guarantees consistent time grid and aggregation across intervals
-  const rows = fiveRows.length ? fiveRows : hourRows;
-  const { data, options } = shapeChartPayload(rows || [], { type: currentType, fromTs, toTs, stepMs, height: fixedH });
-  const merged = { ...options, stepMs, interval, labels: (md && md.labels) || {}, providerRows: rows || [] };
-  await renderer(mount, data, merged);
+
+  // get data
+  const metricsData = getMetricsData() || {};
+  const rows = getDataRows(metricsData);
+
+  // compute layout
+  const height = ensureFixedChartHeight(host, mount);
+
+  // shape payload
+  const { data, options } = shapeChartPayload(rows, {
+    type: currentType,
+    fromTs,
+    toTs,
+    stepMs,
+    height
+  });
+
+  // build final options
+  const renderOptions = buildRenderOptions({
+    options,
+    stepMs,
+    interval,
+    metricsData,
+    rows
+  });
+
+  await renderer(mount, data, renderOptions);
 }
 
-// no post-effects; renderers handle visuals
-
-// no zoom attach here; renderers handle zoom (ECharts)
-
-// no 5m raw builder here; engine handles shaping
-
-// init subscriptions on module load
+// init on module load
 initOnce();
 
 export const renderManager = { render };

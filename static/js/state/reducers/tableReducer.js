@@ -1,134 +1,105 @@
 // static/js/state/reducers/tableReducer.js
-// Чистый редьюсер таблицы. Меняет только table-секцию состояния.
+// Responsibility: Pure reducer for table state
+
+// ─────────────────────────────────────────────────────────────
+// Action types
+// ─────────────────────────────────────────────────────────────
+
+const ACTIONS = {
+  SORT_SET: 'table/sort/set',
+  DISPLAY_SET: 'table/display/set',
+  COLUMNS_SET: 'table/columns/set',
+  BEHAVIOR_SET: 'table/behavior/set',
+  PERFORMANCE_SET: 'table/performance/set',
+  EXPORT_SET: 'table/export/set',
+  GLOBAL_FILTER_SET: 'table/globalFilter/set',
+  COLUMN_FILTER_SET: 'table/columnFilter/set',
+  FILTERS_RESET: 'table/filters/reset'
+};
+
+const VALID_DIRECTIONS = ['asc', 'desc'];
+
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
+
+function updateTable(state, tableUpdate) {
+  return {
+    ...state,
+    table: {
+      ...state.table,
+      ...tableUpdate
+    }
+  };
+}
+
+function mergeTableSection(state, section, payload) {
+  return updateTable(state, {
+    [section]: {
+      ...(state.table?.[section] || {}),
+      ...(payload || {})
+    }
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+// Reducer
+// ─────────────────────────────────────────────────────────────
 
 export function reducer(state, action) {
   if (!state || !action) return state;
+
   const { type, payload } = action;
 
   switch (type) {
-    case 'table/sort/set': {
-      // Обновляем multiSort минимально: устанавливаем единственное правило сортировки
-      const column = payload?.column;
-      const direction = payload?.direction;
-      if (typeof column !== 'string' || !['asc', 'desc'].includes(direction)) {
-        return state ? { ...state } : state;
+    case ACTIONS.SORT_SET: {
+      const { column, direction } = payload || {};
+      if (typeof column !== 'string' || !VALID_DIRECTIONS.includes(direction)) {
+        return state;
       }
-      const nextMultiSort = [ { key: column, dir: direction } ];
-      return {
-        ...state,
-        table: {
-          ...state.table,
-          multiSort: nextMultiSort,
-        }
-      };
-    }
-    case 'table/display/set': {
-      return {
-        ...state,
-        table: {
-          ...state.table,
-          display: {
-            ...(state.table?.display || {}),
-            ...(payload || {})
-          }
-        }
-      };
+      return updateTable(state, {
+        multiSort: [{ key: column, dir: direction }]
+      });
     }
 
-    case 'table/columns/set': {
-      return {
-        ...state,
-        table: {
-          ...state.table,
-          columns: {
-            ...(state.table?.columns || {}),
-            ...(payload || {})
-          }
-        }
-      };
-    }
+    case ACTIONS.DISPLAY_SET:
+      return mergeTableSection(state, 'display', payload);
 
-    case 'table/behavior/set': {
-      return {
-        ...state,
-        table: {
-          ...state.table,
-          behavior: {
-            ...(state.table?.behavior || {}),
-            ...(payload || {})
-          }
-        }
-      };
-    }
+    case ACTIONS.COLUMNS_SET:
+      return mergeTableSection(state, 'columns', payload);
 
-    case 'table/performance/set': {
-      return {
-        ...state,
-        table: {
-          ...state.table,
-          performance: {
-            ...(state.table?.performance || {}),
-            ...(payload || {})
-          }
-        }
-      };
-    }
+    case ACTIONS.BEHAVIOR_SET:
+      return mergeTableSection(state, 'behavior', payload);
 
-    case 'table/export/set': {
-      return {
-        ...state,
-        table: {
-          ...state.table,
-          export: {
-            ...(state.table?.export || {}),
-            ...(payload || {})
-          }
-        }
-      };
-    }
+    case ACTIONS.PERFORMANCE_SET:
+      return mergeTableSection(state, 'performance', payload);
 
-    case 'table/globalFilter/set': {
-      return {
-        ...state,
-        table: {
-          ...state.table,
-          globalFilterQuery: payload ?? ''
-        }
-      };
-    }
+    case ACTIONS.EXPORT_SET:
+      return mergeTableSection(state, 'export', payload);
 
-    case 'table/columnFilter/set': {
-      const key = payload?.key;
-      const value = payload?.value ?? '';
+    case ACTIONS.GLOBAL_FILTER_SET:
+      return updateTable(state, { globalFilterQuery: payload ?? '' });
+
+    case ACTIONS.COLUMN_FILTER_SET: {
+      const { key, value = '' } = payload || {};
       if (typeof key !== 'string') return state;
-      const nextColumnFilters = { ...(state.table?.columnFilters || {}) };
+
+      const nextFilters = { ...(state.table?.columnFilters || {}) };
       if (value) {
-        nextColumnFilters[key] = value;
+        nextFilters[key] = value;
       } else {
-        delete nextColumnFilters[key];
+        delete nextFilters[key];
       }
-      return {
-        ...state,
-        table: {
-          ...state.table,
-          columnFilters: nextColumnFilters
-        }
-      };
+      return updateTable(state, { columnFilters: nextFilters });
     }
 
-    case 'table/filters/reset': {
-      return {
-        ...state,
-        table: {
-          ...state.table,
-          globalFilterQuery: '',
-          columnFilters: {}
-        }
-      };
-    }
+    case ACTIONS.FILTERS_RESET:
+      return updateTable(state, {
+        globalFilterQuery: '',
+        columnFilters: {}
+      });
 
     default:
-      // Возвращаем новый объект даже при отсутствии изменений
-      return state ? { ...state } : state;
+      return state;
   }
 }

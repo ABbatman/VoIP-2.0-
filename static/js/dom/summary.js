@@ -1,95 +1,109 @@
 // static/js/dom/summary.js
+// Responsibility: Render summary metrics (today/yesterday)
+import { subscribe } from '../state/eventBus.js';
 
-import { subscribe } from "../state/eventBus.js";
+// ─────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────
 
-/**
- * Initializes the summary component by subscribing to data changes.
- */
-export function initSummary() {
-  subscribe("appState:dataChanged", (newData) => {
-    const container = document.getElementById("summaryMetrics");
-    if (!container) return;
+const CONTAINER_ID = 'summaryMetrics';
+const HIDDEN_CLASS = 'is-hidden';
 
-    // Check both today and yesterday metrics
-    const hasTodayData = newData?.today_metrics && Object.keys(newData.today_metrics).length > 0;
-    const hasYesterdayData = newData?.yesterday_metrics && Object.keys(newData.yesterday_metrics).length > 0;
+const CLASSES = {
+  card: 'summary-card',
+  today: 'summary-today',
+  yesterday: 'summary-yesterday',
+  metricValue: 'metric-value'
+};
 
-    if (hasTodayData || hasYesterdayData) {
-      renderSummaryMetrics(newData.today_metrics || {}, newData.yesterday_metrics || {});
-      container.classList.remove('is-hidden');
-    } else {
-      container.innerHTML = "";
-      container.classList.add('is-hidden');
-    }
-  });
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
+
+function hasData(metrics) {
+  return metrics && Object.keys(metrics).length > 0;
 }
 
-/**
- * Renders the summary metrics blocks for today and yesterday.
- * @param {Object} today - The 'today_metrics' object from the API.
- * @param {Object} yesterday - The 'yesterday_metrics' object from the API.
- */
-function renderSummaryMetrics(today, yesterday) {
-  // Find the main container for the summary blocks.
-  const container = document.getElementById("summaryMetrics");
-  if (!container) {
-    console.error("Summary metrics container not found!");
-    return;
-  }
-
-  // Clear any previous content.
-  container.innerHTML = "";
-
-  // Create and fill the block for today's metrics.
-  const todayBlock = createMetricsBlock("Today", today);
-  container.appendChild(todayBlock);
-
-  // Create and fill the block for yesterday's metrics.
-  const yesterdayBlock = createMetricsBlock("Yesterday", yesterday);
-  container.appendChild(yesterdayBlock);
-
-  // Make the container visible.
-  container.classList.remove('is-hidden');
+function getContainer() {
+  return document.getElementById(CONTAINER_ID);
 }
 
-/**
- * Helper function to create a single block for a set of metrics.
- * @param {string} title - The title for the block (e.g., "Today").
- * @param {Object} metrics - The metrics object to display.
- * @returns {HTMLElement} A div element containing the formatted metrics.
- */
+// ─────────────────────────────────────────────────────────────
+// DOM creation
+// ─────────────────────────────────────────────────────────────
+
+function createMetricRow(key, value) {
+  const p = document.createElement('p');
+
+  const strong = document.createElement('strong');
+  strong.textContent = `${key}: `;
+
+  const span = document.createElement('span');
+  span.className = CLASSES.metricValue;
+  span.textContent = value;
+
+  p.appendChild(strong);
+  p.appendChild(span);
+  return p;
+}
+
 function createMetricsBlock(title, metrics) {
-  const block = document.createElement("div");
-  block.classList.add('summary-card');
-  if (title.toLowerCase() === 'today') {
-    block.classList.add('summary-today');
-  } else if (title.toLowerCase() === 'yesterday') {
-    block.classList.add('summary-yesterday');
-  }
+  const block = document.createElement('div');
+  block.className = CLASSES.card;
 
-  const titleEl = document.createElement("h3");
+  // add period-specific class
+  const period = title.toLowerCase();
+  if (period === 'today') block.classList.add(CLASSES.today);
+  if (period === 'yesterday') block.classList.add(CLASSES.yesterday);
+
+  const titleEl = document.createElement('h3');
   titleEl.textContent = title;
   block.appendChild(titleEl);
 
-  if (metrics && Object.keys(metrics).length > 0) {
-    for (const key in metrics) {
-      const p = document.createElement("p");
-      const strong = document.createElement("strong");
-      strong.textContent = `${key}: `;
-
-      const valueSpan = document.createElement("span");
-      valueSpan.classList.add("metric-value");
-      valueSpan.textContent = metrics[key];
-
-      p.appendChild(strong);
-      p.appendChild(valueSpan);
-      block.appendChild(p);
-    }
+  if (hasData(metrics)) {
+    Object.entries(metrics).forEach(([key, value]) => {
+      block.appendChild(createMetricRow(key, value));
+    });
   } else {
-    const p = document.createElement("p");
-    p.textContent = "No data available.";
+    const p = document.createElement('p');
+    p.textContent = 'No data available.';
     block.appendChild(p);
   }
 
   return block;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Render
+// ─────────────────────────────────────────────────────────────
+
+function renderSummaryMetrics(today, yesterday) {
+  const container = getContainer();
+  if (!container) return;
+
+  container.innerHTML = '';
+  container.appendChild(createMetricsBlock('Today', today));
+  container.appendChild(createMetricsBlock('Yesterday', yesterday));
+  container.classList.remove(HIDDEN_CLASS);
+}
+
+// ─────────────────────────────────────────────────────────────
+// Public API
+// ─────────────────────────────────────────────────────────────
+
+export function initSummary() {
+  subscribe('appState:dataChanged', (data) => {
+    const container = getContainer();
+    if (!container) return;
+
+    const hasTodayData = hasData(data?.today_metrics);
+    const hasYesterdayData = hasData(data?.yesterday_metrics);
+
+    if (hasTodayData || hasYesterdayData) {
+      renderSummaryMetrics(data.today_metrics || {}, data.yesterday_metrics || {});
+    } else {
+      container.innerHTML = '';
+      container.classList.add(HIDDEN_CLASS);
+    }
+  });
 }

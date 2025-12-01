@@ -1,170 +1,137 @@
 // static/js/dom/table-controls.js
-// This module is responsible for initializing and handling events
-// for the table's user interface controls (pagination, global filter).
-
-// Import state management functions
+// Responsibility: Table UI controls (expand/collapse, filters)
 import {
   setFullData,
   setColumnFilter,
   resetAllFilters,
-  setMultiSort,
-} from "../state/tableState.js";
-import { expandAllPeers, collapseAllPeers } from "../table/features/bulkToggle.js";
+  setMultiSort
+} from '../state/tableState.js';
+import { expandAllPeers, collapseAllPeers } from '../table/features/bulkToggle.js';
+import { showTableControls, updateSortArrows } from './table-ui.js';
+import { updateTopScrollbar } from './top-scrollbar.js';
+import { getVirtualManager } from '../state/moduleRegistry.js';
+import { logWarn, ErrorCategory } from '../utils/errorLogger.js';
 
-// Import UI update functions
-import {
-  showTableControls,
-  updateSortArrows,
-} from "./table-ui.js";
-import { updateTopScrollbar } from "./top-scrollbar.js";
-import { getVirtualManager } from "../state/moduleRegistry.js";
-import { logError, logWarn, ErrorCategory } from "../utils/errorLogger.js";
+// ─────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────
 
-/**
- * Initializes all event handlers for the table controls.
- * @param {Array<Object>} allMainRows - The full dataset of main rows.
- * @param {Array<Object>} allPeerRows - The full dataset of peer rows.
- */
-export function initTableControls(allMainRows, allPeerRows, allHourlyRows = []) {
-  setFullData(allMainRows, allPeerRows, allHourlyRows);
+const IDS = {
+  expandCollapseBtn: 'btnExpandCollapseAll',
+  tableBody: 'tableBody',
+  globalFilter: 'table-filter-input',
+  filterRow: 'column-filters-row'
+};
 
-  // rowsPerPage removed - no pagination needed
+const DEFAULT_SORT = [
+  { key: 'destination', dir: 'asc' },
+  { key: 'main', dir: 'asc' }
+];
 
-  // Pagination removed - virtualization handles all data display
+const SCROLLBAR_UPDATE_DELAY = 100;
 
-  // Note: Filter event handlers are now connected in renderTableFooter()
-  // to ensure they are attached after the DOM elements are created
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
 
-  // Show table controls and update UI by calling functions from the DOM module
-  initExpandCollapseAll();
-  showTableControls();
-  // Enforce default multi-sort: main ASC, destination ASC
-  try {
-    setMultiSort([
-      { key: "destination", dir: "asc" },
-      { key: "main", dir: "asc" },
-    ]);
-  } catch (e) { 
-    logWarn(ErrorCategory.TABLE, 'initTableControls:defaultSort', 'Could not set default sort'); 
-  }
-  // --- REMOVED: This is now handled automatically by table-ui.js ---
-  // updateColumnPlaceholders();
-  updateSortArrows(); // delegated sorting handler covers clicks globally
-
-  // Setup automatic filter clearing
-  setupAutoFilterClearing();
+function getElement(id) {
+  return document.getElementById(id);
 }
 
-// --- "Show All / Hide All" button logic ---
-function initExpandCollapseAll() {
-  const toggleBtn = document.getElementById("btnExpandCollapseAll");
-  const tableBody = document.getElementById("tableBody");
-
-  if (!toggleBtn || !tableBody) {
-    console.warn("Expand/Collapse All button or table body not found.");
-    return;
+function refreshVirtualTable() {
+  const vm = getVirtualManager();
+  if (vm?.isActive) {
+    vm.refreshVirtualTable();
   }
+}
 
-  const newBtn = toggleBtn.cloneNode(true);
-  toggleBtn.parentNode.replaceChild(newBtn, toggleBtn);
+async function reconnectFilterHandlers() {
+  try {
+    const { connectFilterEventHandlers } = await import('./table-ui.js');
+    if (typeof connectFilterEventHandlers === 'function') {
+      connectFilterEventHandlers();
+    }
+  } catch {
+    // filter handlers reconnection failed
+  }
+}
 
-  newBtn.addEventListener("click", () => {
-    const state = newBtn.dataset && newBtn.dataset.state ? newBtn.dataset.state : null;
-    const isShowAllAction = state ? (state !== 'shown') : (newBtn.textContent === 'Show All');
+// ─────────────────────────────────────────────────────────────
+// Expand/Collapse All
+// ─────────────────────────────────────────────────────────────
 
-    // Delegate to centralized feature module (auto-selects mode: standard/virtual)
-    if (isShowAllAction) {
+function initExpandCollapseAll() {
+  const btn = getElement(IDS.expandCollapseBtn);
+  if (!btn) return;
+
+  // clone to remove old listeners
+  const newBtn = btn.cloneNode(true);
+  btn.parentNode.replaceChild(newBtn, btn);
+
+  newBtn.addEventListener('click', () => {
+    const isShowAll = newBtn.dataset.state !== 'shown' || newBtn.textContent === 'Show All';
+
+    if (isShowAll) {
       expandAllPeers();
     } else {
       collapseAllPeers();
     }
 
-    setTimeout(updateTopScrollbar, 100);
+    setTimeout(updateTopScrollbar, SCROLLBAR_UPDATE_DELAY);
   });
 }
 
-// --- EVENT HANDLERS ---
+// ─────────────────────────────────────────────────────────────
+// Filter clearing
+// ─────────────────────────────────────────────────────────────
 
-// Pagination handlers removed - no longer needed with virtualization
-// Filter event handlers are now defined in table-ui.js
+function clearFilterInputs() {
+  const globalInput = getElement(IDS.globalFilter);
+  if (globalInput) globalInput.value = '';
 
-/**
- * Clear all table filters (column filters and global filter)
- */
-export function clearAllTableFilters() {
-  // Clear all column filters
-  resetAllFilters();
-
-  // Clear global filter input
-  const globalFilterInput = document.getElementById("table-filter-input");
-  if (globalFilterInput) {
-    globalFilterInput.value = "";
-  }
-
-  // Clear all column filter inputs
-  const filterRow = document.getElementById("column-filters-row");
+  const filterRow = getElement(IDS.filterRow);
   if (filterRow) {
-    filterRow.querySelectorAll("input").forEach((input) => {
-      input.value = "";
-    });
+    filterRow.querySelectorAll('input').forEach(inp => { inp.value = ''; });
   }
+}
 
-  // Force table refresh after clearing all filters
-  const vm = getVirtualManager();
-  if (vm && vm.isActive) {
-    console.log("🔄 Refreshing table after clearing all filters...");
-    vm.refreshVirtualTable();
-  }
+// ─────────────────────────────────────────────────────────────
+// Public API
+// ─────────────────────────────────────────────────────────────
 
-  // Reconnect filter event handlers after clearing
+export function initTableControls(mainRows, peerRows, hourlyRows = []) {
+  setFullData(mainRows, peerRows, hourlyRows);
+
+  initExpandCollapseAll();
+  showTableControls();
+
   try {
-    // Import connectFilterEventHandlers from table-ui.js
-    import("./table-ui.js").then(({ connectFilterEventHandlers }) => {
-      if (typeof connectFilterEventHandlers === 'function') {
-        connectFilterEventHandlers();
-      }
-    });
-  } catch (error) {
-    console.warn("⚠️ Could not reconnect filter handlers:", error);
+    setMultiSort(DEFAULT_SORT);
+  } catch {
+    logWarn(ErrorCategory.TABLE, 'initTableControls', 'Could not set default sort');
   }
 
-  console.log("🧹 All table filters cleared");
+  updateSortArrows();
+  setupAutoFilterClearing();
 }
 
-/**
- * Setup automatic filter clearing when input values are cleared
- */
+export function clearAllTableFilters() {
+  resetAllFilters();
+  clearFilterInputs();
+  refreshVirtualTable();
+  reconnectFilterHandlers();
+}
+
 export function setupAutoFilterClearing() {
-  // Note: Auto-clearing is now handled by the filter event handlers in table-ui.js
-  // This function is kept for compatibility but the actual clearing logic
-  // is integrated into the main filter change handlers
-
-  console.log("🔧 Auto filter clearing setup completed (handled by table-ui.js)");
+  // handled by table-ui.js filter handlers
 }
 
-/**
- * Clear a specific column filter
- * @param {string} columnKey - The column key to clear filter for
- */
 export function clearColumnFilter(columnKey) {
-  // Clear the filter in state
-  setColumnFilter(columnKey, "");
+  setColumnFilter(columnKey, '');
 
-  // Clear the input value
-  const filterRow = document.getElementById("column-filters-row");
-  if (filterRow) {
-    const input = filterRow.querySelector(`input[data-filter-key="${columnKey}"]`);
-    if (input) {
-      input.value = "";
-    }
-  }
+  const filterRow = getElement(IDS.filterRow);
+  const input = filterRow?.querySelector(`input[data-filter-key="${columnKey}"]`);
+  if (input) input.value = '';
 
-  // Force table refresh after clearing filter
-  const vmFilter = getVirtualManager();
-  if (vmFilter && vmFilter.isActive) {
-    console.log("🔄 Refreshing table after filter clear...");
-    vmFilter.refreshVirtualTable();
-  }
-
-  console.log(`🧹 Column filter "${columnKey}" cleared`);
+  refreshVirtualTable();
 }

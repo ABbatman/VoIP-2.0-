@@ -1,262 +1,179 @@
 // static/js/state/shortLinkState.js
-// Module for short link state persistence (replaces long URL hash encoding)
+// Responsibility: Short link state persistence (URL param "s")
 import { logError, ErrorCategory } from '../utils/errorLogger.js';
 import { getDateManuallyCommittedAt } from './runtimeFlags.js';
+import { setFullState as setTableState, getFullTableState } from './tableState.js';
+import { isReverseMode, setReverseMode, getMetricsData, getFullState as getAppFullState, updateFullState as setAppFullState } from './appState.js';
+import { buildFilterParams, populateFiltersFromState } from '../dom/filter-helpers.js';
 
-import {
-  setFullState as setTableState,
-  getFullTableState,
-} from "./tableState.js";
-import {
-  isReverseMode,
-  setReverseMode,
-  getMetricsData,
-  getFullState as getAppFullState,
-  updateFullState as setAppFullState,
-} from "./appState.js";
-import {
-  buildFilterParams,
-  populateFiltersFromState,
-} from "../dom/filter-helpers.js";
+// ─────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────
 
-const API_SAVE_URL = "/api/state";
-const API_LOAD_URL = "/api/state/";
-const URL_PARAM_KEY = "s";
+const API_SAVE_URL = '/api/state';
+const API_LOAD_URL = '/api/state/';
+const URL_PARAM_KEY = 's';
+const MANUAL_COMMIT_THRESHOLD_MS = 5000;
+const STATE_VERSION = '2.0';
 
-/**
- * Collect current UI state for persistence.
- * Reuses existing state getters.
- */
+// volatile keys to exclude from persistence
+const VOLATILE_TABLE_KEYS = ['yColumnsVisible', 'multiSort'];
+const VOLATILE_PERF_KEYS = ['enableVirtualization', 'enableLazyLoading'];
+const VOLATILE_BEHAVIOR_KEYS = ['enableDragAndDrop'];
+const VOLATILE_SETTINGS_KEYS = ['debugMode', 'performanceMonitoring'];
+
+// ─────────────────────────────────────────────────────────────
+// Helpers: URL
+// ─────────────────────────────────────────────────────────────
+
+function getShortIdFromUrl() {
+  return new URLSearchParams(window.location.search).get(URL_PARAM_KEY) || null;
+}
+
+function updateUrlWithShortId(shortId) {
+  const url = new URL(window.location.href);
+  url.searchParams.set(URL_PARAM_KEY, shortId);
+  url.hash = '';
+  history.replaceState(null, '', url.toString());
+}
+
+function clearShortIdFromUrl() {
+  const url = new URL(window.location.href);
+  url.searchParams.delete(URL_PARAM_KEY);
+  url.hash = '';
+  history.replaceState(null, '', url.toString());
+}
+
+// ─────────────────────────────────────────────────────────────
+// Helpers: State cleanup
+// ─────────────────────────────────────────────────────────────
+
+function cleanTableState(tableState) {
+  VOLATILE_TABLE_KEYS.forEach(k => delete tableState[k]);
+  VOLATILE_PERF_KEYS.forEach(k => delete tableState.performance?.[k]);
+  VOLATILE_BEHAVIOR_KEYS.forEach(k => delete tableState.behavior?.[k]);
+}
+
+function cleanAppState(appState) {
+  VOLATILE_SETTINGS_KEYS.forEach(k => delete appState.settings?.[k]);
+}
+
+// ─────────────────────────────────────────────────────────────
+// Helpers: State collection/application
+// ─────────────────────────────────────────────────────────────
+
 function collectState() {
   const tableState = getFullTableState();
   const appState = getAppFullState();
 
-  // exclude volatile settings (same as urlState.js)
-  delete tableState.yColumnsVisible;
-  delete tableState.multiSort;
-  delete tableState.performance?.enableVirtualization;
-  delete tableState.performance?.enableLazyLoading;
-  delete tableState.behavior?.enableDragAndDrop;
-  delete appState.settings?.debugMode;
-  delete appState.settings?.performanceMonitoring;
-
-  const filterParams = buildFilterParams();
+  cleanTableState(tableState);
+  cleanAppState(appState);
 
   return {
     isReversed: isReverseMode(),
     tableState,
     appState,
-    filterParams,
+    filterParams: buildFilterParams(),
     timestamp: Date.now(),
-    version: "2.0",
+    version: STATE_VERSION
   };
 }
 
-/**
- * Apply loaded state to UI modules.
- * Reuses existing state setters.
- */
 function applyState(state) {
   if (!state) return;
 
-  // new format
-  if (state.version === "2.0" || state.appState) {
-    if (state.appState) {
-      setAppFullState(state.appState);
-    }
-    if (state.tableState) {
-      delete state.tableState.yColumnsVisible;
-      delete state.tableState.multiSort;
-      setTableState(state.tableState);
-    }
-    if (state.filterParams) {
-      populateFiltersFromState(state.filterParams);
-    }
-    if (typeof state.isReversed === "boolean") {
-      setReverseMode(state.isReversed);
-    }
-  } else {
-    // legacy format
-    if (state.filterParams) {
-      populateFiltersFromState(state.filterParams);
-    }
-    if (typeof state.isReversed === "boolean") {
-      setReverseMode(state.isReversed);
-    }
-    if (state.tableState) {
-      delete state.tableState.yColumnsVisible;
-      delete state.tableState.multiSort;
-      setTableState(state.tableState);
-    }
+  const isNewFormat = state.version === STATE_VERSION || state.appState;
+
+  if (state.appState) setAppFullState(state.appState);
+
+  if (state.tableState) {
+    cleanTableState(state.tableState);
+    setTableState(state.tableState);
   }
 
-  // log state age
-  if (state.timestamp) {
-    const age = Date.now() - state.timestamp;
-    const ageMinutes = Math.floor(age / (1000 * 60));
-    console.log(`⏰ State age: ${ageMinutes} minutes`);
+  if (state.filterParams) populateFiltersFromState(state.filterParams);
+
+  if (typeof state.isReversed === 'boolean') {
+    setReverseMode(state.isReversed);
   }
 }
 
-/**
- * Get short link ID from URL query param.
- */
-function getShortIdFromUrl() {
-  const params = new URLSearchParams(window.location.search);
-  return params.get(URL_PARAM_KEY) || null;
+function isValidFilterParams(params) {
+  if (!params?.from || !params?.to) return false;
+  if (params.from === ' ' || params.to === ' ') return false;
+  if (params.from.includes('undefined') || params.to.includes('undefined')) return false;
+  return true;
 }
 
-/**
- * Update URL with short link ID (no page reload).
- */
-function updateUrlWithShortId(shortId) {
-  const url = new URL(window.location.href);
-  url.searchParams.set(URL_PARAM_KEY, shortId);
-  // remove hash if present
-  url.hash = "";
-  history.replaceState(null, "", url.toString());
-}
+// ─────────────────────────────────────────────────────────────
+// Public API
+// ─────────────────────────────────────────────────────────────
 
-/**
- * Clear short link from URL.
- */
-function clearShortIdFromUrl() {
-  const url = new URL(window.location.href);
-  url.searchParams.delete(URL_PARAM_KEY);
-  url.hash = "";
-  history.replaceState(null, "", url.toString());
-}
-
-/**
- * Save current state to backend and update URL with short ID.
- */
 export async function saveStateToShortLink() {
-  const metricsData = getMetricsData();
-
-  if (!metricsData) {
+  if (!getMetricsData()) {
     clearShortIdFromUrl();
     return null;
   }
 
   const state = collectState();
-
-  // validate filter params
-  if (
-    !state.filterParams.from ||
-    !state.filterParams.to ||
-    state.filterParams.from === " " ||
-    state.filterParams.to === " " ||
-    state.filterParams.from.includes("undefined") ||
-    state.filterParams.to.includes("undefined")
-  ) {
-    return null;
-  }
+  if (!isValidFilterParams(state.filterParams)) return null;
 
   try {
     const response = await fetch(API_SAVE_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(state),
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(state)
     });
 
-    if (!response.ok) {
-      console.error("Failed to save state:", response.status);
-      return null;
-    }
+    if (!response.ok) return null;
 
-    const data = await response.json();
-    const shortId = data.id;
-
+    const { id: shortId } = await response.json();
     if (shortId) {
       updateUrlWithShortId(shortId);
-      console.log(`🔗 State saved with short ID: ${shortId}`);
       return shortId;
     }
   } catch (e) {
-    console.error("Error saving state to short link:", e);
+    logError(ErrorCategory.STATE, 'saveStateToShortLink', e);
   }
 
   return null;
 }
 
-/**
- * Load state from backend by short ID and apply to UI.
- * Returns loaded state or null.
- */
 export async function loadStateFromShortLink() {
   const shortId = getShortIdFromUrl();
+  if (!shortId) return null;
 
-  if (!shortId) {
+  // skip if data already loaded
+  if (getMetricsData()) return null;
+
+  // skip if recent manual commit
+  const committedAt = getDateManuallyCommittedAt();
+  if (committedAt && (Date.now() - committedAt) < MANUAL_COMMIT_THRESHOLD_MS) {
     return null;
-  }
-
-  // skip if data already loaded (avoid overwrite)
-  const currentMetricsData = getMetricsData();
-  if (currentMetricsData) {
-    return null;
-  }
-
-  // skip if manual date commit was recent
-  try {
-    const committedAt = getDateManuallyCommittedAt();
-    if (committedAt) {
-      const age = Date.now() - committedAt;
-      if (age >= 0 && age < 5000) {
-        console.log("⏳ loadStateFromShortLink: Skip due to recent manual commit");
-        return null;
-      }
-    }
-  } catch (e) { logError(ErrorCategory.STATE, 'shortLinkState', e);
-    // ignore
   }
 
   try {
     const response = await fetch(API_LOAD_URL + shortId);
 
     if (response.status === 404) {
-      console.log(`🔗 Short link not found: ${shortId}, using defaults`);
       clearShortIdFromUrl();
       return null;
     }
 
-    if (!response.ok) {
-      console.error("Failed to load state:", response.status);
-      return null;
-    }
+    if (!response.ok) return null;
 
     const state = await response.json();
-    console.log(`🔗 State loaded from short ID: ${shortId}`);
     applyState(state);
     return state;
   } catch (e) {
-    console.error("Error loading state from short link:", e);
+    logError(ErrorCategory.STATE, 'loadStateFromShortLink', e);
     return null;
   }
 }
 
-/**
- * Check if URL has a short link ID.
- */
-export function hasShortLinkId() {
-  return !!getShortIdFromUrl();
-}
+export const hasShortLinkId = () => !!getShortIdFromUrl();
+export const getCurrentShortId = () => getShortIdFromUrl();
 
-/**
- * Get current short link ID from URL (if any).
- */
-export function getCurrentShortId() {
-  return getShortIdFromUrl();
-}
-
-/**
- * Initialize short link state module.
- * Sets up event listeners for browser navigation.
- */
 export function initShortLinkState() {
-  window.addEventListener("popstate", () => {
-    console.log("Browser navigation detected, loading state from short link");
-    loadStateFromShortLink();
-  });
-
-  console.log("Short link state synchronization initialized");
+  window.addEventListener('popstate', loadStateFromShortLink);
 }

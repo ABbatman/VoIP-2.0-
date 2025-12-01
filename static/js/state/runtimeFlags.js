@@ -1,216 +1,137 @@
 // static/js/state/runtimeFlags.js
-// Centralized runtime flags to replace window.* pollution
-// All flags are module-scoped, accessed via getters/setters
+// Responsibility: Centralized runtime flags (replaces window.* pollution)
 
-const _flags = {
-  // Chart zoom range
-  chartsZoomRange: null,        // { fromTs, toTs } | null
-  
-  // Rendering coordination
-  renderingInProgress: false,
-  
-  // Find operation
-  isManualFindInProgress: false,
-  
-  // Chart interval
+// ─────────────────────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────────────────────
+
+const flags = {
+  // charts
+  chartsZoomRange: null,
   chartsCurrentInterval: '1h',
-  
-  // Table visibility
-  hideTableUntilSummary: false,
-  
-  // Fetch guards
+  chartsRenderRequested: false,
+  chartsUsedZoomForLastFetch: false,
+  chartsBarPerProvider: false,
+  chartsLastFilters: null,
+  chartsInitDone: false,
+  chartsIntervalFetchSubscribed: false,
+
+  // rendering
+  renderingInProgress: false,
+
+  // fetch guards
+  isManualFindInProgress: false,
   summaryFetchInProgress: false,
   intervalFetchInFlight: false,
-  
-  // Delegation flags
   summaryDelegationInstalled: false,
-  chartsIntervalFetchSubscribed: false,
-  
-  // Charts render request
-  chartsRenderRequested: false,
-  
-  // Date picker manual commit timestamp
-  dateManuallyCommittedAt: null,
-  
-  // Pending filter focus state
-  pendingFilterFocus: null,     // { key, fromFloating, cursorPosition, cursorEnd, inputValue } | null
-  
-  // Table needs rebuild flag
+
+  // table
+  hideTableUntilSummary: false,
   tableNeedsRebuild: false,
-  
-  // Charts used zoom for last fetch
-  chartsUsedZoomForLastFetch: false,
-  
-  // Charts bar per-provider mode
-  chartsBarPerProvider: false,
-  
-  // Charts last filters (for zoom reset detection)
-  chartsLastFilters: null,      // { fromTs, toTs } | null
-  
-  // Charts init done
-  chartsInitDone: false,
+
+  // UI
+  dateManuallyCommittedAt: null,
+  pendingFilterFocus: null
 };
 
-// --- Charts Zoom Range ---
-export function getChartsZoomRange() {
-  return _flags.chartsZoomRange;
-}
+// ─────────────────────────────────────────────────────────────
+// Generic accessors
+// ─────────────────────────────────────────────────────────────
+
+const getBool = key => flags[key];
+const setBool = (key, val) => { flags[key] = !!val; };
+const getVal = key => flags[key];
+const setVal = (key, val) => { flags[key] = val; };
+
+// ─────────────────────────────────────────────────────────────
+// Charts: Zoom Range
+// ─────────────────────────────────────────────────────────────
+
+export const getChartsZoomRange = () => flags.chartsZoomRange;
 
 export function setChartsZoomRange(range) {
   if (range && Number.isFinite(range.fromTs) && Number.isFinite(range.toTs)) {
-    _flags.chartsZoomRange = { fromTs: Number(range.fromTs), toTs: Number(range.toTs) };
+    flags.chartsZoomRange = { fromTs: Number(range.fromTs), toTs: Number(range.toTs) };
   } else {
-    _flags.chartsZoomRange = null;
+    flags.chartsZoomRange = null;
   }
 }
 
-export function clearChartsZoomRange() {
-  _flags.chartsZoomRange = null;
-}
+export const clearChartsZoomRange = () => { flags.chartsZoomRange = null; };
 
-// --- Rendering In Progress ---
-export function isRenderingInProgress() {
-  return _flags.renderingInProgress;
-}
+// ─────────────────────────────────────────────────────────────
+// Charts: Interval & Filters
+// ─────────────────────────────────────────────────────────────
 
-export function setRenderingInProgress(val) {
-  _flags.renderingInProgress = !!val;
-}
+export const getChartsCurrentInterval = () => flags.chartsCurrentInterval || '1h';
+export const setChartsCurrentInterval = val => { flags.chartsCurrentInterval = val || '1h'; };
 
-// --- Manual Find In Progress ---
-export function isManualFindInProgress() {
-  return _flags.isManualFindInProgress;
-}
+export const getChartsLastFilters = () => flags.chartsLastFilters;
+export const setChartsLastFilters = filters => { flags.chartsLastFilters = filters; };
 
-export function setManualFindInProgress(val) {
-  _flags.isManualFindInProgress = !!val;
-}
+// ─────────────────────────────────────────────────────────────
+// Charts: Boolean flags
+// ─────────────────────────────────────────────────────────────
 
-// --- Charts Current Interval ---
-export function getChartsCurrentInterval() {
-  return _flags.chartsCurrentInterval || '1h';
-}
+export const isChartsRenderRequested = () => getBool('chartsRenderRequested');
+export const setChartsRenderRequested = val => setBool('chartsRenderRequested', val);
 
-export function setChartsCurrentInterval(val) {
-  _flags.chartsCurrentInterval = val || '1h';
-}
+export const getChartsUsedZoomForLastFetch = () => getBool('chartsUsedZoomForLastFetch');
+export const setChartsUsedZoomForLastFetch = val => setBool('chartsUsedZoomForLastFetch', val);
 
-// --- Hide Table Until Summary ---
-export function shouldHideTableUntilSummary() {
-  return _flags.hideTableUntilSummary;
-}
+export const isChartsBarPerProvider = () => getBool('chartsBarPerProvider');
+export const setChartsBarPerProvider = val => setBool('chartsBarPerProvider', val);
 
-export function setHideTableUntilSummary(val) {
-  _flags.hideTableUntilSummary = !!val;
-}
+export const isChartsInitDone = () => getBool('chartsInitDone');
+export const setChartsInitDone = val => setBool('chartsInitDone', val);
 
-// --- Summary Fetch In Progress ---
-export function isSummaryFetchInProgress() {
-  return _flags.summaryFetchInProgress;
-}
+export const isChartsIntervalFetchSubscribed = () => getBool('chartsIntervalFetchSubscribed');
+export const setChartsIntervalFetchSubscribed = val => setBool('chartsIntervalFetchSubscribed', val);
 
-export function setSummaryFetchInProgress(val) {
-  _flags.summaryFetchInProgress = !!val;
-}
+// ─────────────────────────────────────────────────────────────
+// Rendering
+// ─────────────────────────────────────────────────────────────
 
-// --- Interval Fetch In Flight ---
-export function isIntervalFetchInFlight() {
-  return _flags.intervalFetchInFlight;
-}
+export const isRenderingInProgress = () => getBool('renderingInProgress');
+export const setRenderingInProgress = val => setBool('renderingInProgress', val);
 
-export function setIntervalFetchInFlight(val) {
-  _flags.intervalFetchInFlight = !!val;
-}
+// ─────────────────────────────────────────────────────────────
+// Fetch guards
+// ─────────────────────────────────────────────────────────────
 
-// --- Delegation Installed Flags ---
-export function isSummaryDelegationInstalled() {
-  return _flags.summaryDelegationInstalled;
-}
+export const isManualFindInProgress = () => getBool('isManualFindInProgress');
+export const setManualFindInProgress = val => setBool('isManualFindInProgress', val);
 
-export function setSummaryDelegationInstalled(val) {
-  _flags.summaryDelegationInstalled = !!val;
-}
+export const isSummaryFetchInProgress = () => getBool('summaryFetchInProgress');
+export const setSummaryFetchInProgress = val => setBool('summaryFetchInProgress', val);
 
-export function isChartsIntervalFetchSubscribed() {
-  return _flags.chartsIntervalFetchSubscribed;
-}
+export const isIntervalFetchInFlight = () => getBool('intervalFetchInFlight');
+export const setIntervalFetchInFlight = val => setBool('intervalFetchInFlight', val);
 
-export function setChartsIntervalFetchSubscribed(val) {
-  _flags.chartsIntervalFetchSubscribed = !!val;
-}
+export const isSummaryDelegationInstalled = () => getBool('summaryDelegationInstalled');
+export const setSummaryDelegationInstalled = val => setBool('summaryDelegationInstalled', val);
 
-// --- Charts Render Requested ---
-export function isChartsRenderRequested() {
-  return _flags.chartsRenderRequested;
-}
+// ─────────────────────────────────────────────────────────────
+// Table
+// ─────────────────────────────────────────────────────────────
 
-export function setChartsRenderRequested(val) {
-  _flags.chartsRenderRequested = !!val;
-}
+export const shouldHideTableUntilSummary = () => getBool('hideTableUntilSummary');
+export const setHideTableUntilSummary = val => setBool('hideTableUntilSummary', val);
 
-// --- Date Manually Committed At ---
-export function getDateManuallyCommittedAt() {
-  return _flags.dateManuallyCommittedAt;
-}
+export const isTableNeedsRebuild = () => getBool('tableNeedsRebuild');
+export const setTableNeedsRebuild = val => setBool('tableNeedsRebuild', val);
 
-export function setDateManuallyCommittedAt(ts) {
-  _flags.dateManuallyCommittedAt = ts;
-}
+// ─────────────────────────────────────────────────────────────
+// UI: Date picker
+// ─────────────────────────────────────────────────────────────
 
-// --- Pending Filter Focus ---
-export function getPendingFilterFocus() {
-  return _flags.pendingFilterFocus;
-}
+export const getDateManuallyCommittedAt = () => getVal('dateManuallyCommittedAt');
+export const setDateManuallyCommittedAt = ts => setVal('dateManuallyCommittedAt', ts);
 
-export function setPendingFilterFocus(focus) {
-  _flags.pendingFilterFocus = focus;
-}
+// ─────────────────────────────────────────────────────────────
+// UI: Filter focus
+// ─────────────────────────────────────────────────────────────
 
-export function clearPendingFilterFocus() {
-  _flags.pendingFilterFocus = null;
-}
-
-// --- Table Needs Rebuild ---
-export function isTableNeedsRebuild() {
-  return _flags.tableNeedsRebuild;
-}
-
-export function setTableNeedsRebuild(val) {
-  _flags.tableNeedsRebuild = !!val;
-}
-
-// --- Charts Used Zoom For Last Fetch ---
-export function getChartsUsedZoomForLastFetch() {
-  return _flags.chartsUsedZoomForLastFetch;
-}
-
-export function setChartsUsedZoomForLastFetch(val) {
-  _flags.chartsUsedZoomForLastFetch = !!val;
-}
-
-// --- Charts Bar Per Provider ---
-export function isChartsBarPerProvider() {
-  return _flags.chartsBarPerProvider;
-}
-
-export function setChartsBarPerProvider(val) {
-  _flags.chartsBarPerProvider = !!val;
-}
-
-// --- Charts Last Filters ---
-export function getChartsLastFilters() {
-  return _flags.chartsLastFilters;
-}
-
-export function setChartsLastFilters(filters) {
-  _flags.chartsLastFilters = filters;
-}
-
-// --- Charts Init Done ---
-export function isChartsInitDone() {
-  return _flags.chartsInitDone;
-}
-
-export function setChartsInitDone(val) {
-  _flags.chartsInitDone = !!val;
-}
+export const getPendingFilterFocus = () => flags.pendingFilterFocus;
+export const setPendingFilterFocus = focus => { flags.pendingFilterFocus = focus; };
+export const clearPendingFilterFocus = () => { flags.pendingFilterFocus = null; };

@@ -1,29 +1,42 @@
 // static/js/charts/registry.js
-// Chart registry and router to keep modularity
+// Responsibility: Chart renderer registry and lazy loading
 
-const _registry = new Map();
+// ─────────────────────────────────────────────────────────────
+// Registry
+// ─────────────────────────────────────────────────────────────
+
+const registry = new Map();
+
+// ─────────────────────────────────────────────────────────────
+// API
+// ─────────────────────────────────────────────────────────────
 
 export function registerChart(type, renderer) {
   if (!type || typeof renderer !== 'function') return;
-  _registry.set(String(type).toLowerCase(), renderer);
+  registry.set(String(type).toLowerCase(), renderer);
 }
 
 export function getRenderer(type) {
-  return _registry.get(String(type || '').toLowerCase()) || null;
+  return registry.get(String(type || '').toLowerCase()) || null;
 }
 
 export function listTypes() {
-  return Array.from(_registry.keys());
+  return Array.from(registry.keys());
 }
 
-// Bootstrap default registrations lazily to avoid circular deps
+// ─────────────────────────────────────────────────────────────
+// Default registrations
+// ─────────────────────────────────────────────────────────────
+
 export async function ensureDefaults() {
-  if (_registry.size > 0) return;
-  // Removed D3 usage; ECharts is the sole charting system.
-  const [{ renderMultiLineChartEcharts }, { renderBarChartEcharts }] = await Promise.all([
+  if (registry.size > 0) return;
+
+  // lazy load to avoid circular deps
+  const [lineModule, barModule] = await Promise.all([
     import('./echartsRenderer.js'),
-    import('./echartsBarChart.js'),
+    import('./echartsBarChart.js')
   ]);
-  registerChart('line', renderMultiLineChartEcharts);
-  registerChart('bar', renderBarChartEcharts);
+
+  registerChart('line', lineModule.renderMultiLineChartEcharts);
+  registerChart('bar', barModule.renderBarChartEcharts);
 }

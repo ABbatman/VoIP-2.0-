@@ -1,33 +1,25 @@
 // static/js/dom/layout.js
+// Responsibility: Sync layout elements with app state
+import { subscribe } from '../state/eventBus.js';
 
-import { subscribe } from "../state/eventBus.js";
+// ─────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────
 
-/**
- * Initializes listeners that update layout elements based on app state changes.
- */
+const REVERSE_BUTTON_ID = 'btnReverse';
+const ACTIVE_CLASS = 'active';
+
+// ─────────────────────────────────────────────────────────────
+// Public API
+// ─────────────────────────────────────────────────────────────
+
 export function initLayoutSync() {
-  // The subscriber will handle changes that happen *after* initial load.
-  subscribe("appState:reverseModeChanged", (isReversed) => {
-    console.log(
-      "[Event] appState:reverseModeChanged triggered layout updates."
-    );
-    updateReverseButtonState(isReversed);
-  });
-  console.log("🔄 Layout synchronization initialized.");
+  subscribe('appState:reverseModeChanged', updateReverseButtonState);
 }
 
-/**
- * Updates the visual state (CSS class) of the reverse button.
- * This is exported to be used on initial load.
- * @param {boolean} isReversed - The current reverse mode state.
- */
 export function updateReverseButtonState(isReversed) {
-  const reverseButton = document.getElementById("btnReverse");
-  if (reverseButton) {
-    if (isReversed) {
-      reverseButton.classList.add("active");
-    } else {
-      reverseButton.classList.remove("active");
-    }
+  const btn = document.getElementById(REVERSE_BUTTON_ID);
+  if (btn) {
+    btn.classList.toggle(ACTIVE_CLASS, isReversed);
   }
 }

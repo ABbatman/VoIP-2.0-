@@ -1,118 +1,164 @@
 // static/js/state/expansionState.js
-// Centralized expansion state for Summary Table (main -> peer -> hour)
-// Pure state: no DOM, no chart coupling. English comments as requested.
+// Responsibility: Table row expansion state (main → peer → hour)
+import { publish } from './eventBus.js';
 
-import { publish } from "./eventBus.js";
+// ─────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────
 
-// Internal sets hold expanded group identifiers
-const _mainExpanded = new Set();
-const _peerExpanded = new Set(); // peer-level controls visibility of hour rows
+const MAIN_PREFIX = 'main-';
+const PEER_PREFIX = 'peer-';
+const EVENT = 'table:expansionChanged';
 
-// Build deterministic group IDs (shared across standard and virtual renderers)
-// Align with virtual/manager/data-cache.js sanitizeIdPart: keep case, keep dots, replace whitespace with '-', remove disallowed
+// ─────────────────────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────────────────────
+
+const mainExpanded = new Set();
+const peerExpanded = new Set();
+
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
+
 function sanitize(value) {
-  return (value == null ? "" : String(value))
+  return (value == null ? '' : String(value))
     .replace(/\s+/g, '-')
     .replace(/[^a-z0-9\-_.]/gi, '');
 }
 
-export function buildMainGroupId(main, destination) {
-  return `main-${sanitize(main)}-${sanitize(destination)}`;
+function getMainBody(id) {
+  return id.startsWith(MAIN_PREFIX) ? id.slice(MAIN_PREFIX.length) : id;
 }
 
-export function buildPeerGroupId(main, peer, destination) {
-  return `peer-${sanitize(main)}-${sanitize(peer)}-${sanitize(destination)}`;
+function emitChange(level, id, expanded) {
+  publish(EVENT, { level, id, expanded });
 }
 
+// ─────────────────────────────────────────────────────────────
+// ID builders
+// ─────────────────────────────────────────────────────────────
+
+export const buildMainGroupId = (main, destination) =>
+  `${MAIN_PREFIX}${sanitize(main)}-${sanitize(destination)}`;
+
+export const buildPeerGroupId = (main, peer, destination) =>
+  `${PEER_PREFIX}${sanitize(main)}-${sanitize(peer)}-${sanitize(destination)}`;
+
+// ─────────────────────────────────────────────────────────────
 // Query API
-export function isMainExpanded(id) { return _mainExpanded.has(id); }
-export function isPeerExpanded(id) { return _peerExpanded.has(id); }
+// ─────────────────────────────────────────────────────────────
 
-// Mutators
+export const isMainExpanded = id => mainExpanded.has(id);
+export const isPeerExpanded = id => peerExpanded.has(id);
+
+// ─────────────────────────────────────────────────────────────
+// Main level mutators
+// ─────────────────────────────────────────────────────────────
+
 export function expandMain(id) {
-  if (!_mainExpanded.has(id)) {
-    _mainExpanded.add(id);
-    publish("table:expansionChanged", { level: "main", id, expanded: true });
-  }
+  if (mainExpanded.has(id)) return;
+  mainExpanded.add(id);
+  emitChange('main', id, true);
 }
+
 export function collapseMain(id) {
-  if (_mainExpanded.delete(id)) {
-    // Also collapse all peer groups under this main (by prefix)
-    const body = id.startsWith("main-") ? id.slice(5) : id;
-    Array.from(_peerExpanded).forEach(pid => {
-      if (pid.startsWith(`peer-${body}-`)) _peerExpanded.delete(pid);
-    });
-    publish("table:expansionChanged", { level: "main", id, expanded: false });
-  }
+  if (!mainExpanded.delete(id)) return;
+
+  // collapse all peers under this main
+  const body = getMainBody(id);
+  const prefix = `${PEER_PREFIX}${body}-`;
+  peerExpanded.forEach(pid => {
+    if (pid.startsWith(prefix)) peerExpanded.delete(pid);
+  });
+
+  emitChange('main', id, false);
 }
-export function toggleMain(id) { isMainExpanded(id) ? collapseMain(id) : expandMain(id); }
+
+export const toggleMain = id => isMainExpanded(id) ? collapseMain(id) : expandMain(id);
+
+// ─────────────────────────────────────────────────────────────
+// Peer level mutators
+// ─────────────────────────────────────────────────────────────
 
 export function expandPeer(id) {
-  if (!_peerExpanded.has(id)) {
-    _peerExpanded.add(id);
-    publish("table:expansionChanged", { level: "peer", id, expanded: true });
-  }
+  if (peerExpanded.has(id)) return;
+  peerExpanded.add(id);
+  emitChange('peer', id, true);
 }
+
 export function collapsePeer(id) {
-  if (_peerExpanded.delete(id)) {
-    publish("table:expansionChanged", { level: "peer", id, expanded: false });
-  }
+  if (!peerExpanded.delete(id)) return;
+  emitChange('peer', id, false);
 }
-export function togglePeer(id) { isPeerExpanded(id) ? collapsePeer(id) : expandPeer(id); }
+
+export const togglePeer = id => isPeerExpanded(id) ? collapsePeer(id) : expandPeer(id);
+
+// ─────────────────────────────────────────────────────────────
+// Bulk operations
+// ─────────────────────────────────────────────────────────────
 
 export function closePeersUnderMain(mainId) {
-  const body = mainId.startsWith("main-") ? mainId.slice(5) : mainId;
+  const body = getMainBody(mainId);
+  const prefix = `${PEER_PREFIX}${body}-`;
   let removed = 0;
-  Array.from(_peerExpanded).forEach(pid => {
-    if (pid.startsWith(`peer-${body}-`)) { _peerExpanded.delete(pid); removed++; }
+
+  peerExpanded.forEach(pid => {
+    if (pid.startsWith(prefix)) { peerExpanded.delete(pid); removed++; }
   });
-  if (removed) publish("table:expansionChanged", { level: "peer", id: `peer-${body}-*`, expanded: false });
+
+  if (removed) emitChange('peer', `${PEER_PREFIX}${body}-*`, false);
   return removed;
 }
 
 export function expandAllMain(mainIds = []) {
   let changed = 0;
-  for (const id of mainIds) { if (!_mainExpanded.has(id)) { _mainExpanded.add(id); changed++; } }
-  if (changed) publish("table:expansionChanged", { level: "main", id: "*", expanded: true });
+  mainIds.forEach(id => {
+    if (!mainExpanded.has(id)) { mainExpanded.add(id); changed++; }
+  });
+  if (changed) emitChange('main', '*', true);
 }
 
 export function collapseAll() {
-  const hadAny = _mainExpanded.size || _peerExpanded.size;
-  _mainExpanded.clear();
-  _peerExpanded.clear();
-  if (hadAny) publish("table:expansionChanged", { level: "all", id: "*", expanded: false });
+  const hadAny = mainExpanded.size || peerExpanded.size;
+  mainExpanded.clear();
+  peerExpanded.clear();
+  if (hadAny) emitChange('all', '*', false);
 }
 
-export function resetExpansionState() { collapseAll(); }
+export const resetExpansionState = collapseAll;
 
-// Proxies used by legacy/virtual manager code (compat facade)
+// ─────────────────────────────────────────────────────────────
+// Compat proxies (for legacy/virtual manager)
+// ─────────────────────────────────────────────────────────────
+
 export function getMainSetProxy() {
-  const proxy = {
-    has: (id) => _mainExpanded.has(id),
-    add: (id) => { expandMain(id); },
-    delete: (id) => { collapseMain(id); return true; },
-    clear: () => { collapseAll(); },
-    get size() { return _mainExpanded.size; },
-    [Symbol.iterator]: function* () { yield* _mainExpanded.values(); }
+  return {
+    has: id => mainExpanded.has(id),
+    add: id => expandMain(id),
+    delete: id => { collapseMain(id); return true; },
+    clear: collapseAll,
+    get size() { return mainExpanded.size; },
+    [Symbol.iterator]: function* () { yield* mainExpanded.values(); }
   };
-  return proxy;
 }
 
 export function getPeerSetProxy() {
-  const proxy = {
-    has: (id) => _peerExpanded.has(id),
-    add: (id) => { expandPeer(id); },
-    delete: (id) => { collapsePeer(id); return true; },
-    clear: () => { collapseAll(); },
-    get size() { return _peerExpanded.size; },
-    [Symbol.iterator]: function* () { yield* _peerExpanded.values(); }
+  return {
+    has: id => peerExpanded.has(id),
+    add: id => expandPeer(id),
+    delete: id => { collapsePeer(id); return true; },
+    clear: collapseAll,
+    get size() { return peerExpanded.size; },
+    [Symbol.iterator]: function* () { yield* peerExpanded.values(); }
   };
-  return proxy;
 }
 
-export function getSnapshot() {
-  return {
-    main: Array.from(_mainExpanded),
-    peer: Array.from(_peerExpanded)
-  };
-}
+// ─────────────────────────────────────────────────────────────
+// Snapshot
+// ─────────────────────────────────────────────────────────────
+
+export const getSnapshot = () => ({
+  main: Array.from(mainExpanded),
+  peer: Array.from(peerExpanded)
+});

@@ -1,23 +1,41 @@
 // static/js/init/d3-init.js
-// Removed D3 usage; ECharts is the sole charting system.
+// Responsibility: Entry point for charts (ECharts mode)
+import { logError, ErrorCategory } from '../utils/errorLogger.js';
+
+// ─────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────
+
+const ROOT_ID = 'd3-root';
+
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
+
+function ensureRootContainer() {
+  if (document.getElementById(ROOT_ID)) return;
+
+  const container = document.createElement('div');
+  container.id = ROOT_ID;
+  container.style.display = 'none';
+  document.body.appendChild(container);
+}
+
+async function loadDashboard() {
+  try {
+    const { initD3Dashboard } = await import('./d3-dashboard.js');
+    await initD3Dashboard();
+  } catch (e) {
+    logError(ErrorCategory.INIT, 'd3Init:loadDashboard', e);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Public API
+// ─────────────────────────────────────────────────────────────
 
 export function initD3() {
-  // Enable ECharts renderers globally (read by initD3Dashboard)
   window.__chartsUseEcharts = true;
-  
-  import('./d3-dashboard.js').then(m => m.initD3Dashboard()).catch(err => {
-    console.error('[d3-init] Failed to load dashboard:', err);
-  });
-
-  console.debug('[d3-init] loaded (ECharts mode)');
-
-  // Example: ensure a dedicated D3 root container exists (no DOM changes if present)
-  const id = 'd3-root';
-  if (!document.getElementById(id)) {
-    const container = document.createElement('div');
-    container.id = id;
-    container.style.display = 'none'; // placeholder, no UI changes yet
-    document.body.appendChild(container);
-  }
-  // No charts here; this module switches dashboard into ECharts mode only.
+  ensureRootContainer();
+  loadDashboard();
 }

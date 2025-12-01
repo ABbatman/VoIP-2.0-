@@ -1,20 +1,85 @@
 // static/js/charts/echarts/builders/MultiLineBuilder.js
-// Build option for multi-line ECharts chart (no zoom policy, no tooltip formatter)
+// Responsibility: Build ECharts option for multi-line chart
 import { toPairs, withGapBreaks, shiftForwardPairs } from '../helpers/dataTransform.js';
 import { getStepMs } from '../helpers/time.js';
 import { MAIN_BLUE } from '../helpers/colors.js';
 import { computeChartGrids } from '../../services/layout.js';
 import { logError, ErrorCategory } from '../../../utils/errorLogger.js';
+import { detectTimeScale, getLineVisuals, getZoomStrength, getPointDensity } from '../../../visualEnhancements/visualMapping.js';
 
-function computeGrids(heightPx) {
-  return computeChartGrids(heightPx);
+// ─────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────
+
+const DAY_MS = 24 * 3600e3;
+const PREV_COLOR = 'rgba(140,148,156,0.85)';
+const METRIC_NAMES = ['TCalls', 'ASR', 'Minutes', 'ACD'];
+const LOW_ASR_THRESHOLD = 30;
+const ESTIMATED_WIDTH = 800;
+
+const SLIDER_GRID = { left: 40, right: 16, top: 4, bottom: 4, height: 40 };
+
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
+
+function cleanPairs(pairs) {
+  return (pairs || []).filter(d => d[1] != null);
 }
 
-function computeSliderGrid() {
-  return { left: 40, right: 16, top: 4, bottom: 4, height: 40 };
+function estimateRangeMs(minX, maxX, interval) {
+  if (minX != null && maxX != null) return maxX - minX;
+  if (interval === '5m') return 8 * 3600 * 1000;
+  if (interval === '1h') return 2 * 3600 * 1000;
+  return DAY_MS;
 }
 
-export function seriesLine(name, data, xAxisIndex, yAxisIndex, color, { area = false, smooth = true, smoothMonotone = undefined, connectNulls = false, sampling = 'lttb' } = {}) {
+function getStepMsFromInterval(interval) {
+  if (interval === '5m') return 5 * 60e3;
+  if (interval === '1h') return 3600e3;
+  return DAY_MS;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Anomaly detection
+// ─────────────────────────────────────────────────────────────
+
+function createAnomalySymbol(scale) {
+  return (val, params) => {
+    if (params.seriesName.includes('ASR') && val?.[1] < LOW_ASR_THRESHOLD) {
+      return 'circle';
+    }
+    return 'none';
+  };
+}
+
+function createAnomalySymbolSize(scale) {
+  return (val, params) => {
+    if (params.seriesName.includes('ASR') && val?.[1] < LOW_ASR_THRESHOLD) {
+      return scale === '5min' ? 3 : 5;
+    }
+    return 0;
+  };
+}
+
+function createAnomalyItemStyle() {
+  return {
+    color: (params) => {
+      if (params.seriesName.includes('ASR') && params.value?.[1] < LOW_ASR_THRESHOLD) {
+        return '#ff3b30';
+      }
+      return params.color;
+    }
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
+// Series factory
+// ─────────────────────────────────────────────────────────────
+
+export function seriesLine(name, data, xAxisIndex, yAxisIndex, color, options = {}) {
+  const { area = false, smooth = true, smoothMonotone, connectNulls = false, sampling = 'lttb' } = options;
+
   return {
     name,
     type: 'line',
@@ -24,7 +89,7 @@ export function seriesLine(name, data, xAxisIndex, yAxisIndex, color, { area = f
     ...(sampling && sampling !== 'none' ? { sampling } : {}),
     symbolSize: 6,
     connectNulls: !!connectNulls,
-    smooth: (typeof smooth === 'number' ? smooth : !!smooth),
+    smooth: typeof smooth === 'number' ? smooth : !!smooth,
     ...(smoothMonotone ? { smoothMonotone } : {}),
     lineStyle: { width: 1.8, color },
     itemStyle: { color },
@@ -34,209 +99,133 @@ export function seriesLine(name, data, xAxisIndex, yAxisIndex, color, { area = f
       focus: 'series',
       itemStyle: { color: '#ff3b30', borderColor: '#fff', borderWidth: 2 },
       symbolSize: 10
-    },
+    }
   };
 }
 
-import { detectTimeScale, getLineVisuals, getZoomStrength, getPointDensity } from '../../../visualEnhancements/visualMapping.js';
+function createCurrentSeries({ name, pairs, axisIndex, color, lineProps, stepMs }) {
+  const series = seriesLine(name, withGapBreaks(pairs, stepMs), axisIndex, axisIndex, color, { ...lineProps, area: true });
+  series.z = 3;
+  return series;
+}
 
-// ... (imports)
+function createPrevSeries({ name, pairs, axisIndex, prevProps, stepMs }) {
+  const series = seriesLine(
+    `${name} -24h`,
+    withGapBreaks(shiftForwardPairs(pairs, DAY_MS), stepMs),
+    axisIndex,
+    axisIndex,
+    PREV_COLOR,
+    prevProps
+  );
 
-export function buildMultiOption({ data, fromTs, toTs, height, interval }) {
-  const grids = computeGrids(height);
-  const dayMs = 24 * 3600e3;
-  const minX = Number.isFinite(fromTs) ? Number(fromTs) : null;
-  const baseMaxX = Number.isFinite(toTs) ? Number(toTs) : null;
-  const maxX = baseMaxX == null ? null : (baseMaxX + dayMs);
+  series.emphasis = { disabled: true, scale: false };
+  series.z = 1;
+  series.tooltip = { show: false };
+  series.silent = true;
 
-  const xAxes = grids.map((g, i) => ({
-    type: 'time', gridIndex: i, min: minX, max: maxX,
-    axisLabel: { color: '#6e7781' }, axisLine: { lineStyle: { color: '#888' } }, axisTick: { alignWithLabel: true },
-    axisPointer: { show: true, snap: true, triggerTooltip: true }
+  return series;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Axes builders
+// ─────────────────────────────────────────────────────────────
+
+function buildXAxes(grids, minX, maxX) {
+  return grids.map((g, i) => ({
+    type: 'time',
+    gridIndex: i,
+    min: minX,
+    max: maxX,
+    axisLabel: { color: '#6e7781' },
+    axisLine: { lineStyle: { color: '#888' } },
+    axisTick: { alignWithLabel: true },
+    axisPointer: { show: true, snap: true, triggerTooltip: true, label: { show: false } }
   }));
+}
 
-  const axisNames = ['TCalls', 'ASR', 'Minutes', 'ACD'];
-  const yAxes = grids.map((g, i) => ({
+function buildYAxes(grids) {
+  return grids.map((g, i) => ({
     type: 'value',
     gridIndex: i,
     axisLabel: { show: false },
     splitLine: { show: false },
-    axisLine: { lineStyle: { color: '#000' } }
+    axisLine: { show: false },
+    axisTick: { show: false }
   }));
+}
 
-  const colors = {
-    TCalls: MAIN_BLUE,
-    ASR: MAIN_BLUE,
-    Minutes: MAIN_BLUE,
-    ACD: MAIN_BLUE,
-  };
+// ─────────────────────────────────────────────────────────────
+// Graphic labels
+// ─────────────────────────────────────────────────────────────
 
-  // 1. Scale & Adaptive Logic
-  // Filter out explicit nulls first to allow "smart connection" of small gaps
-  const cleanPairs = (p) => (p || []).filter(d => d[1] != null);
-
-  const pairsT = cleanPairs(toPairs(data?.TCalls).sort((a, b) => a[0] - b[0]));
-  const pairsA = cleanPairs(toPairs(data?.ASR).sort((a, b) => a[0] - b[0]));
-  const pairsM = cleanPairs(toPairs(data?.Minutes).sort((a, b) => a[0] - b[0]));
-  const pairsC = cleanPairs(toPairs(data?.ACD).sort((a, b) => a[0] - b[0]));
-
-  // Estimate rangeMs
-  let rangeMs = 24 * 3600 * 1000;
-  if (minX != null && baseMaxX != null) {
-    rangeMs = baseMaxX - minX;
-  } else if (interval === '5m') {
-    rangeMs = 8 * 3600 * 1000;
-  } else if (interval === '1h') {
-    rangeMs = 2 * 3600 * 1000;
-  }
-
-  const scale = detectTimeScale(rangeMs);
-
-  // Calculate Visuals
-  // Estimate width (approx 300px per grid if not known, or use height * aspect)
-  // Since we don't have width, we assume a standard density or use data count directly
-  const dataCount = pairsT.length;
-  const estimatedWidth = 800; // default
-  const density = getPointDensity(estimatedWidth, dataCount);
-  const zoomStrength = getZoomStrength(rangeMs, 24 * 3600 * 1000); // normalized against daily
-
-  const { lineWidth, smoothStrength } = getLineVisuals(zoomStrength, density, scale);
-
-  // Anomaly Highlighting (Red dot for low ASR)
-  const anomalySymbol = (val, params) => {
-    if (params.seriesName.includes('ASR') && val && val[1] < 30) {
-      return 'circle';
+function buildGraphicLabels(grids) {
+  return METRIC_NAMES.map((name, i) => ({
+    type: 'text',
+    left: 6,
+    top: i === 0 ? grids[i].top + 6 : grids[i].top + 4,
+    z: 10,
+    style: {
+      text: name,
+      fill: '#6e7781',
+      font: '600 12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif'
     }
-    return 'none'; // default no symbol
-  };
-  const anomalySymbolSize = (val, params) => {
-    if (params.seriesName.includes('ASR') && val && val[1] < 30) {
-      return scale === '5min' ? 3 : 5; // tiny dot for 5m, larger for others
+  }));
+}
+
+// ─────────────────────────────────────────────────────────────
+// Visual map config
+// ─────────────────────────────────────────────────────────────
+
+function buildVisualMaps() {
+  return [
+    {
+      show: false,
+      seriesIndex: 5,
+      pieces: [
+        { max: 10, color: 'rgba(255, 59, 48, 0.8)' },
+        { min: 10, max: 30, color: 'rgba(255, 149, 0, 0.8)' },
+        { min: 60, color: 'rgba(52, 199, 89, 0.8)' }
+      ],
+      outOfRange: { color: MAIN_BLUE }
+    },
+    {
+      show: false,
+      seriesIndex: 7,
+      pieces: [
+        { min: 5, color: 'rgba(0, 122, 255, 0.9)' },
+        { min: 2, max: 5, color: 'rgba(0, 122, 255, 0.7)' }
+      ],
+      outOfRange: { color: MAIN_BLUE }
     }
-    return 0;
-  };
-  const anomalyItemStyle = {
-    color: (params) => {
-      if (params.seriesName.includes('ASR') && params.value && params.value[1] < 30) {
-        return '#ff3b30'; // Red
-      }
-      return params.color;
-    }
-  };
+  ];
+}
 
-  // Common line props
-  const stepMs = (interval === '5m') ? 5 * 60e3 : (interval === '1h' ? 3600e3 : 24 * 3600e3);
-  const is5m = scale === '5min';
-  const conn = false; // Disable global connectNulls, rely on withGapBreaks
-  const samp = is5m ? 'none' : 'lttb';
+// ─────────────────────────────────────────────────────────────
+// Slider option builder
+// ─────────────────────────────────────────────────────────────
 
-  const lineProps = {
-    area: true,
-    smooth: smoothStrength,
-    connectNulls: conn,
-    sampling: samp,
-    lineStyle: { width: lineWidth },
-    symbol: anomalySymbol,
-    symbolSize: anomalySymbolSize,
-    itemStyle: anomalyItemStyle
-  };
-
-  // Apply withGapBreaks to Blue series too (Smart Gaps)
-  const tcalls = seriesLine('TCalls', withGapBreaks(pairsT, stepMs), 0, 0, colors.TCalls, { ...lineProps, area: true });
-  const asr = seriesLine('ASR', withGapBreaks(pairsA, stepMs), 1, 1, colors.ASR, { ...lineProps, area: true });
-  const minutes = seriesLine('Minutes', withGapBreaks(pairsM, stepMs), 2, 2, colors.Minutes, { ...lineProps, area: true });
-  const acd = seriesLine('ACD', withGapBreaks(pairsC, stepMs), 3, 3, colors.ACD, { ...lineProps, area: true });
-  tcalls.z = 3; asr.z = 3; minutes.z = 3; acd.z = 3;
-
-  const prevColor = 'rgba(140,148,156,0.85)';
-  const prevSamp = is5m ? 'none' : samp;
-  const prevConn = is5m ? true : false;
-
-  // Prev lines: thinner, no symbols, lower opacity
-  const prevProps = {
-    area: false,
-    smooth: smoothStrength,
-    connectNulls: conn, // Use same logic
-    showSymbol: false,
-    sampling: prevSamp,
-    lineStyle: { width: 1, opacity: 0.5, type: 'dashed' }
-  };
-
-  const tcallsPrev = seriesLine('TCalls -24h', withGapBreaks(shiftForwardPairs(pairsT, dayMs), stepMs), 0, 0, prevColor, prevProps);
-  const asrPrev = seriesLine('ASR -24h', withGapBreaks(shiftForwardPairs(pairsA, dayMs), stepMs), 1, 1, prevColor, prevProps);
-  const minutesPrev = seriesLine('Minutes -24h', withGapBreaks(shiftForwardPairs(pairsM, dayMs), stepMs), 2, 2, prevColor, prevProps);
-  const acdPrev = seriesLine('ACD -24h', withGapBreaks(shiftForwardPairs(pairsC, dayMs), stepMs), 3, 3, prevColor, prevProps);
-
-  // emphasis.scale replaces deprecated hoverAnimation
-  tcallsPrev.emphasis = { disabled: true, scale: false };
-  asrPrev.emphasis = { disabled: true, scale: false };
-  minutesPrev.emphasis = { disabled: true, scale: false };
-  acdPrev.emphasis = { disabled: true, scale: false };
-  tcallsPrev.z = 1; asrPrev.z = 1; minutesPrev.z = 1; acdPrev.z = 1;
-  tcallsPrev.tooltip = { show: false }; tcallsPrev.silent = true;
-  asrPrev.tooltip = { show: false }; asrPrev.silent = true;
-  minutesPrev.tooltip = { show: false }; minutesPrev.silent = true;
-  acdPrev.tooltip = { show: false }; acdPrev.silent = true;
-
-  const option = {
-    animation: true,
-    animationDurationUpdate: 200,
-    animationEasingUpdate: 'cubicOut',
-    grid: grids,
-    xAxis: xAxes.map(x => ({ ...x, axisPointer: { ...x.axisPointer, label: { show: false }, triggerTooltip: false } })),
-    yAxis: yAxes.map(y => ({ ...y, axisLabel: { show: false }, axisLine: { show: false }, axisTick: { show: false }, splitLine: { show: false } })),
-    color: Object.values(colors),
-    axisPointer: { link: [{ xAxisIndex: [0, 1, 2, 3] }], lineStyle: { color: '#999' }, snap: true, label: { show: false } },
-    tooltip: { trigger: 'axis', axisPointer: { type: 'cross', snap: true, label: { show: false } }, confine: true, order: 'valueAsc' },
-    dataZoom: [
-      { type: 'inside', xAxisIndex: [0, 1, 2, 3], throttle: 80, zoomOnMouseWheel: 'shift', moveOnMouseWheel: false, moveOnMouseMove: true, brushSelect: false }
-    ],
-    series: [tcalls, tcallsPrev, asrPrev, minutesPrev, acdPrev, asr, minutes, acd],
-    visualMap: [
-      {
-        show: false,
-        seriesIndex: 5, // ASR
-        pieces: [
-          { max: 10, color: 'rgba(255, 59, 48, 0.8)' },
-          { min: 10, max: 30, color: 'rgba(255, 149, 0, 0.8)' },
-          { min: 60, color: 'rgba(52, 199, 89, 0.8)' }
-        ],
-        outOfRange: { color: MAIN_BLUE }
-      },
-      {
-        show: false,
-        seriesIndex: 7, // ACD
-        pieces: [
-          { min: 5, color: 'rgba(0, 122, 255, 0.9)' },
-          { min: 2, max: 5, color: 'rgba(0, 122, 255, 0.7)' }
-        ],
-        outOfRange: { color: MAIN_BLUE }
-      }
-    ],
-  };
-
-  try {
-    const labels = axisNames.map((name, i) => {
-      const isFirst = i === 0;
-      const y = isFirst ? (grids[i].top + 6) : (grids[i].top + 4);
-      return { type: 'text', left: 6, top: y, z: 10, style: { text: name, fill: '#6e7781', font: '600 12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif' } };
-    });
-    option.graphic = (option.graphic || []).concat(labels);
-  } catch (e) { logError(ErrorCategory.CHART, 'MultiLineBuilder', e); }
-
-  // Slider Option
-  const sliderGrid = computeSliderGrid();
-  const sliderXAxis = {
-    type: 'time', gridIndex: 0, min: minX, max: maxX,
-    axisLabel: { show: false }, axisLine: { show: false }, axisTick: { show: false }, splitLine: { show: false }
-  };
-  const sliderYAxis = { type: 'value', gridIndex: 0, axisLabel: { show: false }, splitLine: { show: false }, axisLine: { show: false } };
-
-  const sliderOption = {
+function buildSliderOption({ pairsT, minX, maxX, interval }) {
+  return {
     animation: false,
-    grid: [sliderGrid],
-    xAxis: [sliderXAxis],
-    yAxis: [sliderYAxis],
+    grid: [SLIDER_GRID],
+    xAxis: [{
+      type: 'time',
+      gridIndex: 0,
+      min: minX,
+      max: maxX,
+      axisLabel: { show: false },
+      axisLine: { show: false },
+      axisTick: { show: false },
+      splitLine: { show: false }
+    }],
+    yAxis: [{
+      type: 'value',
+      gridIndex: 0,
+      axisLabel: { show: false },
+      splitLine: { show: false },
+      axisLine: { show: false }
+    }],
     dataZoom: [
       {
         type: 'slider',
@@ -258,27 +247,124 @@ export function buildMultiOption({ data, fromTs, toTs, height, interval }) {
         moveOnMouseMove: true
       }
     ],
-    series: [
-      // TCalls only - with gap breaks to avoid connecting empty regions
-      {
-        type: 'line',
-        data: withGapBreaks(pairsT, getStepMs(interval)),
-        xAxisIndex: 0,
-        yAxisIndex: 0,
-        showSymbol: false,
-        connectNulls: false,
-        lineStyle: { width: 1, color: MAIN_BLUE },
-        areaStyle: { color: 'rgba(79,134,255,0.15)' },
-        silent: true,
-        animation: false
-      }
-    ]
+    series: [{
+      type: 'line',
+      data: withGapBreaks(pairsT, getStepMs(interval)),
+      xAxisIndex: 0,
+      yAxisIndex: 0,
+      showSymbol: false,
+      connectNulls: false,
+      lineStyle: { width: 1, color: MAIN_BLUE },
+      areaStyle: { color: 'rgba(79,134,255,0.15)' },
+      silent: true,
+      animation: false
+    }]
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
+// Main export
+// ─────────────────────────────────────────────────────────────
+
+export function buildMultiOption({ data, fromTs, toTs, height, interval }) {
+  const grids = computeChartGrids(height);
+  const minX = Number.isFinite(fromTs) ? Number(fromTs) : null;
+  const baseMaxX = Number.isFinite(toTs) ? Number(toTs) : null;
+  const maxX = baseMaxX == null ? null : baseMaxX + DAY_MS;
+
+  // prepare data pairs
+  const pairsT = cleanPairs(toPairs(data?.TCalls).sort((a, b) => a[0] - b[0]));
+  const pairsA = cleanPairs(toPairs(data?.ASR).sort((a, b) => a[0] - b[0]));
+  const pairsM = cleanPairs(toPairs(data?.Minutes).sort((a, b) => a[0] - b[0]));
+  const pairsC = cleanPairs(toPairs(data?.ACD).sort((a, b) => a[0] - b[0]));
+  const allPairs = [pairsT, pairsA, pairsM, pairsC];
+
+  // calculate visuals
+  const rangeMs = estimateRangeMs(minX, baseMaxX, interval);
+  const scale = detectTimeScale(rangeMs);
+  const density = getPointDensity(ESTIMATED_WIDTH, pairsT.length);
+  const zoomStrength = getZoomStrength(rangeMs, DAY_MS);
+  const { lineWidth, smoothStrength } = getLineVisuals(zoomStrength, density, scale);
+
+  const stepMs = getStepMsFromInterval(interval);
+  const is5m = scale === '5min';
+
+  // line props
+  const lineProps = {
+    area: true,
+    smooth: smoothStrength,
+    connectNulls: false,
+    sampling: is5m ? 'none' : 'lttb',
+    lineStyle: { width: lineWidth },
+    symbol: createAnomalySymbol(scale),
+    symbolSize: createAnomalySymbolSize(scale),
+    itemStyle: createAnomalyItemStyle()
   };
 
-  // Cleanup main option dataZoom
-  option.dataZoom = [
-    { type: 'inside', xAxisIndex: [0, 1, 2, 3], throttle: 80, zoomOnMouseWheel: 'shift', moveOnMouseWheel: false, moveOnMouseMove: true, brushSelect: false }
-  ];
+  const prevProps = {
+    area: false,
+    smooth: smoothStrength,
+    connectNulls: false,
+    showSymbol: false,
+    sampling: is5m ? 'none' : 'lttb',
+    lineStyle: { width: 1, opacity: 0.5, type: 'dashed' }
+  };
+
+  // build series
+  const currentSeries = METRIC_NAMES.map((name, i) =>
+    createCurrentSeries({ name, pairs: allPairs[i], axisIndex: i, color: MAIN_BLUE, lineProps, stepMs })
+  );
+
+  const prevSeries = METRIC_NAMES.map((name, i) =>
+    createPrevSeries({ name, pairs: allPairs[i], axisIndex: i, prevProps, stepMs })
+  );
+
+  // order: tcalls, prevs, then rest of current
+  const series = [currentSeries[0], ...prevSeries, currentSeries[1], currentSeries[2], currentSeries[3]];
+
+  // build main option
+  const option = {
+    animation: true,
+    animationDurationUpdate: 200,
+    animationEasingUpdate: 'cubicOut',
+    grid: grids,
+    xAxis: buildXAxes(grids, minX, maxX),
+    yAxis: buildYAxes(grids),
+    color: METRIC_NAMES.map(() => MAIN_BLUE),
+    axisPointer: {
+      link: [{ xAxisIndex: [0, 1, 2, 3] }],
+      lineStyle: { color: '#999' },
+      snap: true,
+      label: { show: false }
+    },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'cross', snap: true, label: { show: false } },
+      confine: true,
+      order: 'valueAsc'
+    },
+    dataZoom: [{
+      type: 'inside',
+      xAxisIndex: [0, 1, 2, 3],
+      throttle: 80,
+      zoomOnMouseWheel: 'shift',
+      moveOnMouseWheel: false,
+      moveOnMouseMove: true,
+      brushSelect: false
+    }],
+    series,
+    visualMap: buildVisualMaps()
+  };
+
+  // add graphic labels
+  try {
+    option.graphic = buildGraphicLabels(grids);
+  } catch (e) {
+    logError(ErrorCategory.CHART, 'MultiLineBuilder:graphics', e);
+  }
+
+  // build slider option
+  const sliderOption = buildSliderOption({ pairsT, minX, maxX, interval });
 
   return { main: option, slider: sliderOption };
 }

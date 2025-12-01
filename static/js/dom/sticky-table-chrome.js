@@ -1,112 +1,165 @@
 // static/js/dom/sticky-table-chrome.js
-// Responsibility: Provide sticky clones for table chrome parts (footer for now)
+// Responsibility: Sticky clones for table header and footer
+import { subscribe } from '../state/eventBus.js';
+import { getState, toggleYColumnsVisible } from '../state/tableState.js';
+import { logError, logWarn, ErrorCategory } from '../utils/errorLogger.js';
+import { setPendingFilterFocus } from '../state/runtimeFlags.js';
 
-import { subscribe } from "../state/eventBus.js";
-import { getState, toggleYColumnsVisible } from "../state/tableState.js";
-import { logError, logWarn, ErrorCategory } from "../utils/errorLogger.js";
-import { setPendingFilterFocus } from "../state/runtimeFlags.js";
+// ─────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────
 
-let floatingFooter;
-let onSyncBound;
-let _rafFooterScheduled = false;
-let lastFloatingInteractionTs = 0; // Tracks recent user interaction in floating footer
-const INTERACTION_GRACE_MS = 300; // Do not hide for a short time after interaction
-let _floatingShown = false; // Visibility state to prevent flicker
-let _floatingEngaged = false; // Sticky engagement while user works in floating footer
+const SELECTORS = {
+  container: 'virtual-scroll-container',
+  table: 'summaryTable',
+  resultsDisplay: '.results-display',
+  realFooterInput: '#summaryTable tfoot input[data-filter-key="%key%"]',
+  yToggleBtn: '.y-column-toggle-btn'
+};
 
-export function initStickyFooter() {
-  setupFloatingFooter();
-  // Sync on scroll/resize and on state changes (re-setup to keep clone fresh)
-  onSyncBound = () => {
-    if (_rafFooterScheduled) return;
-    _rafFooterScheduled = true;
-    requestAnimationFrame(() => {
-      _rafFooterScheduled = false;
-      setupFloatingFooter();
-      syncFloatingFooter();
-    });
-  };
-  window.addEventListener("scroll", onSyncBound, { passive: true });
-  window.addEventListener("resize", onSyncBound);
-  const container = document.getElementById("virtual-scroll-container");
-  if (container) container.addEventListener("scroll", onSyncBound, { passive: true });
+const CLASSES = {
+  floatingHeader: 'floating-table-header',
+  floatingFooter: 'floating-table-footer',
+  hidden: 'is-hidden',
+  yColumnsHidden: 'y-columns-hidden'
+};
 
-  subscribe("tableState:changed", onSyncBound);
-  subscribe("tableState:yVisibilityChanged", onSyncBound);
-  // Also re-sync on reverse mode toggle – layout/visibility can change
-  subscribe("appState:reverseModeChanged", onSyncBound);
+const INTERACTION_GRACE_MS = 300;
+const RESYNC_DELAY_MS = 60;
 
-  // Hide floating footer immediately when table is hidden (e.g., Reverse/Find)
-  attachVisibilityHooks();
+// ─────────────────────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────────────────────
+
+const state = {
+  // header
+  floatingHeader: null,
+  headerSyncBound: null,
+  rafHeaderScheduled: false,
+  headerShown: false,
+
+  // footer
+  floatingFooter: null,
+  footerSyncBound: null,
+  rafFooterScheduled: false,
+  footerShown: false,
+  footerEngaged: false,
+  lastInteractionTs: 0
+};
+
+// ─────────────────────────────────────────────────────────────
+// DOM helpers
+// ─────────────────────────────────────────────────────────────
+
+function getContainer() {
+  return document.getElementById(SELECTORS.container);
 }
 
-// Bind Y-columns toggle inside the floating header so it mirrors the real header behavior
-function bindHeaderYToggle() {
-  if (!floatingHeader) return;
-  if (floatingHeader._yBound) return;
-  floatingHeader.addEventListener('click', (e) => {
-    const btn = e.target && e.target.closest && e.target.closest('.y-column-toggle-btn');
-    if (!btn) return;
-    try { toggleYColumnsVisible(); } catch(e) { logError(ErrorCategory.DOM, 'stickyTableChrome', e);
-    // Ignore sticky chrome errors
+function getTable() {
+  return document.getElementById(SELECTORS.table);
+}
+
+function getViewportHeight() {
+  return window.innerHeight || document.documentElement.clientHeight;
+}
+
+function toggleHidden(el, hidden) {
+  if (!el) return;
+  el.classList.toggle(CLASSES.hidden, hidden);
+}
+
+function mirrorYColumnsClass(source, target) {
+  if (!source || !target) return;
+  const hasHidden = source.classList.contains(CLASSES.yColumnsHidden);
+  target.classList.toggle(CLASSES.yColumnsHidden, hasHidden);
+}
+
+function setCellWidth(cell, width) {
+  cell.style.boxSizing = 'border-box';
+  cell.style.width = `${width}px`;
+  cell.style.minWidth = `${width}px`;
+  cell.style.maxWidth = `${width}px`;
+}
+
+// ─────────────────────────────────────────────────────────────
+// RAF-throttled sync
+// ─────────────────────────────────────────────────────────────
+
+function createRafSync(setupFn, syncFn, rafFlag) {
+  return () => {
+    if (state[rafFlag]) return;
+    state[rafFlag] = true;
+    requestAnimationFrame(() => {
+      state[rafFlag] = false;
+      setupFn();
+      syncFn();
+    });
+  };
+}
+
+function attachSyncListeners(syncFn) {
+  window.addEventListener('scroll', syncFn, { passive: true });
+  window.addEventListener('resize', syncFn);
+
+  const container = getContainer();
+  if (container) {
+    container.addEventListener('scroll', syncFn, { passive: true });
   }
-  });
-  floatingHeader._yBound = true;
+
+  subscribe('tableState:changed', syncFn);
+  subscribe('tableState:yVisibilityChanged', syncFn);
+  subscribe('appState:reverseModeChanged', syncFn);
 }
 
-// === Sticky Header (floating thead) ===
-let floatingHeader;
-let onSyncHeaderBound;
-let _rafHeaderScheduled = false;
-let _floatingHeaderShown = false;
+// ─────────────────────────────────────────────────────────────
+// Sticky Header
+// ─────────────────────────────────────────────────────────────
 
-export function initStickyHeader() {
-  setupFloatingHeader();
-  onSyncHeaderBound = () => {
-    if (_rafHeaderScheduled) return;
-    _rafHeaderScheduled = true;
-    requestAnimationFrame(() => {
-      _rafHeaderScheduled = false;
-      setupFloatingHeader();
-      syncFloatingHeader();
-    });
-  };
-  window.addEventListener("scroll", onSyncHeaderBound, { passive: true });
-  window.addEventListener("resize", onSyncHeaderBound);
-  const container = document.getElementById("virtual-scroll-container");
-  if (container) container.addEventListener("scroll", onSyncHeaderBound, { passive: true });
+function bindHeaderYToggle() {
+  const header = state.floatingHeader;
+  if (!header || header._yBound) return;
 
-  subscribe("tableState:changed", onSyncHeaderBound);
-  subscribe("tableState:yVisibilityChanged", onSyncHeaderBound);
-  subscribe("appState:reverseModeChanged", onSyncHeaderBound);
+  header.addEventListener('click', (e) => {
+    const btn = e.target?.closest?.(SELECTORS.yToggleBtn);
+    if (btn) {
+      try { toggleYColumnsVisible(); } catch (err) {
+        logError(ErrorCategory.DOM, 'stickyHeader:yToggle', err);
+      }
+    }
+  });
+  header._yBound = true;
+}
+
+function createFloatingHeader(table, thead) {
+  const wrap = document.createElement('div');
+  wrap.className = CLASSES.floatingHeader;
+  wrap.classList.add(CLASSES.hidden);
+
+  const tmpTable = document.createElement('table');
+  tmpTable.className = table.className;
+  mirrorYColumnsClass(table, tmpTable);
+  tmpTable.appendChild(thead.cloneNode(true));
+  wrap.appendChild(tmpTable);
+  document.body.appendChild(wrap);
+
+  return wrap;
 }
 
 function setupFloatingHeader() {
-  const container = document.getElementById("virtual-scroll-container");
-  const table = document.getElementById("summaryTable");
-  const thead = table ? table.querySelector("thead") : null;
+  const container = getContainer();
+  const table = getTable();
+  const thead = table?.querySelector('thead');
   if (!container || !table || !thead) return;
 
-  if (!floatingHeader) {
-    const wrap = document.createElement("div");
-    wrap.className = "floating-table-header";
-    wrap.classList.add("is-hidden");
-
-    const tmpTable = document.createElement("table");
-    tmpTable.className = table.className;
-    if (table.classList.contains('y-columns-hidden')) tmpTable.classList.add('y-columns-hidden');
-    tmpTable.appendChild(thead.cloneNode(true));
-    wrap.appendChild(tmpTable);
-    document.body.appendChild(wrap);
-    floatingHeader = wrap;
+  if (!state.floatingHeader) {
+    state.floatingHeader = createFloatingHeader(table, thead);
     bindHeaderYToggle();
   } else {
-    const ftable = floatingHeader.querySelector("table");
+    const ftable = state.floatingHeader.querySelector('table');
     if (ftable) {
       ftable.className = table.className;
-      if (table.classList.contains('y-columns-hidden')) ftable.classList.add('y-columns-hidden');
-      else ftable.classList.remove('y-columns-hidden');
-      const old = ftable.querySelector("thead");
+      mirrorYColumnsClass(table, ftable);
+      const old = ftable.querySelector('thead');
       if (old) old.replaceWith(thead.cloneNode(true));
     }
     bindHeaderYToggle();
@@ -116,343 +169,340 @@ function setupFloatingHeader() {
 }
 
 function syncFloatingHeader() {
-  const container = document.getElementById("virtual-scroll-container");
-  const table = document.getElementById("summaryTable");
-  const thead = table ? table.querySelector("thead") : null;
-  if (!container || !table || !thead || !floatingHeader) return;
+  const container = getContainer();
+  const table = getTable();
+  const thead = table?.querySelector('thead');
+  const header = state.floatingHeader;
+  if (!container || !table || !thead || !header) return;
 
   const rect = container.getBoundingClientRect();
   const headerBox = thead.getBoundingClientRect();
-  const viewportH = window.innerHeight || document.documentElement.clientHeight;
+  const viewportH = getViewportHeight();
 
-  const tableVisibleInViewport = rect.top < viewportH && rect.bottom > 0;
-  // Original header is considered visible if any part of it is within the viewport
-  const originalHeaderVisible = (headerBox.top < viewportH) && (headerBox.bottom > 0);
+  const tableVisible = rect.top < viewportH && rect.bottom > 0;
+  const originalVisible = headerBox.top < viewportH && headerBox.bottom > 0;
 
-  if (!tableVisibleInViewport || originalHeaderVisible) {
-    if (_floatingHeaderShown) {
-      floatingHeader.classList.add('is-hidden');
-      try { floatingHeader.style.pointerEvents = 'none'; } catch(e) { logError(ErrorCategory.DOM, 'stickyTableChrome', e);
-    // Ignore sticky chrome errors
-  }
-      _floatingHeaderShown = false;
+  // hide if table not visible or original header visible
+  if (!tableVisible || originalVisible) {
+    if (state.headerShown) {
+      toggleHidden(header, true);
+      header.style.pointerEvents = 'none';
+      state.headerShown = false;
     }
     return;
   }
 
-  if (!_floatingHeaderShown) {
-    floatingHeader.classList.remove('is-hidden');
-    try { floatingHeader.style.pointerEvents = 'auto'; } catch(e) { logError(ErrorCategory.DOM, 'stickyTableChrome', e);
-    // Ignore sticky chrome errors
-  }
-    _floatingHeaderShown = true;
+  // show
+  if (!state.headerShown) {
+    toggleHidden(header, false);
+    header.style.pointerEvents = 'auto';
+    state.headerShown = true;
   }
 
-  const ftable = floatingHeader.querySelector('table');
+  // position
+  const ftable = header.querySelector('table');
   const tableWidth = Math.round(table.getBoundingClientRect().width);
-  floatingHeader.style.position = 'fixed';
-  floatingHeader.style.top = '0px';
-  floatingHeader.style.left = `${rect.left}px`;
-  floatingHeader.style.zIndex = '10000';
-  floatingHeader.style.width = `${container.clientWidth}px`;
+
+  header.style.position = 'fixed';
+  header.style.top = '0px';
+  header.style.left = `${rect.left}px`;
+  header.style.zIndex = '10000';
+  header.style.width = `${container.clientWidth}px`;
+
   if (ftable) {
     ftable.style.width = `${tableWidth}px`;
     ftable.style.transform = `translateX(${-container.scrollLeft}px)`;
   }
 
-  syncHeaderCellWidths(table, floatingHeader.querySelector('thead'));
+  syncCellWidths(table.querySelectorAll('thead th'), header.querySelectorAll('thead th'));
 }
 
-function syncHeaderCellWidths(table, dstThead) {
-  if (!dstThead) return;
-  const srcThs = Array.from(table.querySelectorAll('thead th'));
-  const dstThs = Array.from(dstThead.querySelectorAll('th'));
-  const widths = srcThs.map((th) => Math.round(th.getBoundingClientRect().width));
-  dstThs.forEach((th, i) => {
-    const w = widths[i] || 0;
-    th.style.boxSizing = 'border-box';
-    th.style.width = `${w}px`;
-    th.style.minWidth = `${w}px`;
-    th.style.maxWidth = `${w}px`;
+function syncCellWidths(srcCells, dstCells) {
+  const srcArr = Array.from(srcCells);
+  const dstArr = Array.from(dstCells);
+  const widths = srcArr.map(c => Math.round(c.getBoundingClientRect().width));
+
+  dstArr.forEach((cell, i) => {
+    setCellWidth(cell, widths[i] || 0);
   });
 }
 
-function setupFloatingFooter() {
-  const container = document.getElementById("virtual-scroll-container");
-  const table = document.getElementById("summaryTable");
-  const tfoot = table ? table.querySelector("tfoot") : null;
-  if (!container || !table || !tfoot) return;
+export function initStickyHeader() {
+  setupFloatingHeader();
+  state.headerSyncBound = createRafSync(setupFloatingHeader, syncFloatingHeader, 'rafHeaderScheduled');
+  attachSyncListeners(state.headerSyncBound);
+}
 
-  // Preserve focus if user is typing in floating footer input
-  let restoreFocus = false;
-  let focusKey = null;
-  let focusValue = "";
-  let selStart = null;
-  let selEnd = null;
+// ─────────────────────────────────────────────────────────────
+// Sticky Footer
+// ─────────────────────────────────────────────────────────────
+
+function saveFocusState() {
+  const footer = state.floatingFooter;
   const active = document.activeElement;
-  if (floatingFooter && active && floatingFooter.contains(active) && active.tagName === 'INPUT') {
-    restoreFocus = true;
-    focusKey = active.getAttribute('data-filter-key');
-    focusValue = active.value;
-    try {
-      selStart = active.selectionStart;
-      selEnd = active.selectionEnd;
-    } catch (e) { 
-      logWarn(ErrorCategory.DOM, 'setupFloatingFooter:selection', 'Selection range not available'); 
-    }
+
+  if (!footer || !active || !footer.contains(active) || active.tagName !== 'INPUT') {
+    return null;
   }
 
-  if (!floatingFooter) {
-    const wrap = document.createElement("div");
-    wrap.className = "floating-table-footer";
-    // use CSS class for static positioning; start hidden
-    wrap.classList.add('is-hidden');
+  try {
+    return {
+      key: active.getAttribute('data-filter-key'),
+      value: active.value,
+      selStart: active.selectionStart,
+      selEnd: active.selectionEnd
+    };
+  } catch {
+    return { key: active.getAttribute('data-filter-key'), value: active.value };
+  }
+}
 
-    const tmpTable = document.createElement("table");
-    tmpTable.className = table.className;
-    // Mirror Y-columns hidden state
-    if (table.classList.contains('y-columns-hidden')) {
-      tmpTable.classList.add('y-columns-hidden');
-    } else {
-      tmpTable.classList.remove('y-columns-hidden');
+function restoreFocusState(focusState) {
+  if (!focusState?.key || !state.floatingFooter) return;
+
+  const input = state.floatingFooter.querySelector(`tfoot input[data-filter-key="${focusState.key}"]`);
+  if (!input) return;
+
+  input.value = focusState.value || '';
+  input.focus();
+
+  if (focusState.selStart != null && input.setSelectionRange) {
+    try {
+      input.setSelectionRange(focusState.selStart, focusState.selEnd);
+    } catch {
+      // selection not supported
     }
-    tmpTable.appendChild(tfoot.cloneNode(true));
-    wrap.appendChild(tmpTable);
-    document.body.appendChild(wrap);
-    floatingFooter = wrap;
+  }
+}
+
+function createFloatingFooter(table, tfoot) {
+  const wrap = document.createElement('div');
+  wrap.className = CLASSES.floatingFooter;
+  wrap.classList.add(CLASSES.hidden);
+
+  const tmpTable = document.createElement('table');
+  tmpTable.className = table.className;
+  mirrorYColumnsClass(table, tmpTable);
+  tmpTable.appendChild(tfoot.cloneNode(true));
+  wrap.appendChild(tmpTable);
+  document.body.appendChild(wrap);
+
+  return wrap;
+}
+
+function setupFloatingFooter() {
+  const container = getContainer();
+  const table = getTable();
+  const tfoot = table?.querySelector('tfoot');
+  if (!container || !table || !tfoot) return;
+
+  const focusState = saveFocusState();
+
+  if (!state.floatingFooter) {
+    state.floatingFooter = createFloatingFooter(table, tfoot);
     bindFooterInputs();
   } else {
-    const ftable = floatingFooter.querySelector("table");
+    const ftable = state.floatingFooter.querySelector('table');
     if (ftable) {
       ftable.className = table.className;
-      // Mirror Y-columns hidden state on update
-      if (table.classList.contains('y-columns-hidden')) {
-        ftable.classList.add('y-columns-hidden');
-      } else {
-        ftable.classList.remove('y-columns-hidden');
-      }
-      const old = ftable.querySelector("tfoot");
+      mirrorYColumnsClass(table, ftable);
+      const old = ftable.querySelector('tfoot');
       if (old) old.replaceWith(tfoot.cloneNode(true));
       bindFooterInputs();
     }
   }
 
-  // Restore focus and caret position if needed
-  if (restoreFocus && focusKey) {
-    const newInput = floatingFooter.querySelector(`tfoot input[data-filter-key="${focusKey}"]`);
-    if (newInput) {
-      newInput.value = focusValue;
-      newInput.focus();
-      if (selStart != null && selEnd != null && newInput.setSelectionRange) {
-        try { 
-          newInput.setSelectionRange(selStart, selEnd); 
-        } catch (e) { 
-          logWarn(ErrorCategory.DOM, 'setupFloatingFooter:restoreSelection', 'Could not restore selection'); 
-        }
-      }
-    }
-  }
-
+  restoreFocusState(focusState);
   syncFloatingFooter();
 }
 
-function syncFloatingFooter() {
-  const container = document.getElementById("virtual-scroll-container");
-  const table = document.getElementById("summaryTable");
-  const tfoot = table ? table.querySelector("tfoot") : null;
-  if (!container || !table || !tfoot || !floatingFooter) return;
+function getInteractionContext() {
+  const active = document.activeElement;
+  const footer = state.floatingFooter;
 
-  // Visibility context
-  let isInteracting = false;
+  const activeInFloating = !!(active && active.closest('.' + CLASSES.floatingFooter));
+  const activeInReal = !!(active && active.closest('#summaryTable tfoot'));
+  const isInteracting = activeInFloating || activeInReal || state.footerEngaged;
+
   let hasActiveFilters = false;
   try {
-    const active = document.activeElement;
-    const activeInFloating = !!(active && active.closest('.floating-table-footer'));
-    const activeInReal = !!(active && active.closest('#summaryTable tfoot'));
-    isInteracting = activeInFloating || activeInReal || _floatingEngaged;
     const { columnFilters = {} } = getState();
-    hasActiveFilters = Object.values(columnFilters).some(v => (v || '').toString().trim().length > 0);
-  } catch (e) { 
-    logError(ErrorCategory.STATE, 'syncFloatingFooter:state', e); 
-  }
-  const now = Date.now();
-  const inGrace = (now - lastFloatingInteractionTs) < INTERACTION_GRACE_MS;
-
-  const rect = container.getBoundingClientRect();
-  const viewportH = window.innerHeight || document.documentElement.clientHeight;
-  // Determine scroll mode and visibility conditions
-  const containerHasVScroll = container.scrollHeight > container.clientHeight + 1;
-  // Visibility of original footer relative to WINDOW viewport (more reliable: tfoot may sit outside the scroll container)
-  const originalFooterBox = tfoot.getBoundingClientRect();
-  const originalFooterVisibleInViewport = originalFooterBox.top < viewportH && originalFooterBox.bottom > 0;
-  const tableVisibleInViewport = rect.top < viewportH && rect.bottom > 0;
-  const pageNeedsFooter = rect.bottom > viewportH; // container extends beyond viewport
-
-  // Hard mutual exclusion: if original footer is visible in WINDOW viewport, ALWAYS hide floating footer
-  if (originalFooterVisibleInViewport) {
-    const activeEl = document.activeElement;
-    if (activeEl && floatingFooter.contains(activeEl)) {
-      const key = activeEl.getAttribute('data-filter-key');
-      if (key) {
-        const realInput = document.querySelector(`#summaryTable tfoot input[data-filter-key="${key}"]`);
-        if (realInput) {
-          // Transfer focus and caret to real footer input
-          try {
-            const pos = typeof activeEl.selectionStart === 'number' ? activeEl.selectionStart : (activeEl.value || '').length;
-            realInput.focus();
-            if (typeof realInput.setSelectionRange === 'function') realInput.setSelectionRange(pos, pos);
-          } catch(e) { 
-            logWarn(ErrorCategory.DOM, 'syncFloatingFooter:transfer', 'Focus transfer failed'); 
-          }
-        }
-      }
-    }
-    if (_floatingShown) {
-      floatingFooter.classList.add('is-hidden');
-      _floatingShown = false;
-    }
-    return;
+    hasActiveFilters = Object.values(columnFilters).some(v => String(v || '').trim().length > 0);
+  } catch (e) {
+    logError(ErrorCategory.STATE, 'getInteractionContext', e);
   }
 
-  // Show rules unified:
-  // - Show if interacting OR filters active OR within grace window
-  // - Else show when original footer is NOT visible in WINDOW and (container has vertical scroll OR page needs footer)
-  let shouldShow = false;
-  if (isInteracting || hasActiveFilters || inGrace) {
-    shouldShow = true;
-  } else {
-    shouldShow = (!originalFooterVisibleInViewport && (containerHasVScroll || pageNeedsFooter) && tableVisibleInViewport);
-  }
-  if (!shouldShow) {
-    if (_floatingShown) {
-      floatingFooter.classList.add('is-hidden');
-      _floatingShown = false;
-    }
-    return;
-  }
+  const inGrace = (Date.now() - state.lastInteractionTs) < INTERACTION_GRACE_MS;
 
-  if (!_floatingShown) {
-    floatingFooter.classList.remove('is-hidden');
-    _floatingShown = true;
-  }
-  floatingFooter.style.left = `${rect.left}px`;
-  floatingFooter.style.width = `${container.clientWidth}px`;
-
-  const ftable = floatingFooter.querySelector("table");
-  // Match exact width including borders
-  const tableWidth = Math.round(table.getBoundingClientRect().width);
-  ftable.style.width = `${tableWidth}px`;
-  floatingFooter.style.width = `${container.clientWidth}px`;
-  ftable.style.transform = `translateX(${-container.scrollLeft}px)`;
-
-  const dstTfoot = floatingFooter.querySelector("tfoot");
-  syncFooterCellWidths(table, dstTfoot);
-  try { if (window.restoreFilterFocusIfPending) window.restoreFilterFocusIfPending(); } catch (e) { logError(ErrorCategory.DOM, 'stickyTableChrome', e); /* intentional no-op */ }
+  return { isInteracting, hasActiveFilters, inGrace };
 }
 
-function attachVisibilityHooks() {
-  const results = document.querySelector('.results-display');
-  if (results) {
-    const observer = new MutationObserver(() => {
-      const isHidden = results.style.display === 'none' || results.classList.contains('is-hidden');
-      if (isHidden && floatingFooter) {
-        floatingFooter.classList.add('is-hidden');
-      }
-    });
-    observer.observe(results, { attributes: true, attributeFilter: ['style', 'class'] });
+function transferFocusToRealFooter() {
+  const active = document.activeElement;
+  const footer = state.floatingFooter;
+
+  if (!active || !footer?.contains(active)) return;
+
+  const key = active.getAttribute('data-filter-key');
+  if (!key) return;
+
+  const realInput = document.querySelector(SELECTORS.realFooterInput.replace('%key%', key));
+  if (!realInput) return;
+
+  try {
+    const pos = typeof active.selectionStart === 'number' ? active.selectionStart : active.value?.length || 0;
+    realInput.focus();
+    if (realInput.setSelectionRange) realInput.setSelectionRange(pos, pos);
+  } catch {
+    // focus transfer failed
   }
-  const hideNow = () => {
-    if (floatingFooter) floatingFooter.classList.add('is-hidden');
-    // Schedule a re-sync soon after reverse/find actions complete
-    setTimeout(() => {
-      try { onSyncBound(); } catch (e) { logError(ErrorCategory.DOM, 'stickyTableChrome', e); /* intentional no-op: resync best-effort */ }
-    }, 60);
-  };
-  const reverseBtn = document.getElementById('btnReverse');
-  if (reverseBtn) reverseBtn.addEventListener('click', hideNow);
-  const findBtn = document.getElementById('findButton');
-  if (findBtn) findBtn.addEventListener('click', hideNow);
+}
+
+function syncFloatingFooter() {
+  const container = getContainer();
+  const table = getTable();
+  const tfoot = table?.querySelector('tfoot');
+  const footer = state.floatingFooter;
+  if (!container || !table || !tfoot || !footer) return;
+
+  const rect = container.getBoundingClientRect();
+  const viewportH = getViewportHeight();
+  const tfootBox = tfoot.getBoundingClientRect();
+
+  const originalVisible = tfootBox.top < viewportH && tfootBox.bottom > 0;
+  const tableVisible = rect.top < viewportH && rect.bottom > 0;
+  const containerHasVScroll = container.scrollHeight > container.clientHeight + 1;
+  const pageNeedsFooter = rect.bottom > viewportH;
+
+  // always hide if original is visible
+  if (originalVisible) {
+    transferFocusToRealFooter();
+    if (state.footerShown) {
+      toggleHidden(footer, true);
+      state.footerShown = false;
+    }
+    return;
+  }
+
+  // determine if should show
+  const ctx = getInteractionContext();
+  const shouldShow = ctx.isInteracting || ctx.hasActiveFilters || ctx.inGrace ||
+    (!originalVisible && (containerHasVScroll || pageNeedsFooter) && tableVisible);
+
+  if (!shouldShow) {
+    if (state.footerShown) {
+      toggleHidden(footer, true);
+      state.footerShown = false;
+    }
+    return;
+  }
+
+  // show and position
+  if (!state.footerShown) {
+    toggleHidden(footer, false);
+    state.footerShown = true;
+  }
+
+  const ftable = footer.querySelector('table');
+  const tableWidth = Math.round(table.getBoundingClientRect().width);
+
+  footer.style.left = `${rect.left}px`;
+  footer.style.width = `${container.clientWidth}px`;
+
+  if (ftable) {
+    ftable.style.width = `${tableWidth}px`;
+    ftable.style.transform = `translateX(${-container.scrollLeft}px)`;
+  }
+
+  syncFooterCellWidths(table, footer.querySelector('tfoot'));
 }
 
 function syncFooterCellWidths(table, dstTfoot) {
-  // Build list of visible header widths (exclude Y when hidden)
-  const tableHasHiddenY = table.classList.contains('y-columns-hidden');
+  if (!dstTfoot) return;
+
+  const tableHasHiddenY = table.classList.contains(CLASSES.yColumnsHidden);
   const headerThs = Array.from(table.querySelectorAll('thead th'));
-  const visibleHeaderWidths = [];
-  headerThs.forEach((th) => {
-    const isY = th.dataset && th.dataset.yToggleable === 'true';
-    if (!tableHasHiddenY || !isY) {
-      visibleHeaderWidths.push(Math.round(th.getBoundingClientRect().width));
-    }
-  });
 
-  // Apply widths to each footer row independently, mapping only visible cells
-  const rows = Array.from(dstTfoot.querySelectorAll('tr'));
-  rows.forEach((tr) => {
+  // collect visible header widths
+  const visibleWidths = headerThs
+    .filter(th => !tableHasHiddenY || th.dataset?.yToggleable !== 'true')
+    .map(th => Math.round(th.getBoundingClientRect().width));
+
+  const tableWidth = Math.round(table.getBoundingClientRect().width);
+
+  Array.from(dstTfoot.querySelectorAll('tr')).forEach(tr => {
     const cells = Array.from(tr.querySelectorAll('td'));
-    // Special case: info row with single colspan cell
-    if (cells.length === 1 && (parseInt(cells[0].getAttribute('colspan') || '1', 10) > 1)) {
-      // Set total width to container width via table width
-      const total = Math.round(table.getBoundingClientRect().width);
-      const td = cells[0];
-      td.style.boxSizing = 'border-box';
-      td.style.width = `${total}px`;
-      td.style.minWidth = `${total}px`;
-      td.style.maxWidth = `${total}px`;
+
+    // single colspan cell (info row)
+    if (cells.length === 1 && parseInt(cells[0].getAttribute('colspan') || '1', 10) > 1) {
+      setCellWidth(cells[0], tableWidth);
       return;
     }
 
-    // Map visible widths to visible cells (skip Y when hidden)
-    const visibleCells = cells.filter((td) => td.getAttribute('data-y-toggleable') !== 'true' || !tableHasHiddenY);
-    if (visibleCells.length !== visibleHeaderWidths.length) {
-      // Fallback: set each cell to equal share to avoid drift
-      const share = Math.floor(table.getBoundingClientRect().width / Math.max(1, visibleCells.length));
-      visibleCells.forEach((td) => {
-        td.style.boxSizing = 'border-box';
-        td.style.width = `${share}px`;
-        td.style.minWidth = `${share}px`;
-        td.style.maxWidth = `${share}px`;
-      });
+    // filter visible cells
+    const visibleCells = cells.filter(td =>
+      !tableHasHiddenY || td.getAttribute('data-y-toggleable') !== 'true'
+    );
+
+    // fallback if mismatch
+    if (visibleCells.length !== visibleWidths.length) {
+      const share = Math.floor(tableWidth / Math.max(1, visibleCells.length));
+      visibleCells.forEach(td => setCellWidth(td, share));
       return;
     }
-    visibleCells.forEach((td, i) => {
-      const w = visibleHeaderWidths[i];
-      td.style.boxSizing = 'border-box';
-      td.style.width = `${w}px`;
-      td.style.minWidth = `${w}px`;
-      td.style.maxWidth = `${w}px`;
-    });
+
+    visibleCells.forEach((td, i) => setCellWidth(td, visibleWidths[i]));
   });
 }
 
+// ─────────────────────────────────────────────────────────────
+// Footer input binding
+// ─────────────────────────────────────────────────────────────
+
 function bindFooterInputs() {
-  if (!floatingFooter) return;
-  const inputs = floatingFooter.querySelectorAll('tfoot input[data-filter-key]');
-  inputs.forEach((inp) => {
+  const footer = state.floatingFooter;
+  if (!footer) return;
+
+  footer.querySelectorAll('tfoot input[data-filter-key]').forEach(inp => {
     if (inp._ff_bound) return;
-    // Hint pending focus on mouse down to avoid race on first click
+
     inp.addEventListener('mousedown', () => {
       try {
         const key = inp.getAttribute('data-filter-key');
-        const pos = typeof inp.selectionStart === 'number' ? inp.selectionStart : (inp.value || '').length;
+        const pos = inp.selectionStart ?? inp.value?.length ?? 0;
         setPendingFilterFocus({ key, fromFloating: true, cursorPosition: pos });
-        lastFloatingInteractionTs = Date.now();
-        _floatingEngaged = true;
-      } catch(e) { logError(ErrorCategory.DOM, 'stickyTableChrome', e); /* noop */ }
+        state.lastInteractionTs = Date.now();
+        state.footerEngaged = true;
+      } catch (e) {
+        logError(ErrorCategory.DOM, 'bindFooterInputs:mousedown', e);
+      }
     });
-    inp.addEventListener('focusin', () => { _floatingEngaged = true; lastFloatingInteractionTs = Date.now(); });
+
+    inp.addEventListener('focusin', () => {
+      state.footerEngaged = true;
+      state.lastInteractionTs = Date.now();
+    });
+
     inp.addEventListener('blur', () => {
-      // Delay to see where focus moved
       setTimeout(() => {
         const active = document.activeElement;
-        const stillInside = !!(active && floatingFooter && floatingFooter.contains(active));
-        const inRealFooter = !!(active && document.querySelector('#summaryTable tfoot')?.contains(active));
-        _floatingEngaged = stillInside; // if moved to real footer, disengage
-        if (!stillInside && !inRealFooter) lastFloatingInteractionTs = Date.now();
+        const stillInside = footer.contains(active);
+        const inRealFooter = document.querySelector('#summaryTable tfoot')?.contains(active);
+        state.footerEngaged = stillInside;
+        if (!stillInside && !inRealFooter) state.lastInteractionTs = Date.now();
       }, 0);
     });
-    inp.addEventListener('input', () => { lastFloatingInteractionTs = Date.now(); proxyFooterInput(inp); });
-    inp.addEventListener('change', () => { lastFloatingInteractionTs = Date.now(); proxyFooterInput(inp); });
+
+    inp.addEventListener('input', () => {
+      state.lastInteractionTs = Date.now();
+      proxyFooterInput(inp);
+    });
+
+    inp.addEventListener('change', () => {
+      state.lastInteractionTs = Date.now();
+      proxyFooterInput(inp);
+    });
+
     inp._ff_bound = true;
   });
 }
@@ -460,28 +510,61 @@ function bindFooterInputs() {
 function proxyFooterInput(floatingInput) {
   const key = floatingInput.dataset.filterKey;
   if (!key) return;
-  
-  // Save cursor position before any sync
+
   const cursorPos = floatingInput.selectionStart;
   const cursorEnd = floatingInput.selectionEnd;
-  
-  const real = document.querySelector(`#summaryTable tfoot input[data-filter-key="${key}"]`);
-  if (!real) return;
-  if (real.value !== floatingInput.value) {
-    real.value = floatingInput.value;
-    // Dispatch with marker for floating origin
-    const detail = { fromFloating: true, cursorPosition: cursorPos };
-    real.dispatchEvent(new CustomEvent('input', { bubbles: true, detail }));
-    real.dispatchEvent(new CustomEvent('change', { bubbles: true, detail }));
-  }
-  
-  // Restore cursor position immediately (prevent jump)
+
+  const real = document.querySelector(SELECTORS.realFooterInput.replace('%key%', key));
+  if (!real || real.value === floatingInput.value) return;
+
+  real.value = floatingInput.value;
+  const detail = { fromFloating: true, cursorPosition: cursorPos };
+  real.dispatchEvent(new CustomEvent('input', { bubbles: true, detail }));
+  real.dispatchEvent(new CustomEvent('change', { bubbles: true, detail }));
+
+  // restore cursor
   requestAnimationFrame(() => {
-    if (document.activeElement === floatingInput && typeof floatingInput.setSelectionRange === 'function') {
+    if (document.activeElement === floatingInput && floatingInput.setSelectionRange) {
       const maxPos = floatingInput.value.length;
       floatingInput.setSelectionRange(Math.min(cursorPos, maxPos), Math.min(cursorEnd, maxPos));
     }
   });
 }
 
+// ─────────────────────────────────────────────────────────────
+// Visibility hooks
+// ─────────────────────────────────────────────────────────────
 
+function attachVisibilityHooks() {
+  const results = document.querySelector(SELECTORS.resultsDisplay);
+  if (results) {
+    const observer = new MutationObserver(() => {
+      const isHidden = results.style.display === 'none' || results.classList.contains(CLASSES.hidden);
+      if (isHidden && state.floatingFooter) {
+        toggleHidden(state.floatingFooter, true);
+      }
+    });
+    observer.observe(results, { attributes: true, attributeFilter: ['style', 'class'] });
+  }
+
+  const hideAndResync = () => {
+    if (state.floatingFooter) toggleHidden(state.floatingFooter, true);
+    setTimeout(() => {
+      try { state.footerSyncBound?.(); } catch { /* best-effort */ }
+    }, RESYNC_DELAY_MS);
+  };
+
+  document.getElementById('btnReverse')?.addEventListener('click', hideAndResync);
+  document.getElementById('findButton')?.addEventListener('click', hideAndResync);
+}
+
+// ─────────────────────────────────────────────────────────────
+// Public API
+// ─────────────────────────────────────────────────────────────
+
+export function initStickyFooter() {
+  setupFloatingFooter();
+  state.footerSyncBound = createRafSync(setupFloatingFooter, syncFloatingFooter, 'rafFooterScheduled');
+  attachSyncListeners(state.footerSyncBound);
+  attachVisibilityHooks();
+}

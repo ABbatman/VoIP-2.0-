@@ -1,312 +1,303 @@
 // static/js/dom/table.js
+// Responsibility: Standard table rendering and interactions
+import { getState, setColumnFilter, areYColumnsVisible } from '../state/tableState.js';
+import { renderCoordinator } from '../rendering/render-coordinator.js';
+import { renderMainRowString, renderPeerRowString, renderHourlyRowsString } from './table-renderers.js';
+import { renderTableHeader, renderTableFooter, updateSortArrows } from './table-ui.js';
+import { subscribe } from '../state/eventBus.js';
+import { updateTopScrollbar } from './top-scrollbar.js';
 import {
-  getState,
-  setColumnFilter,
-  areYColumnsVisible,
-} from "../state/tableState.js"; // <-- Import areYColumnsVisible
-import { renderCoordinator } from "../rendering/render-coordinator.js";
-import {
-  renderMainRowString,
-  renderPeerRowString,
-  renderHourlyRowsString,
-} from "./table-renderers.js";
-import {
-  renderTableHeader,
-  renderTableFooter,
-  updateSortArrows,
-} from "./table-ui.js";
-import { subscribe } from "../state/eventBus.js";
-import { updateTopScrollbar } from "./top-scrollbar.js";
-import {
-  buildMainGroupId,
-  buildPeerGroupId,
-  getMainSetProxy,
-  getPeerSetProxy,
-  isMainExpanded,
-  isPeerExpanded,
-  toggleMain,
-  togglePeer,
-  resetExpansionState,
-} from "../state/expansionState.js";
-import { getVirtualManager } from "../state/moduleRegistry.js";
-import { logError, ErrorCategory } from "../utils/errorLogger.js";
+  buildMainGroupId, buildPeerGroupId,
+  isMainExpanded, isPeerExpanded,
+  toggleMain, togglePeer, resetExpansionState
+} from '../state/expansionState.js';
+import { getVirtualManager } from '../state/moduleRegistry.js';
+import { logError, ErrorCategory } from '../utils/errorLogger.js';
 
-// Centralized expansion state proxies (shared with virtual table)
-const openMainGroups = getMainSetProxy();
-const openHourlyGroups = getPeerSetProxy();
+// ─────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────
 
-subscribe("appState:dataChanged", () => {
-  resetExpansionState();
-});
+const IDS = {
+  tableBody: 'tableBody',
+  table: 'summaryTable',
+  filterRow: 'column-filters-row'
+};
 
-// Allow external flows (e.g., Reverse -> Summary) to reset expansion state explicitly
-export function resetRowOpenState() { resetExpansionState(); }
+const SCROLLBAR_UPDATE_DELAY = 50;
 
-/**
- * Renders the grouped table using the persistent state.
- * @param {Array} mainRows - The filtered and paged main rows to display.
- * @param {Array} peerRows - The complete list of peer rows for all main groups.
- * @param {Array} hourlyRows - The complete list of hourly rows for all peer groups.
- */
-export function renderGroupedTable(mainRows, peerRows, hourlyRows) {
-  // Centralized expansion state is already shared; no global hydration
-  // Deduplicate incoming datasets by their natural keys (robust to minor casing/whitespace)
-  const norm = (v) => (v == null ? '' : String(v).trim().toLowerCase());
-  const uniqueBy = (arr, keyFn) => {
-    if (!Array.isArray(arr)) return [];
-    const seen = new Set();
-    const out = [];
-    for (const r of arr) {
-      const k = keyFn(r);
-      if (!seen.has(k)) { seen.add(k); out.push(r); }
-    }
-    return out;
-  };
-  const mRows = uniqueBy(mainRows, r => [norm(r?.main), norm(r?.destination)].join('|'));
-  const pRows = uniqueBy(peerRows, r => [norm(r?.main), norm(r?.peer), norm(r?.destination)].join('|'));
-  const hKeyName = (Array.isArray(hourlyRows) && hourlyRows.length && Object.prototype.hasOwnProperty.call(hourlyRows[0], 'time')) ? 'time' : 'hour';
-  const hRows = uniqueBy(hourlyRows, r => [norm(r?.main), norm(r?.peer), norm(r?.destination), norm(r?.[hKeyName])].join('|'));
-  // ... (весь код до `tbody.innerHTML = ""`) ...
-  const activeElement = document.activeElement;
-  let activeFilterKey = null;
-  let selectionStart = 0;
-  if (activeElement && activeElement.closest("#column-filters-row")) {
-    activeFilterKey = activeElement.dataset.filterKey;
-    selectionStart = activeElement.selectionStart;
-  }
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
 
-  renderTableHeader();
-  if (typeof renderTableFooter === "function") {
-    renderTableFooter();
-  }
-  // Ensure visual state is refreshed; sorting clicks are handled by delegated handler
-  try {
-    updateSortArrows(); // refresh visual state (directions)
-  } catch (e) { logError(ErrorCategory.TABLE, 'table', e); /* no-op in virtual-only paths */ }
+const norm = v => (v == null ? '' : String(v).trim().toLowerCase());
 
-  const tbody = document.getElementById("tableBody");
-  tbody.innerHTML = "";
-
-  // --- NEW LOGIC: Apply the visibility class to the main table element ---
-  const tableElement = document.getElementById("summaryTable");
-  if (tableElement) {
-    if (areYColumnsVisible()) {
-      tableElement.classList.remove("y-columns-hidden");
-    } else {
-      tableElement.classList.add("y-columns-hidden");
-    }
-  }
-  // --- END NEW LOGIC ---
-
-  if (!mRows || mRows.length === 0) {
-    // Empty state: keep header and footer visible, but remove all data rows
-    // (User wants all rows to disappear when no matches)
-    tbody.innerHTML = `
-      <tr class="empty-state">
-        <td colspan="${document.querySelectorAll("#summaryTable th").length}">
-          No matches found
-        </td>
-      </tr>
-    `;
-  } else {
-    // Build tbody HTML using pure string renderers + morphdom (no direct DOM building)
-    let tbodyHTML = "";
-    const { columnFilters, multiSort } = getState();
-    const peerFilter = columnFilters.peer?.toLowerCase();
-
-    mRows.forEach((mainRow) => {
-      const mainGroupId = buildMainGroupId(mainRow.main, mainRow.destination);
-      const isMainGroupOpen = isMainExpanded(mainGroupId);
-      tbodyHTML += renderMainRowString(mainRow, { mainGroupId, isMainGroupOpen });
-
-      let relevantPeers = pRows.filter(
-        (p) => norm(p.main) === norm(mainRow.main) && norm(p.destination) === norm(mainRow.destination)
-      );
-
-      // Do not apply peer filter when main group is open: toggles must be independent from inputs
-      if (peerFilter && !isMainGroupOpen) {
-        relevantPeers = relevantPeers.filter((p) =>
-          (p.peer ?? "").toString().toLowerCase().includes(peerFilter)
-        );
-      }
-
-      if (multiSort && multiSort.length > 0) {
-        relevantPeers.sort((a, b) => {
-          for (let i = 0; i < multiSort.length; i++) {
-            const { key, dir } = multiSort[i];
-            let aVal = a[key],
-              bVal = b[key];
-            if (aVal == null) aVal = "";
-            if (bVal == null) bVal = "";
-            if (!isNaN(parseFloat(aVal)) && !isNaN(parseFloat(bVal))) {
-              aVal = parseFloat(aVal);
-              bVal = parseFloat(bVal);
-              if (aVal !== bVal)
-                return dir === "desc" ? bVal - aVal : aVal - bVal;
-            } else {
-              aVal = aVal.toString().toLowerCase();
-              bVal = bVal.toString().toLowerCase();
-              if (aVal !== bVal)
-                return dir === "asc"
-                  ? aVal.localeCompare(bVal)
-                  : bVal.localeCompare(aVal);
-            }
-          }
-          return 0;
-        });
-      }
-
-      relevantPeers.forEach((peerRow) => {
-        const peerGroupId = buildPeerGroupId(peerRow.main, peerRow.peer, peerRow.destination);
-        const isPeerGroupOpen = isPeerExpanded(peerGroupId);
-        tbodyHTML += renderPeerRowString(peerRow, { mainGroupId, peerGroupId, isMainGroupOpen, isPeerGroupOpen });
-
-        const relevantHours = hRows.filter(
-          (h) =>
-            norm(h.main) === norm(peerRow.main) &&
-            norm(h.peer) === norm(peerRow.peer) &&
-            norm(h.destination) === norm(peerRow.destination)
-        );
-        tbodyHTML += renderHourlyRowsString(relevantHours, { peerGroupId, isMainGroupOpen, isPeerGroupOpen, parentPeer: peerRow });
-      });
-    });
-    // Apply minimal diff to tbody using morphdom
-    try {
-      if (window.morphdom) {
-        const toHTML = `<tbody id="tableBody">${tbodyHTML}</tbody>`; // keep same root to avoid replacing tbody node
-        // IMPORTANT: allow morphdom to update the tbody inside virtual-scroll-container for standard render
-        window.morphdom(tbody, toHTML);
-      } else {
-        tbody.innerHTML = tbodyHTML;
-      }
-    } catch (e) {
-      tbody.innerHTML = tbodyHTML;
-    }
-  }
-
-  // ... (весь остальной код функции renderGroupedTable без изменений) ...
-  updateSortArrows(); // delegated handler processes clicks; no legacy binding
-
-  // Remove legacy direct listeners; `connectFilterEventHandlers()` in table-ui handles this with focus restore
-
-  if (activeFilterKey) {
-    const newActiveInput = document.querySelector(
-      `input[data-filter-key="${activeFilterKey}"]`
-    );
-    if (newActiveInput) {
-      newActiveInput.focus();
-      newActiveInput.setSelectionRange(selectionStart, selectionStart);
-    }
-  }
-
-  setTimeout(updateTopScrollbar, 50);
-  // Expansion state persists in centralized store
+function uniqueBy(arr, keyFn) {
+  if (!Array.isArray(arr)) return [];
+  const seen = new Set();
+  return arr.filter(r => {
+    const k = keyFn(r);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
 }
 
-// ... (остальная часть файла table.js без изменений)
+function getElement(id) {
+  return document.getElementById(id);
+}
+
+// ─────────────────────────────────────────────────────────────
+// Init
+// ─────────────────────────────────────────────────────────────
+
+subscribe('appState:dataChanged', resetExpansionState);
+
+export function resetRowOpenState() {
+  resetExpansionState();
+}
+
+// ─────────────────────────────────────────────────────────────
+// Table rendering
+// ─────────────────────────────────────────────────────────────
+
+function saveFocusState() {
+  const active = document.activeElement;
+  if (!active?.closest(`#${IDS.filterRow}`)) return null;
+  return {
+    key: active.dataset.filterKey,
+    pos: active.selectionStart || 0
+  };
+}
+
+function restoreFocusState(focusState) {
+  if (!focusState?.key) return;
+  const input = document.querySelector(`input[data-filter-key="${focusState.key}"]`);
+  if (input) {
+    input.focus();
+    input.setSelectionRange(focusState.pos, focusState.pos);
+  }
+}
+
+function updateYColumnsVisibility() {
+  const table = getElement(IDS.table);
+  if (table) {
+    table.classList.toggle('y-columns-hidden', !areYColumnsVisible());
+  }
+}
+
+function sortPeers(peers, multiSort) {
+  if (!multiSort?.length) return peers;
+
+  return [...peers].sort((a, b) => {
+    for (const { key, dir } of multiSort) {
+      let aVal = a[key] ?? '';
+      let bVal = b[key] ?? '';
+
+      const aNum = parseFloat(aVal);
+      const bNum = parseFloat(bVal);
+
+      if (!isNaN(aNum) && !isNaN(bNum)) {
+        if (aNum !== bNum) return dir === 'desc' ? bNum - aNum : aNum - bNum;
+      } else {
+        aVal = String(aVal).toLowerCase();
+        bVal = String(bVal).toLowerCase();
+        if (aVal !== bVal) return dir === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+      }
+    }
+    return 0;
+  });
+}
+
+function renderEmptyState(tbody) {
+  const colCount = document.querySelectorAll(`#${IDS.table} th`).length;
+  tbody.innerHTML = `<tr class="empty-state"><td colspan="${colCount}">No matches found</td></tr>`;
+}
+
+function applyMorphdom(tbody, html) {
+  try {
+    if (window.morphdom) {
+      window.morphdom(tbody, `<tbody id="${IDS.tableBody}">${html}</tbody>`);
+    } else {
+      tbody.innerHTML = html;
+    }
+  } catch {
+    tbody.innerHTML = html;
+  }
+}
+
+export function renderGroupedTable(mainRows, peerRows, hourlyRows) {
+  // dedupe
+  const mRows = uniqueBy(mainRows, r => [norm(r?.main), norm(r?.destination)].join('|'));
+  const pRows = uniqueBy(peerRows, r => [norm(r?.main), norm(r?.peer), norm(r?.destination)].join('|'));
+  const hKey = (Array.isArray(hourlyRows) && hourlyRows[0]?.time !== undefined) ? 'time' : 'hour';
+  const hRows = uniqueBy(hourlyRows, r => [norm(r?.main), norm(r?.peer), norm(r?.destination), norm(r?.[hKey])].join('|'));
+
+  const focusState = saveFocusState();
+
+  renderTableHeader();
+  renderTableFooter();
+  try { updateSortArrows(); } catch (e) { logError(ErrorCategory.TABLE, 'renderGroupedTable', e); }
+
+  const tbody = getElement(IDS.tableBody);
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  updateYColumnsVisibility();
+
+  if (!mRows?.length) {
+    renderEmptyState(tbody);
+  } else {
+    const { columnFilters, multiSort } = getState();
+    const peerFilter = columnFilters.peer?.toLowerCase();
+    let html = '';
+
+    mRows.forEach(mainRow => {
+      const mainGroupId = buildMainGroupId(mainRow.main, mainRow.destination);
+      const isMainOpen = isMainExpanded(mainGroupId);
+
+      html += renderMainRowString(mainRow, { mainGroupId, isMainGroupOpen: isMainOpen });
+
+      let peers = pRows.filter(p =>
+        norm(p.main) === norm(mainRow.main) && norm(p.destination) === norm(mainRow.destination)
+      );
+
+      // apply peer filter only when collapsed
+      if (peerFilter && !isMainOpen) {
+        peers = peers.filter(p => (p.peer ?? '').toString().toLowerCase().includes(peerFilter));
+      }
+
+      peers = sortPeers(peers, multiSort);
+
+      peers.forEach(peerRow => {
+        const peerGroupId = buildPeerGroupId(peerRow.main, peerRow.peer, peerRow.destination);
+        const isPeerOpen = isPeerExpanded(peerGroupId);
+
+        html += renderPeerRowString(peerRow, { mainGroupId, peerGroupId, isMainGroupOpen: isMainOpen, isPeerGroupOpen: isPeerOpen });
+
+        const hours = hRows.filter(h =>
+          norm(h.main) === norm(peerRow.main) &&
+          norm(h.peer) === norm(peerRow.peer) &&
+          norm(h.destination) === norm(peerRow.destination)
+        );
+
+        html += renderHourlyRowsString(hours, { peerGroupId, isMainGroupOpen: isMainOpen, isPeerGroupOpen: isPeerOpen, parentPeer: peerRow });
+      });
+    });
+
+    applyMorphdom(tbody, html);
+  }
+
+  updateSortArrows();
+  restoreFocusState(focusState);
+  setTimeout(updateTopScrollbar, SCROLLBAR_UPDATE_DELAY);
+}
+
+// ─────────────────────────────────────────────────────────────
+// Table interactions
+// ─────────────────────────────────────────────────────────────
+
+async function redrawTable() {
+  try {
+    const ai = window.appInitializer || window.App?.appInitializer;
+    if (ai?.tableController?.redrawTable) {
+      ai.tableController.redrawTable();
+    } else {
+      const mod = await import('../dom/table.js');
+      const app = await import('../data/tableProcessor.js');
+      const { getMetricsData } = await import('../state/appState.js');
+      const data = getMetricsData();
+      const { pagedData } = app.getProcessedData();
+      mod.renderGroupedTable(pagedData || [], data?.peer_rows || [], data?.hourly_rows || []);
+    }
+  } catch (e) {
+    logError(ErrorCategory.TABLE, 'redrawTable', e);
+  }
+}
+
+function handleToggleClick(event, btn) {
+  event.preventDefault();
+  event.stopPropagation();
+  try { btn.blur(); } catch {}
+
+  const row = btn.closest('tr');
+  if (!row) return;
+
+  const groupId = btn.dataset.targetGroup;
+  if (row.classList.contains('main-row')) {
+    toggleMain(groupId);
+  } else if (row.classList.contains('peer-row')) {
+    togglePeer(groupId);
+  }
+
+  renderCoordinator.requestRender('table', redrawTable, { debounceMs: 0, cooldownMs: 0 });
+}
+
+function handlePeerRowClick(event, row) {
+  const vm = getVirtualManager();
+  if (vm?.isActive) return;
+
+  const innerBtn = row.querySelector('.toggle-btn');
+  if (innerBtn && !event.target.closest('.toggle-btn')) {
+    try { innerBtn.click(); } catch {}
+    event.preventDefault();
+    event.stopPropagation();
+  }
+}
+
+function handleRowSelection(tbody, row) {
+  if (!row || !tbody.contains(row)) return;
+
+  const selected = tbody.querySelector('tr.row-selected');
+  if (selected) selected.classList.remove('row-selected');
+
+  if (row !== selected) {
+    row.classList.add('row-selected');
+  }
+}
+
+function handleCellDoubleClick(event) {
+  const cell = event.target.closest('td');
+  if (!cell || event.target.closest('.toggle-btn') || cell.querySelector('.datetime-cell-container')) {
+    return;
+  }
+
+  const value = (cell.dataset.filterValue || cell.textContent).trim();
+  if (!value || value === '-') return;
+
+  const headerCell = document.querySelector(`#${IDS.table} th:nth-child(${cell.cellIndex + 1})`);
+  const filterKey = headerCell?.dataset.sortKey;
+  if (!filterKey) return;
+
+  const input = document.querySelector(`#${IDS.filterRow} input[data-filter-key="${filterKey}"]`);
+  if (!input) return;
+
+  input.value = value;
+  setColumnFilter(filterKey, value);
+}
+
 export function initTableInteractions() {
-  const tableBody = document.getElementById("tableBody");
-  if (!tableBody) return;
+  const tbody = getElement(IDS.tableBody);
+  if (!tbody) return;
 
-  tableBody.addEventListener("click", (event) => {
-    // If virtual mode is active, delegate toggle handling to virtual manager to avoid double toggles
+  tbody.addEventListener('click', (event) => {
     const vm = getVirtualManager();
-    if (vm && vm.isActive) return;
-    // --- EXPAND/COLLAPSE LOGIC ---
-    const targetButton = event.target.closest(".toggle-btn");
-    if (targetButton) {
-      // Prevent default behavior and blur the toggle to avoid focus-driven scroll changes
-      try { event.preventDefault(); event.stopPropagation(); if (typeof targetButton.blur === 'function') targetButton.blur(); } catch (e) { logError(ErrorCategory.TABLE, 'table', e);}
-      const parentRow = targetButton.closest("tr");
-      if (!parentRow) return;
-      const groupId = targetButton.dataset.targetGroup;
-      if (parentRow.classList.contains("main-row")) {
-        toggleMain(groupId);
-      } else if (parentRow.classList.contains("peer-row")) {
-        togglePeer(groupId);
-      }
-      try {
-        renderCoordinator.requestRender('table', async () => {
-          try {
-            const ai = window.appInitializer || (window.App && window.App.appInitializer);
-            if (ai && ai.tableController && typeof ai.tableController.redrawTable === 'function') {
-              ai.tableController.redrawTable();
-            } else {
-              const mod = await import('../dom/table.js');
-              const app = await import('../data/tableProcessor.js');
-              const { getMetricsData } = await import('../state/appState.js');
-              const data = getMetricsData();
-              const { pagedData } = app.getProcessedData();
-              mod.renderGroupedTable(pagedData || [], data?.peer_rows || [], data?.hourly_rows || []);
-            }
-          } catch (e) { console.error('Error re-rendering table:', e); }
-        }, { debounceMs: 0, cooldownMs: 0 });
-      } catch (e) { logError(ErrorCategory.TABLE, 'table', e);}
+    if (vm?.isActive) return;
+
+    const toggleBtn = event.target.closest('.toggle-btn');
+    if (toggleBtn) {
+      handleToggleClick(event, toggleBtn);
       return;
     }
 
-    // --- ROW-LEVEL TOGGLE FOR PEER ROWS (click anywhere on peer row) ---
-    const clickedRow = event.target.closest("tr");
-    if (clickedRow && clickedRow.classList.contains("peer-row")) {
-      // If virtual mode is active, do not emulate toggle by row click
-      const vmPeer = getVirtualManager();
-      if (vmPeer && vmPeer.isActive) return;
-      // If the direct target wasn't the toggle button, delegate to the existing button logic
-      const innerToggleBtn = clickedRow.querySelector(".toggle-btn");
-      if (innerToggleBtn && !event.target.closest(".toggle-btn")) {
-        try { innerToggleBtn.click(); } catch (e) { logError(ErrorCategory.TABLE, 'table', e);
-          // Ignore click errors
-        }
-        try { event.preventDefault(); event.stopPropagation(); } catch (e) { logError(ErrorCategory.TABLE, 'table', e);
-          // Ignore event handling errors
-        }
-        return;
-      }
+    const row = event.target.closest('tr');
+    if (row?.classList.contains('peer-row')) {
+      handlePeerRowClick(event, row);
+      return;
     }
 
-    // --- ROW SELECTION LOGIC ---
-    const clickedRow2 = event.target.closest("tr");
-    if (!clickedRow2 || !tableBody.contains(clickedRow2)) return;
-    const currentlySelectedRow = tableBody.querySelector("tr.row-selected");
-    if (currentlySelectedRow) {
-      currentlySelectedRow.classList.remove("row-selected");
-    }
-    if (clickedRow2 !== currentlySelectedRow) {
-      clickedRow2.classList.add("row-selected");
-    }
+    handleRowSelection(tbody, row);
   });
 
-  tableBody.addEventListener("dblclick", (event) => {
-    const cell = event.target.closest("td");
-    if (
-      !cell ||
-      event.target.closest(".toggle-btn") ||
-      cell.querySelector(".datetime-cell-container")
-    ) {
-      return;
-    }
-
-    const valueToFilter = (cell.dataset.filterValue || cell.textContent).trim();
-    if (!valueToFilter || valueToFilter === "-") return;
-
-    const columnIndex = cell.cellIndex;
-    const headerCell = document.querySelector(
-      `#summaryTable th:nth-child(${columnIndex + 1})`
-    );
-    if (!headerCell) return;
-
-    const filterKey = headerCell.dataset.sortKey;
-    if (!filterKey) return;
-
-    const targetInput = document.querySelector(
-      `#column-filters-row input[data-filter-key="${filterKey}"]`
-    );
-    if (!targetInput) {
-      console.warn(`No filter input found for key: ${filterKey}`);
-      return;
-    }
-    // Reflect the value in the visible filter input and update state
-    targetInput.value = valueToFilter;
-    setColumnFilter(filterKey, valueToFilter);
-  });
+  tbody.addEventListener('dblclick', handleCellDoubleClick);
 }

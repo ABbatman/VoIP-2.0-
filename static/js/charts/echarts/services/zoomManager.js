@@ -1,5 +1,5 @@
 // static/js/charts/echarts/services/zoomManager.js
-// Centralized zoom range management and policy
+// Responsibility: Centralized zoom range management and policy enforcement
 import { toast } from '../../../ui/notify.js';
 import {
   getChartsZoomRange,
@@ -9,23 +9,61 @@ import {
 } from '../../../state/runtimeFlags.js';
 import { logError, ErrorCategory } from '../../../utils/errorLogger.js';
 
-function _getModelRange(chart) {
+// ─────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────
+
+const DAY_MS = 24 * 3600e3;
+const MAX_5M_RANGE_DAYS = 5;
+const POLICY_THROTTLE_MS = 600;
+const TOAST_DURATION = 3500;
+
+// ─────────────────────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────────────────────
+
+let lastPolicySwitchTs = 0;
+
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
+
+function isDisposed(chart) {
+  return !chart || (typeof chart.isDisposed === 'function' && chart.isDisposed());
+}
+
+function getModelRange(chart) {
   try {
     const model = chart.getModel();
-    const xa = model && model.getComponent('xAxis', 0);
-    const scale = xa && xa.axis && xa.axis.scale;
+    const xAxis = model?.getComponent('xAxis', 0);
+    const scale = xAxis?.axis?.scale;
+
     if (scale && typeof scale.getExtent === 'function') {
-      const ext = scale.getExtent();
-      const fromTs = Math.floor(ext[0]);
-      const toTs = Math.ceil(ext[1]);
-      if (Number.isFinite(fromTs) && Number.isFinite(toTs) && toTs > fromTs) return { fromTs, toTs };
+      const [min, max] = scale.getExtent();
+      const fromTs = Math.floor(min);
+      const toTs = Math.ceil(max);
+
+      if (Number.isFinite(fromTs) && Number.isFinite(toTs) && toTs > fromTs) {
+        return { fromTs, toTs };
+      }
     }
-  } catch(e) { logError(ErrorCategory.CHART, 'zoomManager', e); }
+  } catch (e) {
+    logError(ErrorCategory.CHART, 'zoomManager:getModelRange', e);
+  }
+
   return null;
 }
 
-// local cache for policy throttle
-let _zoomPolicyLastSwitchTs = 0;
+function isValidRange(range) {
+  return range &&
+    Number.isFinite(range.fromTs) &&
+    Number.isFinite(range.toTs) &&
+    range.toTs > range.fromTs;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Range API
+// ─────────────────────────────────────────────────────────────
 
 export function getRange() {
   return getChartsZoomRange();
@@ -35,50 +73,110 @@ export function setRange(range) {
   setChartsZoomRange(range);
 }
 
+// ─────────────────────────────────────────────────────────────
+// Apply range to chart
+// ─────────────────────────────────────────────────────────────
+
 export function applyRange(chart) {
-  // Guard against disposed chart
-  if (!chart || (chart.isDisposed && chart.isDisposed())) return;
-  // apply global zoom range to existing dataZoom components only (do not add new ones)
+  if (isDisposed(chart)) return;
+
   try {
-    const zr = getRange();
-    if (!zr || !Number.isFinite(zr.fromTs) || !Number.isFinite(zr.toTs) || zr.toTs <= zr.fromTs) return;
+    const range = getRange();
+    if (!isValidRange(range)) return;
+
     const opt = chart.getOption();
-    const existing = opt && opt.dataZoom;
-    if (!Array.isArray(existing) || existing.length === 0) return;
+    const existing = opt?.dataZoom;
+    if (!Array.isArray(existing) || !existing.length) return;
+
     // update only existing dataZoom components
-    const updates = existing.map(() => ({ startValue: zr.fromTs, endValue: zr.toTs }));
+    const updates = existing.map(() => ({
+      startValue: range.fromTs,
+      endValue: range.toTs
+    }));
+
     chart.setOption({ dataZoom: updates }, { lazyUpdate: true });
-  } catch(e) { logError(ErrorCategory.CHART, 'zoomManager', e); }
+  } catch (e) {
+    logError(ErrorCategory.CHART, 'zoomManager:applyRange', e);
+  }
 }
 
+// ─────────────────────────────────────────────────────────────
+// Interval policy
+// ─────────────────────────────────────────────────────────────
+
+function shouldSwitchInterval(range) {
+  const diffDays = (range.toTs - range.fromTs) / DAY_MS;
+  const currentInterval = getChartsCurrentInterval();
+
+  return currentInterval === '5m' &&
+    Number.isFinite(diffDays) &&
+    diffDays > MAX_5M_RANGE_DAYS;
+}
+
+function isThrottled() {
+  const now = Date.now();
+  if (now - lastPolicySwitchTs <= POLICY_THROTTLE_MS) {
+    return true;
+  }
+  lastPolicySwitchTs = now;
+  return false;
+}
+
+async function switchTo1hInterval() {
+  try {
+    toast('5-minute interval is available only for ranges up to 5 days. Switching to 1 hour.', {
+      type: 'warning',
+      duration: TOAST_DURATION
+    });
+  } catch (e) {
+    logError(ErrorCategory.CHART, 'zoomManager:toast', e);
+  }
+
+  setChartsCurrentInterval('1h');
+
+  try {
+    const { publish } = await import('../../../state/eventBus.js');
+    publish('charts:intervalChanged', { interval: '1h' });
+  } catch (e) {
+    logError(ErrorCategory.CHART, 'zoomManager:publish', e);
+  }
+}
+
+function enforceIntervalPolicy(range) {
+  if (!shouldSwitchInterval(range)) return;
+  if (isThrottled()) return;
+
+  switchTo1hInterval();
+}
+
+// ─────────────────────────────────────────────────────────────
+// Attach zoom handler
+// ─────────────────────────────────────────────────────────────
+
 export function attach(chart, { onZoom } = {}) {
-  // Guard against disposed chart
-  if (!chart || (chart.isDisposed && chart.isDisposed())) return;
-  // attach unified dataZoom listener to persist and enforce policies
-  try { chart.off('dataZoom'); } catch(e) { logError(ErrorCategory.CHART, 'zoomManager', e); }
+  if (isDisposed(chart)) return;
+
+  // remove existing handler
+  try {
+    chart.off('dataZoom');
+  } catch (e) {
+    logError(ErrorCategory.CHART, 'zoomManager:detach', e);
+  }
+
+  // attach new handler
   chart.on('dataZoom', () => {
-    const zr = _getModelRange(chart);
-    if (zr) {
-      setRange(zr);
-      // 5m interval hard policy: auto-switch to 1h when zoom > 5 days
+    const range = getModelRange(chart);
+    if (!range) return;
+
+    setRange(range);
+    enforceIntervalPolicy(range);
+
+    if (typeof onZoom === 'function') {
       try {
-        const diffDays = (zr.toTs - zr.fromTs) / (24 * 3600e3);
-        const curInt = getChartsCurrentInterval();
-        if (curInt === '5m' && Number.isFinite(diffDays) && diffDays > 5.0001) {
-          const now = Date.now();
-          if (now - _zoomPolicyLastSwitchTs > 600) {
-            _zoomPolicyLastSwitchTs = now;
-            try { toast('5-minute interval is available only for ranges up to 5 days. Switching to 1 hour.', { type: 'warning', duration: 3500 }); } catch(e) { logError(ErrorCategory.CHART, 'zoomManager', e); }
-            setChartsCurrentInterval('1h');
-            try {
-              import('../../../state/eventBus.js').then(({ publish }) => {
-                try { publish('charts:intervalChanged', { interval: '1h' }); } catch(e) { logError(ErrorCategory.CHART, 'zoomManager', e); }
-              }).catch(() => {});
-            } catch(e) { logError(ErrorCategory.CHART, 'zoomManager', e); }
-          }
-        }
-      } catch(e) { logError(ErrorCategory.CHART, 'zoomManager', e); }
-      try { if (typeof onZoom === 'function') onZoom(zr); } catch(e) { logError(ErrorCategory.CHART, 'zoomManager', e); }
+        onZoom(range);
+      } catch (e) {
+        logError(ErrorCategory.CHART, 'zoomManager:onZoom', e);
+      }
     }
   });
 }

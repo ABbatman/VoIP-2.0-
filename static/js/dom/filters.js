@@ -1,861 +1,694 @@
 // static/js/dom/filters.js
-
-import { fetchMetrics } from "../data/fetchMetrics.js";
+// Responsibility: Filter UI handlers and data fetching orchestration
+import { fetchMetrics } from '../data/fetchMetrics.js';
 import {
-  isReverseMode,
-  setReverseMode,
-  setMetricsData,
-  setAppStatus,
-  getAppStatus,
-  setFilters,
-  setUI,
-  setShowTable,
-  getUI,
-} from "../state/appState.js";
-import { subscribe } from "../state/eventBus.js";
-import { saveStateToUrl } from "../state/urlState.js";
-import { hideTableUI, renderTableHeader, renderTableFooter, showTableControls, initTableView } from "./table-ui.js";
-import { resetExpansionState } from "../state/expansionState.js";
-import { initTableControls, clearAllTableFilters, setupAutoFilterClearing, clearColumnFilter } from "./table-controls.js";
-import { buildFilterParams, setDefaultDateRange, validateFilterParams, refreshFilterValues } from "./filter-helpers.js";
-import { initFlatpickr, initTimeControls } from "./ui-widgets.js";
-import { initTableInteractions } from "./table.js";
-import { initStickyFooter, initStickyHeader } from "./sticky-table-chrome.js";
-import { renderCoordinator } from "../rendering/render-coordinator.js";
-import { getCachedMetrics, putCachedMetrics } from "../data/metricsCache.js";
-import { toast } from "../ui/notify.js";
+  isReverseMode, setReverseMode, setMetricsData, setAppStatus,
+  getAppStatus, setFilters, setUI, setShowTable, getUI
+} from '../state/appState.js';
+import { subscribe } from '../state/eventBus.js';
+import { saveStateToUrl } from '../state/urlState.js';
+import { hideTableUI, renderTableHeader, renderTableFooter, showTableControls, initTableView } from './table-ui.js';
+import { resetExpansionState } from '../state/expansionState.js';
+import { initTableControls, clearAllTableFilters, setupAutoFilterClearing, clearColumnFilter } from './table-controls.js';
+import { buildFilterParams, setDefaultDateRange, validateFilterParams, refreshFilterValues } from './filter-helpers.js';
+import { initFlatpickr, initTimeControls } from './ui-widgets.js';
+import { initTableInteractions } from './table.js';
+import { initStickyFooter, initStickyHeader } from './sticky-table-chrome.js';
+import { renderCoordinator } from '../rendering/render-coordinator.js';
+import { getCachedMetrics, putCachedMetrics } from '../data/metricsCache.js';
+import { toast } from '../ui/notify.js';
 import {
-  isSummaryDelegationInstalled,
-  setSummaryDelegationInstalled,
-  isSummaryFetchInProgress,
-  setSummaryFetchInProgress,
-  isChartsIntervalFetchSubscribed,
-  setChartsIntervalFetchSubscribed,
-  isIntervalFetchInFlight,
-  setIntervalFetchInFlight,
-  getChartsZoomRange,
-  clearChartsZoomRange,
-  getChartsCurrentInterval,
-  setChartsCurrentInterval,
-  shouldHideTableUntilSummary,
-  setHideTableUntilSummary,
-  isChartsRenderRequested,
-  setChartsRenderRequested,
-  setManualFindInProgress,
-  setChartsUsedZoomForLastFetch,
-  setTableNeedsRebuild,
-} from "../state/runtimeFlags.js";
-import { getVirtualManager, setVirtualManager, getTableRenderer, setTableRenderer } from "../state/moduleRegistry.js";
-import { logError, logWarn, ErrorCategory } from "../utils/errorLogger.js";
+  isSummaryDelegationInstalled, setSummaryDelegationInstalled,
+  isSummaryFetchInProgress, setSummaryFetchInProgress,
+  isChartsIntervalFetchSubscribed, setChartsIntervalFetchSubscribed,
+  isIntervalFetchInFlight, setIntervalFetchInFlight,
+  getChartsZoomRange, clearChartsZoomRange,
+  getChartsCurrentInterval, setChartsCurrentInterval,
+  shouldHideTableUntilSummary, setHideTableUntilSummary,
+  setChartsRenderRequested, setManualFindInProgress,
+  setChartsUsedZoomForLastFetch, setTableNeedsRebuild
+} from '../state/runtimeFlags.js';
+import { getVirtualManager, setVirtualManager, getTableRenderer, setTableRenderer } from '../state/moduleRegistry.js';
+import { logError, logWarn, ErrorCategory } from '../utils/errorLogger.js';
 
-export function initFilters(isStateLoaded) {
-  const findButton = document.getElementById("findButton");
-  const summaryTableButton = document.getElementById("btnSummary");
-  const reverseButton = document.getElementById("btnReverse");
-  // Initial UI state: keep all filters (including Reverse) visible; charts/modes default hidden via renderer template
-  // Table visibility is governed by appState.ui
-  setUI({ showTable: false });
+// ─────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────
 
-  // Note: flatpickr and time controls are now initialized by the renderer
-  // We only need to set up event handlers here
+const DAY_MS = 24 * 3600e3;
+const MAX_5M_DAYS = 5;
+const DEBOUNCE_MS = 250;
+const MANUAL_FIND_COOLDOWN_MS = 100;
+const SPIN_ANIMATION_MS = 300;
 
-  // Ensure date/time widgets are initialized (renderer hook may not run here)
+const ELEMENT_IDS = {
+  findButton: 'findButton',
+  summaryButton: 'btnSummary',
+  reverseButton: 'btnReverse',
+  loadingOverlay: 'loading-overlay',
+  summaryMetrics: 'summaryMetrics',
+  chartsContainer: 'charts-container',
+  chartsControls: 'charts-controls',
+  chartSlider: 'chart-slider',
+  chartArea: 'chart-area-1',
+  modeControls: 'tableModeControls',
+  resultsDisplay: '.results-display',
+  tableControls: 'table-controls',
+  tableBody: 'tableBody',
+  virtualContainer: 'virtual-scroll-container'
+};
+
+// ─────────────────────────────────────────────────────────────
+// Utilities
+// ─────────────────────────────────────────────────────────────
+
+function safeCall(fn, context = 'filters') {
   try {
-    initFlatpickr();
-    initTimeControls();
-  } catch (e) { 
-    logWarn(ErrorCategory.INIT, 'initFilters:widgets', 'Date/time widgets not available'); 
+    fn();
+  } catch (e) {
+    logError(ErrorCategory.FILTER, context, e);
   }
-
-  // (moved below) destroyTableHard declared at module scope
-
-  // Force UTC defaults if all inputs are still empty (covers cases with duplicate init flows)
-  try {
-    const fromDate = document.getElementById("fromDate");
-    const toDate = document.getElementById("toDate");
-    const fromTime = document.getElementById("fromTime");
-    const toTime = document.getElementById("toTime");
-    const allEmpty = (!fromDate?.value || fromDate.value.trim() === "") &&
-      (!toDate?.value || toDate.value.trim() === "") &&
-      (!fromTime?.value || fromTime.value.trim() === "") &&
-      (!toTime?.value || toTime.value.trim() === "");
-    if (allEmpty) {
-      setDefaultDateRange();
-    }
-  } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); /* best-effort */ }
-
-  // Only set default date range if inputs are completely empty AND no URL state exists
-  if (!isStateLoaded) {
-    const fromDate = document.getElementById("fromDate");
-    const toDate = document.getElementById("toDate");
-    const fromTime = document.getElementById("fromTime");
-    const toTime = document.getElementById("toTime");
-
-    // Check if ALL date/time inputs are empty
-    const allEmpty = (!fromDate || !fromDate.value || fromDate.value.trim() === "") &&
-      (!toDate || !toDate.value || toDate.value.trim() === "") &&
-      (!fromTime || !fromTime.value || fromTime.value.trim() === "") &&
-      (!toTime || !toTime.value || toTime.value.trim() === "");
-
-    // Additional check: if there's state in URL (short link or legacy hash), don't set default dates
-    const urlParams = new URLSearchParams(window.location.search);
-    const hasShortLink = !!urlParams.get("s");
-    const hasLegacyHash = window.location.hash && window.location.hash.startsWith("#state=");
-    const hasUrlState = hasShortLink || hasLegacyHash;
-
-    console.log("🔍 initFilters: Checking if inputs are empty:", {
-      fromDate: fromDate?.value,
-      toDate: toDate?.value,
-      fromTime: fromTime?.value,
-      toTime: toTime?.value,
-      allEmpty,
-      isStateLoaded,
-      hasUrlState
-    });
-
-    if (allEmpty && !hasUrlState) {
-      console.log("🔍 initFilters: All inputs empty and no URL state, setting default date range");
-      setDefaultDateRange();
-    } else if (allEmpty && hasUrlState) {
-      console.log("🔍 initFilters: Inputs appear empty but URL state exists, waiting for state restoration - SKIPPING default dates");
-      // Don't set default dates if URL state exists - wait for it to be loaded
-      // Continue initialization to ensure handlers/subscriptions are attached
-    } else {
-      console.log("🔍 initFilters: Some inputs have values, skipping default date range");
-    }
-  } else {
-    console.log("🔍 initFilters: State already loaded, skipping default date range");
-  }
-
-  // Simple debounce util (no external deps)
-  const debounce = (fn, wait = 250) => {
-    let t = null;
-    return (...args) => {
-      clearTimeout(t);
-      t = setTimeout(() => fn.apply(null, args), wait);
-    };
-  };
-
-  if (findButton) {
-    // debounce Find to avoid rapid double clicks
-    findButton.addEventListener("click", debounce((e) => {
-      // ignore if loading
-      if (getAppStatus && getAppStatus() === 'loading') return;
-      handleFindClick(e);
-    }, 250));
-  } else {
-    console.warn("⚠️ Find button not found");
-  }
-
-  // Install delegated click handler once to survive DOM re-renders
-  try {
-    if (!isSummaryDelegationInstalled()) {
-      document.addEventListener('click', (e) => {
-        const btn = e.target && (e.target.closest ? e.target.closest('#btnSummary') : null);
-        if (!btn) return;
-        if (isSummaryFetchInProgress()) return;
-        handleSummaryClick(e);
-      }, false);
-      setSummaryDelegationInstalled(true);
-    }
-  } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); /* best-effort */ }
-
-  if (reverseButton) {
-    reverseButton.addEventListener("click", (e) => {
-      // ignore Reverse while loading to prevent races
-      if (getAppStatus && getAppStatus() === 'loading') return;
-      handleReverseClick(e);
-    });
-  } else {
-    console.warn("⚠️ Reverse button not found");
-  }
-
-  // Enforce UI state changes per operation type across DOM patches
-  try {
-    subscribe("appState:statusChanged", (status) => {
-      const w = (typeof window !== 'undefined') ? window : {};
-      const isIntervalFetch = !!w.__intervalFetchInFlight; // chart-only fetch
-      const isSummaryFetch = !!w.__summaryFetchInProgress; // summary-only fetch
-      const hideUntilSummary = !!w.__hideTableUntilSummary; // after Find until user clicks Summary
-
-      // Table visibility
-      try {
-        if (status === 'loading') {
-          // Do NOT hide table for chart-only interval fetches
-          if (isSummaryFetch) {
-            setShowTable(false);
-          }
-        }
-        // Enforcement from Find flow: keep hidden until Summary is clicked
-        if (hideUntilSummary) setShowTable(false);
-      } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-        // Ignore errors in UI update
-      }
-
-      // Toggle global overlay only for non-interval operations (Find/Summary)
-      try {
-        const overlayEl = document.getElementById('loading-overlay');
-        if (overlayEl) overlayEl.classList.toggle('is-hidden', !(status === 'loading' && !isIntervalFetch && !isSummaryFetch));
-      } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-        // Ignore overlay toggle errors
-      }
-      // reinforce charts/mode controls visibility across patches
-      if ((status === 'loading' || status === 'success') && !isSummaryFetch) {
-        try { setUI({ showCharts: true, showModeControls: true }); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-          // Ignore UI state errors
-        }
-      }
-      // disable/enable buttons while loading
-      try { if (findButton) findButton.disabled = (status === 'loading'); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-        // Ignore button state errors
-      }
-      try { if (reverseButton) reverseButton.disabled = (status === 'loading'); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-        // Ignore button state errors
-      }
-      try { if (summaryTableButton) summaryTableButton.disabled = (status === 'loading' && isSummaryFetch); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-        // Ignore button state errors
-      }
-    });
-  } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); /* best-effort */ }
-
-  // Auto-fetch data when user switches interval without pressing Find
-  try {
-    if (!isChartsIntervalFetchSubscribed()) {
-      setChartsIntervalFetchSubscribed(true);
-      subscribe('charts:intervalChanged', async (payload) => {
-        try {
-          const interval = payload && payload.interval ? String(payload.interval) : '';
-          if (!interval) return;
-          // prevent duplicate interval fetches
-          if (getAppStatus && getAppStatus() === 'loading') return;
-          if (isIntervalFetchInFlight()) return;
-          setIntervalFetchInFlight(true);
-          try { refreshFilterValues(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-            // Ignore filter refresh errors
-          }
-          const base = buildFilterParams();
-          // Prefer zoom window if present
-          const zr = getChartsZoomRange();
-        let fromStr = base.from;
-        let toStr = base.to;
-        let effFromTs = new Date(fromStr.replace(' ', 'T') + 'Z').getTime();
-        let effToTs = new Date(toStr.replace(' ', 'T') + 'Z').getTime();
-        if (zr && Number.isFinite(zr.fromTs) && Number.isFinite(zr.toTs) && zr.toTs > zr.fromTs) {
-          effFromTs = zr.fromTs; effToTs = zr.toTs;
-          // NOTE: do NOT override fromStr/toStr for the request; requests must use base filters
-        }
-        if (!Number.isFinite(effFromTs) || !Number.isFinite(effToTs) || effToTs <= effFromTs) {
-          setIntervalFetchInFlight(false);
-          return;
-        }
-        // Choose granularity by selected interval based on EFFECTIVE window (zoom if present)
-        const diffDays = (effToTs - effFromTs) / (24 * 3600e3);
-        const diffHours = (effToTs - effFromTs) / 3600e3;
-        let effInterval = interval;
-        const userWants5m = effInterval === '5m';
-        const userWants1h = effInterval === '1h';
-        // Enforce rule: if > 5 days, block 5m and warn (English)
-        if (userWants5m && diffDays > 5.0001) {
-          try { toast('5-minute interval is available only for ranges up to 5 days. Switching to 1 hour.', { type: 'warning', duration: 3500 }); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-            // Toast might not be available
-          }
-          effInterval = '1h';
-        }
-        // Persist chosen interval globally for backend hinting
-        setChartsCurrentInterval(effInterval);
-        let gran = '5m';
-        if (diffHours <= 6) {
-          gran = '5m';
-        } else if (userWants1h || effInterval === '1h') {
-          gran = '1h';
-        } else if (userWants5m && effInterval === '5m') {
-          gran = '5m';
-        } else {
-          gran = diffDays <= 1.0 ? '5m' : '1h';
-        }
-        if (gran === '5m' && diffDays > 5.0001) gran = '1h';
-        // Build params using EFFECTIVE window (zoom if present)
-        const params = { ...base, from: fromStr, to: toStr, granularity: gran, __reverse: !!isReverseMode() };
-        // Try cache first
-        const cached = getCachedMetrics(params);
-        if (cached) {
-          setMetricsData(cached);
-          setAppStatus('success');
-          setIntervalFetchInFlight(false);
-          return;
-        }
-        // No cache -> fetch
-        setAppStatus('loading');
-        const data = await fetchMetrics(params);
-        if (data) {
-          setMetricsData(data);
-          setAppStatus('success');
-          try { putCachedMetrics(params, data); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-            // Ignore cache write errors
-          }
-        } else {
-          setAppStatus('error');
-        }
-        setIntervalFetchInFlight(false);
-      } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-        setIntervalFetchInFlight(false);
-      }
-    });
-    }
-  } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); /* best-effort */ }
-
-  // While typing in filters, do NOT hide charts or controls; re-assert visibility
-  try {
-    subscribe('appState:filtersChanged', () => {
-      try { setUI({ showCharts: true, showModeControls: true }); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-        // Ignore UI state errors
-      }
-    });
-  } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); /* best-effort */ }
-
-  // After data changes, ensure charts stay visible (toast handled centrally by ui-feedback.js)
-  try {
-    subscribe("appState:dataChanged", () => {
-      if (shouldHideTableUntilSummary()) setShowTable(false);
-      try { const overlayEl = document.getElementById('loading-overlay'); if (overlayEl) overlayEl.classList.add('is-hidden'); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-        // Ignore overlay errors
-      }
-      try { const mount = document.getElementById('chart-area-1'); if (mount) { mount.classList.remove('chart-fade--out'); mount.classList.add('chart-fade--in'); mount.style.opacity = ''; } } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-        // Ignore chart animation errors
-      }
-    });
-  } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); /* best-effort */ }
-
-  // Reflect appState.ui changes in the DOM (single place managing visibility)
-  try {
-    subscribe('appState:uiChanged', (ui) => {
-      try {
-        const chartsContainer = document.getElementById('charts-container');
-        if (chartsContainer) chartsContainer.style.display = ui?.showCharts ? '' : 'none';
-      } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-        // Ignore container visibility errors
-      }
-      try {
-        const chartsControls = document.getElementById('charts-controls');
-        if (chartsControls) chartsControls.style.display = ui?.showCharts ? '' : 'none';
-      } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-        // Ignore controls visibility errors
-      }
-      try {
-        const chartSlider = document.getElementById('chart-slider');
-        if (chartSlider) chartSlider.style.display = ui?.showCharts ? '' : 'none';
-      } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-        // Ignore slider visibility errors
-      }
-      try {
-        const modeControls = document.getElementById('tableModeControls');
-        if (modeControls) modeControls.style.display = ui?.showModeControls ? '' : 'none';
-      } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-        // Ignore mode controls errors
-      }
-      try {
-        const resultsContainer = document.querySelector('.results-display');
-        if (resultsContainer) resultsContainer.classList.toggle('is-hidden', !ui?.showTable);
-      } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-        // Ignore results display errors
-      }
-    });
-  } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); /* best-effort */ }
 }
 
-/**
- * Hard-destroy the table UI to avoid race conditions.
- * Hides container, clears virtual manager, and removes virtual table DOM.
- */
+function debounce(fn, wait = DEBOUNCE_MS) {
+  let timer = null;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), wait);
+  };
+}
+
+function getElement(id) {
+  return document.getElementById(id);
+}
+
+function getElementBySelector(selector) {
+  return document.querySelector(selector);
+}
+
+function toggleHidden(el, hidden) {
+  if (el) el.classList.toggle('is-hidden', hidden);
+}
+
+function setDisplay(el, show, displayValue = 'flex') {
+  if (el) el.style.display = show ? displayValue : 'none';
+}
+
+// ─────────────────────────────────────────────────────────────
+// Date range helpers
+// ─────────────────────────────────────────────────────────────
+
+function areAllDateInputsEmpty() {
+  const ids = ['fromDate', 'toDate', 'fromTime', 'toTime'];
+  return ids.every(id => {
+    const el = getElement(id);
+    return !el?.value?.trim();
+  });
+}
+
+function hasUrlState() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const hasShortLink = !!urlParams.get('s');
+  const hasLegacyHash = window.location.hash?.startsWith('#state=');
+  return hasShortLink || hasLegacyHash;
+}
+
+function initDefaultDateRange(isStateLoaded) {
+  if (isStateLoaded) return;
+  if (!areAllDateInputsEmpty()) return;
+  if (hasUrlState()) return;
+
+  setDefaultDateRange();
+}
+
+// ─────────────────────────────────────────────────────────────
+// Button handlers setup
+// ─────────────────────────────────────────────────────────────
+
+function setupFindButton(btn) {
+  if (!btn) return;
+
+  const debouncedHandler = debounce(() => {
+    if (getAppStatus?.() === 'loading') return;
+    handleFindClick();
+  });
+
+  btn.addEventListener('click', debouncedHandler);
+}
+
+function setupSummaryDelegation() {
+  if (isSummaryDelegationInstalled()) return;
+
+  document.addEventListener('click', (e) => {
+    const btn = e.target?.closest?.('#btnSummary');
+    if (!btn || isSummaryFetchInProgress()) return;
+    handleSummaryClick();
+  }, false);
+
+  setSummaryDelegationInstalled(true);
+}
+
+function setupReverseButton(btn) {
+  if (!btn) return;
+
+  btn.addEventListener('click', () => {
+    if (getAppStatus?.() === 'loading') return;
+    handleReverseClick();
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+// Status subscription
+// ─────────────────────────────────────────────────────────────
+
+function setupStatusSubscription(findBtn, reverseBtn) {
+  safeCall(() => {
+    subscribe('appState:statusChanged', (status) => {
+      const isLoading = status === 'loading';
+      const isIntervalFetch = isIntervalFetchInFlight();
+      const isSummaryFetch = isSummaryFetchInProgress();
+
+      // table visibility
+      if (isLoading && isSummaryFetch) {
+        safeCall(() => setShowTable(false));
+      }
+      if (shouldHideTableUntilSummary()) {
+        safeCall(() => setShowTable(false));
+      }
+
+      // overlay visibility
+      const overlay = getElement(ELEMENT_IDS.loadingOverlay);
+      if (overlay) {
+        const showOverlay = isLoading && !isIntervalFetch && !isSummaryFetch;
+        toggleHidden(overlay, !showOverlay);
+      }
+
+      // charts visibility
+      if ((isLoading || status === 'success') && !isSummaryFetch) {
+        safeCall(() => setUI({ showCharts: true, showModeControls: true }));
+      }
+
+      // button states
+      if (findBtn) findBtn.disabled = isLoading;
+      if (reverseBtn) reverseBtn.disabled = isLoading;
+    });
+  }, 'setupStatusSubscription');
+}
+
+// ─────────────────────────────────────────────────────────────
+// Init filters
+// ─────────────────────────────────────────────────────────────
+
+export function initFilters(isStateLoaded) {
+  const findButton = getElement(ELEMENT_IDS.findButton);
+  const reverseButton = getElement(ELEMENT_IDS.reverseButton);
+
+  setUI({ showTable: false });
+
+  // init date/time widgets
+  safeCall(() => {
+    initFlatpickr();
+    initTimeControls();
+  }, 'initFilters:widgets');
+
+  // set default date range if needed
+  safeCall(() => initDefaultDateRange(isStateLoaded), 'initFilters:defaults');
+
+  // setup button handlers
+  setupFindButton(findButton);
+  safeCall(setupSummaryDelegation, 'initFilters:summaryDelegation');
+  setupReverseButton(reverseButton);
+
+  // setup event subscriptions
+  setupStatusSubscription(findButton, reverseButton);
+
+  // setup other subscriptions
+  safeCall(setupIntervalSubscription, 'initFilters:intervalSub');
+  safeCall(setupFiltersChangedSubscription, 'initFilters:filtersSub');
+  safeCall(setupDataChangedSubscription, 'initFilters:dataSub');
+  safeCall(setupUIChangedSubscription, 'initFilters:uiSub');
+}
+
+// ─────────────────────────────────────────────────────────────
+// Granularity helpers
+// ─────────────────────────────────────────────────────────────
+
+function parseTimestamp(str) {
+  return new Date(str.replace(' ', 'T') + 'Z').getTime();
+}
+
+function computeGranularity(interval, diffDays, diffHours) {
+  const userWants5m = interval === '5m';
+  const userWants1h = interval === '1h';
+
+  // enforce 5-day limit for 5m
+  if (userWants5m && diffDays > MAX_5M_DAYS) {
+    safeCall(() => toast('5-minute interval is available only for ranges up to 5 days. Switching to 1 hour.', { type: 'warning', duration: 3500 }));
+    return { interval: '1h', granularity: '1h' };
+  }
+
+  let gran = '5m';
+  if (diffHours <= 6) {
+    gran = '5m';
+  } else if (userWants1h) {
+    gran = '1h';
+  } else if (userWants5m) {
+    gran = '5m';
+  } else {
+    gran = diffDays <= 1.0 ? '5m' : '1h';
+  }
+
+  if (gran === '5m' && diffDays > MAX_5M_DAYS) gran = '1h';
+
+  return { interval, granularity: gran };
+}
+
+// ─────────────────────────────────────────────────────────────
+// Interval subscription
+// ─────────────────────────────────────────────────────────────
+
+function setupIntervalSubscription() {
+  if (isChartsIntervalFetchSubscribed()) return;
+  setChartsIntervalFetchSubscribed(true);
+
+  subscribe('charts:intervalChanged', async (payload) => {
+    const interval = payload?.interval ? String(payload.interval) : '';
+    if (!interval) return;
+    if (getAppStatus?.() === 'loading') return;
+    if (isIntervalFetchInFlight()) return;
+
+    setIntervalFetchInFlight(true);
+
+    try {
+      safeCall(refreshFilterValues, 'intervalSub:refresh');
+
+      const base = buildFilterParams();
+      const zr = getChartsZoomRange();
+
+      let effFromTs = parseTimestamp(base.from);
+      let effToTs = parseTimestamp(base.to);
+
+      if (zr && Number.isFinite(zr.fromTs) && Number.isFinite(zr.toTs) && zr.toTs > zr.fromTs) {
+        effFromTs = zr.fromTs;
+        effToTs = zr.toTs;
+      }
+
+      if (!Number.isFinite(effFromTs) || !Number.isFinite(effToTs) || effToTs <= effFromTs) {
+        setIntervalFetchInFlight(false);
+        return;
+      }
+
+      const diffDays = (effToTs - effFromTs) / DAY_MS;
+      const diffHours = (effToTs - effFromTs) / 3600e3;
+
+      const { interval: effInterval, granularity } = computeGranularity(interval, diffDays, diffHours);
+      setChartsCurrentInterval(effInterval);
+
+      const params = { ...base, granularity, __reverse: !!isReverseMode() };
+
+      // try cache first
+      const cached = getCachedMetrics(params);
+      if (cached) {
+        setMetricsData(cached);
+        setAppStatus('success');
+        setIntervalFetchInFlight(false);
+        return;
+      }
+
+      // fetch
+      setAppStatus('loading');
+      const data = await fetchMetrics(params);
+
+      if (data) {
+        setMetricsData(data);
+        setAppStatus('success');
+        safeCall(() => putCachedMetrics(params, data), 'intervalSub:cache');
+      } else {
+        setAppStatus('error');
+      }
+    } catch (e) {
+      logError(ErrorCategory.FILTER, 'intervalSubscription', e);
+    } finally {
+      setIntervalFetchInFlight(false);
+    }
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+// Other subscriptions
+// ─────────────────────────────────────────────────────────────
+
+function setupFiltersChangedSubscription() {
+  subscribe('appState:filtersChanged', () => {
+    safeCall(() => setUI({ showCharts: true, showModeControls: true }));
+  });
+}
+
+function setupDataChangedSubscription() {
+  subscribe('appState:dataChanged', () => {
+    if (shouldHideTableUntilSummary()) safeCall(() => setShowTable(false));
+
+    const overlay = getElement(ELEMENT_IDS.loadingOverlay);
+    if (overlay) overlay.classList.add('is-hidden');
+
+    const mount = getElement(ELEMENT_IDS.chartArea);
+    if (mount) {
+      mount.classList.remove('chart-fade--out');
+      mount.classList.add('chart-fade--in');
+      mount.style.opacity = '';
+    }
+  });
+}
+
+function setupUIChangedSubscription() {
+  subscribe('appState:uiChanged', (ui) => {
+    setDisplay(getElement(ELEMENT_IDS.chartsContainer), ui?.showCharts);
+    setDisplay(getElement(ELEMENT_IDS.chartsControls), ui?.showCharts);
+    setDisplay(getElement(ELEMENT_IDS.chartSlider), ui?.showCharts);
+    setDisplay(getElement(ELEMENT_IDS.modeControls), ui?.showModeControls);
+    toggleHidden(getElementBySelector(ELEMENT_IDS.resultsDisplay), !ui?.showTable);
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+// Table destruction
+// ─────────────────────────────────────────────────────────────
+
+const EMPTY_TABLE_HTML = `
+<div id="virtual-scroll-spacer" style="position: absolute; top: 0; left: 0; right: 0; pointer-events: none;"></div>
+<table id="summaryTable" class="results-display__table" style="position: relative;">
+<thead id="tableHead"></thead>
+<tbody id="tableBody"></tbody>
+<tfoot><tr><td id="table-footer-info" colspan="24"></td></tr></tfoot>
+</table>`;
+
+function destroyModule(getter, setter, name) {
+  const instance = getter();
+  if (!instance) return;
+
+  safeCall(() => {
+    if (typeof instance.destroy === 'function') {
+      instance.destroy();
+    }
+    setter(null);
+  }, `destroyTableHard:${name}`);
+}
+
 function destroyTableHard() {
-  try {
-    setShowTable(false);
-  } catch (e) { 
-    logError(ErrorCategory.TABLE, 'destroyTableHard:showTable', e); 
-  }
-  
-  try {
-    resetExpansionState();
-  } catch (e) { 
-    logError(ErrorCategory.STATE, 'destroyTableHard:expansion', e); 
-  }
-  
-  try {
-    clearAllTableFilters();
-  } catch (e) { 
-    logError(ErrorCategory.FILTER, 'destroyTableHard:filters', e); 
-  }
-  
-  // destroy tableRenderer
-  const existingRenderer = getTableRenderer();
-  if (existingRenderer) {
-    try {
-      if (typeof existingRenderer.destroy === 'function') {
-        existingRenderer.destroy();
-      }
-      setTableRenderer(null);
-    } catch (e) { 
-      logError(ErrorCategory.RENDER, 'destroyTableHard:renderer', e); 
-    }
-  }
-  
-  // destroy virtualManager
-  const vm = getVirtualManager();
-  if (vm) {
-    try {
-      if (typeof vm.destroy === 'function') {
-        vm.destroy();
-      }
-      setVirtualManager(null);
-    } catch (e) { 
-      logError(ErrorCategory.TABLE, 'destroyTableHard:vm', e); 
-    }
-  }
-  
+  safeCall(() => setShowTable(false), 'destroyTableHard:showTable');
+  safeCall(resetExpansionState, 'destroyTableHard:expansion');
+  safeCall(clearAllTableFilters, 'destroyTableHard:filters');
+
+  destroyModule(getTableRenderer, setTableRenderer, 'renderer');
+  destroyModule(getVirtualManager, setVirtualManager, 'vm');
+
   // restore DOM to clean state
-  const vwrap = document.getElementById('virtual-scroll-container');
+  const vwrap = getElement(ELEMENT_IDS.virtualContainer);
   if (vwrap) {
-    try {
-      vwrap.innerHTML = (
-        '<div id="virtual-scroll-spacer" style="position: absolute; top: 0; left: 0; right: 0; pointer-events: none;"></div>' +
-        '<table id="summaryTable" class="results-display__table" style="position: relative;">' +
-        '<thead id="tableHead"></thead>' +
-        '<tbody id="tableBody"></tbody>' +
-        '<tfoot><tr><td id="table-footer-info" colspan="24"></td></tr></tfoot>' +
-        '</table>'
-      );
-    } catch (e) { 
-      logError(ErrorCategory.DOM, 'destroyTableHard:dom', e); 
-    }
+    safeCall(() => { vwrap.innerHTML = EMPTY_TABLE_HTML; }, 'destroyTableHard:dom');
   }
-  
-  // hide table controls
-  const controls = document.getElementById('table-controls');
+
+  const controls = getElement(ELEMENT_IDS.tableControls);
   if (controls) controls.style.display = 'none';
 }
 
-/**
- * Handles the "Find" button click. Fetches data from the API.
- * CONTRACT:
- * - Charts are the source of truth for visual time range.
- * - If a zoom is active, we override ONLY request params for this fetch (fetchParams),
- *   but persist original input filters via setFilters() so charts know the base range.
- */
-async function handleFindClick() {
-  // Prevent auto-trigger from running while we're handling a manual click
-  setManualFindInProgress(true);
+// ─────────────────────────────────────────────────────────────
+// Find click handler
+// ─────────────────────────────────────────────────────────────
 
-  setAppStatus("loading");
-  clearChartsZoomRange();
-  // Ensure charts and mode controls remain visible across re-renders after Find
-  try { setUI({ showCharts: true, showModeControls: true }); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-    // Ignore UI state errors
+function showChartsUI() {
+  safeCall(() => setUI({ showCharts: true, showModeControls: true }));
+
+  setDisplay(getElement(ELEMENT_IDS.chartsContainer), true);
+  setDisplay(getElement(ELEMENT_IDS.chartsControls), true);
+
+  const mount = getElement(ELEMENT_IDS.chartArea);
+  if (mount) {
+    mount.classList.remove('chart-fade--out');
+    mount.classList.add('chart-fade--in');
+    mount.style.opacity = '';
   }
-  // Immediately unhide charts container and controls in DOM (defensive against late subscribers)
-  try {
-    const cc = document.getElementById('charts-container');
-    if (cc) cc.style.display = '';
-    const ctl = document.getElementById('charts-controls');
-    if (ctl) ctl.style.display = '';
-    const mount = document.getElementById('chart-area-1');
-    if (mount) { mount.classList.remove('chart-fade--out'); mount.classList.add('chart-fade--in'); mount.style.opacity = ''; }
-  } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-    // Ignore DOM manipulation errors
-  }
-  // Mark that charts were explicitly requested; charts module will honor this on init as well
+}
+
+async function requestChartsRender() {
   setChartsRenderRequested(true);
-  // Explicitly request charts render tied to Find click
-  try { const { publish } = await import('../state/eventBus.js'); publish('charts:renderRequest'); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-    // Ignore event bus errors
-  }
-  // Hide summary metrics while loading to avoid stale content
   try {
-    const summary = document.getElementById("summaryMetrics");
-    if (summary) summary.classList.add("is-hidden");
-  } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); /* intentional no-op: summary may not be present */ }
+    const { publish } = await import('../state/eventBus.js');
+    publish('charts:renderRequest');
+  } catch (e) {
+    logError(ErrorCategory.FILTER, 'handleFindClick:publish', e);
+  }
+}
 
-  // Hide UI elements immediately
+function computeFetchGranularity(fromStr, toStr) {
+  const from = parseTimestamp(fromStr);
+  const to = parseTimestamp(toStr);
+  const diffDays = (to - from) / DAY_MS;
+  const ci = getChartsCurrentInterval();
+
+  if (ci === '5m' && diffDays > MAX_5M_DAYS) {
+    setChartsCurrentInterval('1h');
+    return '1h';
+  }
+  return ci === '5m' ? '5m' : '1h';
+}
+
+async function handleFindClick() {
+  setManualFindInProgress(true);
+  setAppStatus('loading');
+  clearChartsZoomRange();
+
+  showChartsUI();
+  await requestChartsRender();
+
+  toggleHidden(getElement(ELEMENT_IDS.summaryMetrics), true);
+
   setHideTableUntilSummary(true);
   destroyTableHard();
   hideTableUI();
 
   try {
-    // Validate filter parameters before making API call
-    // Force-sync flatpickr -> inputs to avoid stale dates
-    try { refreshFilterValues(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-      // Ignore filter refresh errors
-    }
+    safeCall(refreshFilterValues, 'handleFindClick:refresh');
+
     const validation = validateFilterParams();
     if (!validation.isValid) {
-      throw new Error(`Invalid filter parameters: ${validation.missing.join(", ")}`);
+      throw new Error(`Invalid filter parameters: ${validation.missing.join(', ')}`);
     }
 
-    // Build full params from inputs (includes customer/supplier/destination),
-    // but enforce validated from/to to ensure correctness
     const uiParams = buildFilterParams();
-    const filterParams = { ...uiParams, ...validation.params }; // keep all text filters, override dates with validated
+    const filterParams = { ...uiParams, ...validation.params };
+    const fetchParams = {
+      ...filterParams,
+      granularity: computeFetchGranularity(validation.params.from, validation.params.to)
+    };
 
-    // Build fetch params strictly from inputs (IGNORE any active zoom)
-    const fetchParams = { ...filterParams };
-    // Add API granularity hint based on current chart interval
-    const ci = getChartsCurrentInterval();
-    const from = new Date(validation.params.from.replace(' ', 'T') + 'Z');
-    const to = new Date(validation.params.to.replace(' ', 'T') + 'Z');
-    const diffDays = (to - from) / (24 * 3600e3);
-    if (ci === '5m' && diffDays > 5.0001) {
-      fetchParams.granularity = '1h';
-      setChartsCurrentInterval('1h');
-    } else {
-      fetchParams.granularity = (ci === '5m') ? '5m' : '1h';
-    }
-    // Preserve current chart zoom state; Find fetch uses filter inputs only
+    safeCall(() => setFilters(filterParams), 'handleFindClick:setFilters');
+    safeCall(() => setChartsUsedZoomForLastFetch(false), 'handleFindClick:zoomFlag');
 
-    // Persist original filters from inputs (including customer/supplier/destination)
-    // (not the zoom override) so charts and UI keep user-entered values
-    try { setFilters(filterParams); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-      // Ignore filter state update errors
-    }
-
-    // remember that last fetch did not use zoom
-    try { setChartsUsedZoomForLastFetch(false); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-      // Ignore global flag errors
-    }
-    // Try cache before fetching
-    const cacheKeyParams = { ...fetchParams, __reverse: isReverseMode ? !!isReverseMode() : false };
+    const cacheKeyParams = { ...fetchParams, __reverse: !!isReverseMode?.() };
     const cached = getCachedMetrics(cacheKeyParams);
-    let data;
-    if (cached) {
-      data = cached;
-    } else {
-      data = await fetchMetrics(fetchParams);
-    }
+    const data = cached || await fetchMetrics(fetchParams);
 
     if (data) {
-      // Set the new data first so appState:dataChanged fires before statusChanged
       setMetricsData(data);
-      setAppStatus("success");
+      setAppStatus('success');
       saveStateToUrl();
-      try { if (!cached) putCachedMetrics(cacheKeyParams, data); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-        // Ignore cache write errors
-      }
-      // Explicitly ensure summary metrics are visible after data arrives
-      try {
-        const summary = document.getElementById("summaryMetrics");
-        if (summary) summary.classList.remove("is-hidden");
-      } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); /* intentional no-op: summary may not be present */ }
-      // Keep table hidden until user explicitly opens Summary
-      try { setShowTable(false); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-        // Ignore table state errors
-      }
-      // Defensive: ensure overlay is hidden
-      try { const overlayEl = document.getElementById('loading-overlay'); if (overlayEl) overlayEl.classList.add('is-hidden'); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-        // Ignore overlay hide errors
-      }
+
+      if (!cached) safeCall(() => putCachedMetrics(cacheKeyParams, data), 'handleFindClick:cache');
+
+      toggleHidden(getElement(ELEMENT_IDS.summaryMetrics), false);
+      safeCall(() => setShowTable(false), 'handleFindClick:hideTable');
+
+      const overlay = getElement(ELEMENT_IDS.loadingOverlay);
+      if (overlay) overlay.classList.add('is-hidden');
     } else {
-      setAppStatus("error");
+      setAppStatus('error');
     }
-  } catch (error) {
-    console.error("❌ Error fetching metrics:", error);
-    setAppStatus("error");
+  } catch (e) {
+    logError(ErrorCategory.FILTER, 'handleFindClick', e);
+    setAppStatus('error');
   } finally {
-    // Clear the flag after a short delay to allow state updates to complete
-    setTimeout(() => {
-      setManualFindInProgress(false);
-    }, 100);
+    setTimeout(() => setManualFindInProgress(false), MANUAL_FIND_COOLDOWN_MS);
   }
 }
 
-/**
- * Handles the "Summary Table" button click.
- * Toggle table visibility. If showing, rebuild with current reverse state.
- * Does NOT affect charts.
- */
-async function handleSummaryClick() {
-  console.log("📊 Summary Table button clicked!");
+// ─────────────────────────────────────────────────────────────
+// Summary click handler
+// ─────────────────────────────────────────────────────────────
 
-  // Check current table visibility
-  const ui = getUI();
-  const isTableVisible = ui && ui.showTable;
+function formatTimestamp(ts) {
+  const d = new Date(ts);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
+}
 
-  // If table is visible -> hide it (simple toggle)
-  if (isTableVisible) {
-    console.log("📊 Table visible, hiding...");
-    try {
-      const resultsContainer = document.querySelector('.results-display');
-      if (resultsContainer) resultsContainer.classList.add('is-hidden');
-    } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); }
-    try { setShowTable(false); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); }
-    return; // done, no fetch needed
+function applyZoomToParams(params) {
+  const zr = getChartsZoomRange();
+  if (zr && Number.isFinite(zr.fromTs) && Number.isFinite(zr.toTs) && zr.toTs > zr.fromTs) {
+    params.from = formatTimestamp(zr.fromTs);
+    params.to = formatTimestamp(zr.toTs);
+  }
+}
+
+function synthesizeMainRows(peerRows) {
+  const map = new Map();
+  peerRows.forEach(p => {
+    const k = `${p.main}||${p.destination}`;
+    if (!map.has(k)) map.set(k, { main: p.main, destination: p.destination });
+  });
+  return Array.from(map.values());
+}
+
+function showErrorTable(message) {
+  safeCall(renderTableHeader, 'showErrorTable:header');
+  safeCall(renderTableFooter, 'showErrorTable:footer');
+  safeCall(showTableControls, 'showErrorTable:controls');
+
+  const tb = getElement(ELEMENT_IDS.tableBody);
+  if (tb) tb.innerHTML = `<tr><td colspan="24">${message}</td></tr>`;
+
+  safeCall(() => setShowTable(true), 'showErrorTable:show');
+}
+
+async function renderSummaryTable(data) {
+  let { main_rows, peer_rows, hourly_rows } = data || {};
+
+  // synthesize main_rows if needed
+  if ((!main_rows || !main_rows.length) && peer_rows?.length) {
+    main_rows = synthesizeMainRows(peer_rows);
   }
 
-  // Table is hidden -> show it (fetch data with current reverse state)
-  console.log("📊 Table hidden, showing with reverse=" + isReverseMode());
+  if (!main_rows?.length && !peer_rows?.length) {
+    showErrorTable('No data found for current filters.');
+    return;
+  }
 
-  // Mark summary-only fetch in progress
+  await renderCoordinator.requestRender('table', async () => {
+    safeCall(renderTableHeader, 'renderSummaryTable:header');
+    safeCall(renderTableFooter, 'renderSummaryTable:footer');
+    safeCall(showTableControls, 'renderSummaryTable:controls');
+
+    const detailedRows = data?.five_min_rows?.length ? data.five_min_rows : (hourly_rows || []);
+    initTableControls(main_rows || [], peer_rows || [], detailedRows);
+
+    const tb = getElement(ELEMENT_IDS.tableBody);
+    if (tb) tb.innerHTML = '';
+
+    // create fresh renderer
+    const mod = await import('../rendering/table-renderer.js');
+    destroyModule(getTableRenderer, setTableRenderer, 'summaryRenderer');
+
+    const tr = new mod.TableRenderer();
+    safeCall(() => tr.initialize(), 'renderSummaryTable:init');
+    setTableRenderer(tr);
+    await tr.renderTable(main_rows || [], peer_rows || [], hourly_rows || []);
+
+    // show table UI
+    safeCall(() => setShowTable(true), 'renderSummaryTable:show');
+    toggleHidden(getElementBySelector(ELEMENT_IDS.resultsDisplay), false);
+    setDisplay(getElement(ELEMENT_IDS.tableControls), true);
+    toggleHidden(getElementBySelector('.results-display__footer'), false);
+
+    safeCall(() => setUI({ showTable: true }), 'renderSummaryTable:ui');
+    safeCall(initTableView, 'renderSummaryTable:view');
+    safeCall(initStickyHeader, 'renderSummaryTable:stickyHeader');
+    safeCall(initStickyFooter, 'renderSummaryTable:stickyFooter');
+    safeCall(initTableInteractions, 'renderSummaryTable:interactions');
+  }, { debounceMs: 0, cooldownMs: 0 });
+}
+
+async function handleSummaryClick() {
+  const ui = getUI();
+
+  // toggle off if visible
+  if (ui?.showTable) {
+    toggleHidden(getElementBySelector(ELEMENT_IDS.resultsDisplay), true);
+    safeCall(() => setShowTable(false), 'handleSummaryClick:hide');
+    return;
+  }
+
+  // show table
   setSummaryFetchInProgress(true);
   setHideTableUntilSummary(false);
-
-  // Reset virtual table state
   resetVirtualTableState();
-
-  // Clear all saved table column filters before building the new table
-  try { clearAllTableFilters(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); }
+  safeCall(clearAllTableFilters, 'handleSummaryClick:clearFilters');
 
   try {
-    // Fetch fresh data with current filter values (force-sync first)
-    try { refreshFilterValues(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-      // Ignore filter refresh errors
-    }
+    safeCall(refreshFilterValues, 'handleSummaryClick:refresh');
     const filterParams = buildFilterParams();
-    // If a chart zoom is active, use its range for this fetch (do not touch inputs)
-    let usedZoom = false;
-    const zr = getChartsZoomRange();
-    try {
-      if (zr && Number.isFinite(zr.fromTs) && Number.isFinite(zr.toTs) && zr.toTs > zr.fromTs) {
-        const fmt = (ts) => {
-          const d = new Date(ts);
-          const p = (n) => String(n).padStart(2, '0');
-          const yyyy = d.getUTCFullYear();
-          const mm = p(d.getUTCMonth() + 1);
-          const dd = p(d.getUTCDate());
-          const HH = p(d.getUTCHours());
-          const MM = p(d.getUTCMinutes());
-          const SS = p(d.getUTCSeconds());
-          return `${yyyy}-${mm}-${dd} ${HH}:${MM}:${SS}`;
-        };
-        filterParams.from = fmt(zr.fromTs);
-        filterParams.to = fmt(zr.toTs);
-        usedZoom = true;
-      }
-    } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-      // Ignore zoom range parsing errors
-    }
-    // Note: usedZoom flag tracked locally, no global needed
+    applyZoomToParams(filterParams);
+
     if (!filterParams.from || !filterParams.to) {
-      throw new Error("Date range is not set. Cannot fetch metrics.");
+      throw new Error('Date range is not set. Cannot fetch metrics.');
     }
 
-    console.log("🔍 Fetching data for Summary Table with filters:", filterParams);
-    // Add API granularity hint for summary flow as well
-    const ci = getChartsCurrentInterval();
-    const from = new Date(filterParams.from.replace(' ', 'T') + 'Z');
-    const to = new Date(filterParams.to.replace(' ', 'T') + 'Z');
-    const diffDays = (to - from) / (24 * 3600e3);
-    if (ci === '5m' && diffDays > 5.0001) {
-      filterParams.granularity = '1h';
-      setChartsCurrentInterval('1h');
-    } else {
-      filterParams.granularity = (ci === '5m') ? '5m' : '1h';
-    }
+    filterParams.granularity = computeFetchGranularity(filterParams.from, filterParams.to);
     const data = await fetchMetrics(filterParams);
 
     if (!data) {
-      try { renderTableHeader(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); }
-      try { renderTableFooter(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); }
-      try { showTableControls(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); }
-      try {
-        const tb = document.getElementById('tableBody');
-        if (tb) tb.innerHTML = '<tr><td colspan="24">Error loading data. Please try again.</td></tr>';
-      } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); }
-      try { setShowTable(true); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); }
+      showErrorTable('Error loading data. Please try again.');
       saveStateToUrl();
       alert('Error loading data. Please try again.');
       return;
     }
 
-    // Now render and show the table with fresh data using TableRenderer
-    let { main_rows, peer_rows, hourly_rows } = data || {};
-    // If reverse flow returns only peer_rows, synthesize minimal main_rows for grouping
-    if ((!main_rows || main_rows.length === 0) && peer_rows && peer_rows.length) {
-      try {
-        const map = new Map();
-        peer_rows.forEach(p => {
-          const k = `${p.main}||${p.destination}`;
-          if (!map.has(k)) map.set(k, { main: p.main, destination: p.destination });
-        });
-        main_rows = Array.from(map.values());
-        console.debug('[summary] synthesized main_rows from peer_rows:', main_rows.length);
-      } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-        // Ignore main_rows synthesis errors
-      }
-    }
-    if ((main_rows && main_rows.length) || (peer_rows && peer_rows.length)) {
-      await renderCoordinator.requestRender('table', async () => {
-        // Prepare
-        try { renderTableHeader(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-          // Ignore header rendering errors
-        }
-        try { renderTableFooter(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-          // Ignore footer rendering errors
-        }
-        try { showTableControls(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-          // Ignore controls display errors
-        }
-        // Pass five_min_rows if available (for 5m granularity), otherwise hourly_rows
-        const detailedRows = (data && data.five_min_rows && data.five_min_rows.length > 0) ? data.five_min_rows : (hourly_rows || []);
-        initTableControls(main_rows || [], peer_rows || [], detailedRows);
-        // Clear
-        try { const tb = document.getElementById('tableBody'); if (tb) tb.innerHTML = ''; } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-          // Ignore table clearing errors
-        }
-        // Render: always create fresh renderer to avoid stale state
-        const mod = await import('../rendering/table-renderer.js');
-        // destroy old renderer if exists
-        const oldRenderer = getTableRenderer();
-        if (oldRenderer) {
-          try { oldRenderer.destroy(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);}
-          setTableRenderer(null);
-        }
-        const tr = new mod.TableRenderer();
-        try { await tr.initialize(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);}
-        setTableRenderer(tr);
-        const res = await tr.renderTable(main_rows || [], peer_rows || [], hourly_rows || []);
-        try {
-          const tbody = document.getElementById('tableBody');
-          const rowCount = tbody ? tbody.querySelectorAll('tr').length : 0;
-          console.debug('[summary] TableRenderer rendered rows:', rowCount, 'mode:', res && res.mode);
-        } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-          // Ignore debug logging errors
-        }
-        // Post
-        try { setShowTable(true); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-          // Ignore table show errors
-        }
-        try {
-          const resultsContainer = document.querySelector('.results-display');
-          if (resultsContainer) resultsContainer.classList.remove('is-hidden');
-          const controls = document.getElementById('table-controls');
-          if (controls) controls.style.display = 'flex';
-          const tableFooter = document.querySelector('.results-display__footer');
-          if (tableFooter) tableFooter.classList.remove('is-hidden');
-        } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-          // Ignore UI update errors
-        }
-        try { setUI({ showTable: true }); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-          // Ignore UI state update errors
-        }
-        try { initTableView(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-          // Ignore table view init errors
-        }
-        try { initStickyHeader(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-          // Ignore sticky header init errors
-        }
-        try { initStickyFooter(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-          // Ignore sticky footer init errors
-        }
-        try { initTableInteractions(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);
-          // Ignore table interactions init errors
-        }
-        console.log("✅ Summary Table loaded with fresh data");
-      }, { debounceMs: 0, cooldownMs: 0 });
-    } else {
-      // Show empty state instead of hiding the table entirely
-      try { renderTableHeader(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); }
-      try { renderTableFooter(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); }
-      try { showTableControls(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); }
-      try {
-        const tb = document.getElementById('tableBody');
-        if (tb) tb.innerHTML = '<tr><td colspan="24">No data found for current filters.</td></tr>';
-      } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); }
-      try { setShowTable(true); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); }
-    }
-
+    await renderSummaryTable(data);
     saveStateToUrl();
-  } catch (error) {
-    console.error("❌ Error fetching data for Summary Table:", error);
+  } catch (e) {
+    logError(ErrorCategory.FILTER, 'handleSummaryClick', e);
     alert('Error loading data. Please try again.');
   } finally {
     setSummaryFetchInProgress(false);
   }
 }
 
-/**
- * Reset virtual table state (clear all opened groups)
- */
+// ─────────────────────────────────────────────────────────────
+// Virtual table state
+// ─────────────────────────────────────────────────────────────
+
 function resetVirtualTableState() {
-  // reset centralized expansion state
-  try { resetExpansionState(); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);}
-  
-  // destroy virtualManager completely for fresh start
-  const vm = getVirtualManager();
-  if (vm) {
-    try {
-      if (typeof vm.destroy === 'function') {
-        vm.destroy();
-      }
-      setVirtualManager(null);
-    } catch (e) { logError(ErrorCategory.FILTER, 'filters', e);}
-  }
+  safeCall(resetExpansionState, 'resetVirtualTableState:expansion');
+  destroyModule(getVirtualManager, setVirtualManager, 'virtualManager');
 }
 
-/**
- * Handles the reverse mode toggle.
- * Only toggles flag and hides table - no chart redraw, no data refetch.
- */
-function handleReverseClick() {
-  console.log("🔄 Reverse button clicked. Toggling state only.");
+// ─────────────────────────────────────────────────────────────
+// Reverse click handler
+// ─────────────────────────────────────────────────────────────
 
-  // 1. Toggle the reverse mode state
+function handleReverseClick() {
   setReverseMode(!isReverseMode());
 
-  // 2. Hide table via CSS class (no DOM rebuild, no chart touch)
-  try {
-    const resultsContainer = document.querySelector('.results-display');
-    if (resultsContainer) resultsContainer.classList.add('is-hidden');
-  } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); }
-  try { setShowTable(false); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); }
+  toggleHidden(getElementBySelector(ELEMENT_IDS.resultsDisplay), true);
+  safeCall(() => setShowTable(false), 'handleReverseClick:hide');
+  safeCall(() => setTableNeedsRebuild(true), 'handleReverseClick:rebuild');
 
-  // 3. Mark table as needing rebuild on next Summary click
-  try { setTableNeedsRebuild(true); } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); }
-
-  // 4. Animate button (rotation)
-  try {
-    const btn = document.getElementById('btnReverse');
-    if (btn) {
-      btn.classList.add('reverse-spin');
-      setTimeout(() => btn.classList.remove('reverse-spin'), 300);
-    }
-  } catch (e) { logError(ErrorCategory.FILTER, 'filters', e); }
+  // animate button
+  const btn = getElement(ELEMENT_IDS.reverseButton);
+  if (btn) {
+    btn.classList.add('reverse-spin');
+    setTimeout(() => btn.classList.remove('reverse-spin'), SPIN_ANIMATION_MS);
+  }
 }
 
-/**
- * Clear all table filters and refresh the table
- */
+// ─────────────────────────────────────────────────────────────
+// Public filter utilities
+// ─────────────────────────────────────────────────────────────
+
 export function clearTableFilters() {
-  console.log("🧹 Clearing all table filters...");
-
-  // Clear all table filters
   clearAllTableFilters();
-
-  // Setup automatic filter clearing for future input changes
   setupAutoFilterClearing();
 
-  // If virtual manager is active, refresh the table to show unfiltered data
-  const vm1 = getVirtualManager();
-  if (vm1 && vm1.isActive) {
-    console.log("🔄 Refreshing table after filter clear...");
-    vm1.refreshVirtualTable();
+  const vm = getVirtualManager();
+  if (vm?.isActive) {
+    vm.refreshVirtualTable();
   }
-
-  console.log("✅ Table filters cleared and table refreshed");
 }
 
-/**
- * Clear a specific column filter and refresh the table
- * @param {string} columnKey - The column key to clear filter for
- */
 export function clearSpecificFilter(columnKey) {
-  console.log(`🧹 Clearing filter for column: ${columnKey}`);
-
-  // Clear the specific filter
   clearColumnFilter(columnKey);
 
-  // If virtual manager is active, refresh the table to show updated data
-  const vm2 = getVirtualManager();
-  if (vm2 && vm2.isActive) {
-    console.log("🔄 Refreshing table after specific filter clear...");
-    vm2.refreshVirtualTable();
+  const vm = getVirtualManager();
+  if (vm?.isActive) {
+    vm.refreshVirtualTable();
   }
-
-  console.log(`✅ Filter for column "${columnKey}" cleared and table refreshed`);
 }

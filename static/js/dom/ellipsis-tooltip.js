@@ -1,123 +1,127 @@
 // static/js/dom/ellipsis-tooltip.js
-// Responsibility: Show a neat tooltip with full text for any truncated (ellipsis) cell
+// Responsibility: Tooltip for truncated (ellipsis) table cells
 
-let tooltipEl;
+// ─────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────
 
-export function initEllipsisTooltip() {
-  // Create tooltip once
-  tooltipEl = document.getElementById('ellipsis-tooltip');
+const TOOLTIP_ID = 'ellipsis-tooltip';
+const VIRTUAL_CONTAINER_ID = 'virtual-scroll-container';
+const TABLE_BODY_ID = 'tableBody';
+
+const IGNORED_SELECTORS = '.asr-cell-hover, .y-column-toggle-btn, .sort-arrow, .toggle-btn, input';
+const FLOATING_HEADER_SELECTOR = '.floating-table-header';
+const FLOATING_FOOTER_SELECTOR = '.floating-table-footer';
+
+const OFFSET_X = 12;
+const OFFSET_Y = 14;
+const TRUNCATION_TOLERANCE = 2;
+
+const BOUND_FLAG = '_ellipsisBound';
+
+// ─────────────────────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────────────────────
+
+let tooltipEl = null;
+
+// ─────────────────────────────────────────────────────────────
+// Tooltip element
+// ─────────────────────────────────────────────────────────────
+
+function ensureTooltipElement() {
+  tooltipEl = document.getElementById(TOOLTIP_ID);
   if (!tooltipEl) {
     tooltipEl = document.createElement('div');
-    tooltipEl.id = 'ellipsis-tooltip';
+    tooltipEl.id = TOOLTIP_ID;
     tooltipEl.className = 'ellipsis-tooltip is-hidden';
     document.body.appendChild(tooltipEl);
   }
-
-  // Bind to virtual scroll container (covers all table rows)
-  const virtualContainer = document.getElementById('virtual-scroll-container');
-  if (virtualContainer && !virtualContainer._ellipsisBound) {
-    virtualContainer.addEventListener('mouseover', onOver, { passive: true });
-    virtualContainer.addEventListener('mouseout', onOut, { passive: true });
-    virtualContainer.addEventListener('mousemove', onMove, { passive: true });
-    virtualContainer._ellipsisBound = true;
-  }
-
-  // Fallback: bind to tableBody if virtual container not found
-  const tableBody = document.getElementById('tableBody');
-  if (tableBody && !tableBody._ellipsisBound && !virtualContainer) {
-    tableBody.addEventListener('mouseover', onOver, { passive: true });
-    tableBody.addEventListener('mouseout', onOut, { passive: true });
-    tableBody.addEventListener('mousemove', onMove, { passive: true });
-    tableBody._ellipsisBound = true;
-  }
-
-  // Bind to floating elements
-  bindFloatingHeaderIfPresent();
-  observeFloatingHeader();
-  bindFloatingFooterIfPresent();
-  observeFloatingFooter();
-
-  // Re-bind when table becomes visible (virtual container may be created later)
-  observeVirtualContainer();
+  return tooltipEl;
 }
 
-function observeVirtualContainer() {
-  const observer = new MutationObserver(() => {
-    const vc = document.getElementById('virtual-scroll-container');
-    if (vc && !vc._ellipsisBound) {
-      vc.addEventListener('mouseover', onOver, { passive: true });
-      vc.addEventListener('mouseout', onOut, { passive: true });
-      vc.addEventListener('mousemove', onMove, { passive: true });
-      vc._ellipsisBound = true;
-    }
-  });
+// ─────────────────────────────────────────────────────────────
+// Event binding
+// ─────────────────────────────────────────────────────────────
+
+function bindTooltipEvents(el) {
+  if (!el || el[BOUND_FLAG]) return;
+
+  el.addEventListener('mouseover', handleMouseOver, { passive: true });
+  el.addEventListener('mouseout', handleMouseOut, { passive: true });
+  el.addEventListener('mousemove', handleMouseMove, { passive: true });
+  el[BOUND_FLAG] = true;
+}
+
+function bindById(id) {
+  const el = document.getElementById(id);
+  if (el) bindTooltipEvents(el);
+  return el;
+}
+
+function bindBySelector(selector) {
+  const el = document.querySelector(selector);
+  if (el) bindTooltipEvents(el);
+}
+
+// ─────────────────────────────────────────────────────────────
+// Mutation observers
+// ─────────────────────────────────────────────────────────────
+
+function observeAndBind(bindFn) {
+  const observer = new MutationObserver(bindFn);
   observer.observe(document.body, { childList: true, subtree: true });
 }
 
-function bindFloatingHeaderIfPresent() {
-  const floating = document.querySelector('.floating-table-header');
-  if (floating && !floating._ellipsisBound) {
-    floating.addEventListener('mouseover', onOver, { passive: true });
-    floating.addEventListener('mouseout', onOut, { passive: true });
-    floating.addEventListener('mousemove', onMove, { passive: true });
-    floating._ellipsisBound = true;
-  }
-}
+// ─────────────────────────────────────────────────────────────
+// Event handlers
+// ─────────────────────────────────────────────────────────────
 
-function observeFloatingHeader() {
-  const observer = new MutationObserver(() => {
-    bindFloatingHeaderIfPresent();
-  });
-  observer.observe(document.body, { childList: true, subtree: true });
-}
-
-function bindFloatingFooterIfPresent() {
-  const floating = document.querySelector('.floating-table-footer');
-  if (floating && !floating._ellipsisBound) {
-    floating.addEventListener('mouseover', onOver, { passive: true });
-    floating.addEventListener('mouseout', onOut, { passive: true });
-    floating.addEventListener('mousemove', onMove, { passive: true });
-    floating._ellipsisBound = true;
-  }
-}
-
-function observeFloatingFooter() {
-  const observer = new MutationObserver(() => {
-    bindFloatingFooterIfPresent();
-  });
-  observer.observe(document.body, { childList: true, subtree: true });
-}
-
-function onOver(e) {
-  // Don't interfere with existing ASR tooltip
-  if (e.target.closest('.asr-cell-hover')) return;
-  // Ignore controls
-  if (e.target.closest('.y-column-toggle-btn, .sort-arrow, .toggle-btn, input')) return;
+function handleMouseOver(e) {
+  if (e.target.closest(IGNORED_SELECTORS)) return;
 
   const td = e.target.closest('td');
   if (!td) return;
 
-  // Get full text from data attribute
   const fullText = td.getAttribute('data-full-text') || td.getAttribute('data-filter-value') || '';
   if (!fullText) return;
 
-  // Check if text is truncated (overflow)
-  const isTruncated = td.scrollWidth > td.clientWidth + 2;
+  const isTruncated = td.scrollWidth > td.clientWidth + TRUNCATION_TOLERANCE;
   if (!isTruncated) return;
 
-  // Show tooltip
   tooltipEl.textContent = fullText;
   tooltipEl.classList.remove('is-hidden');
 }
 
-function onOut() {
+function handleMouseOut() {
   tooltipEl.classList.add('is-hidden');
 }
 
-function onMove(e) {
+function handleMouseMove(e) {
   if (tooltipEl.classList.contains('is-hidden')) return;
-  const x = e.clientX + 12;
-  const y = e.clientY + 14;
-  tooltipEl.style.left = `${x}px`;
-  tooltipEl.style.top = `${y}px`;
+  tooltipEl.style.left = `${e.clientX + OFFSET_X}px`;
+  tooltipEl.style.top = `${e.clientY + OFFSET_Y}px`;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Public API
+// ─────────────────────────────────────────────────────────────
+
+export function initEllipsisTooltip() {
+  ensureTooltipElement();
+
+  // bind to virtual container or table body
+  const vc = bindById(VIRTUAL_CONTAINER_ID);
+  if (!vc) bindById(TABLE_BODY_ID);
+
+  // bind to floating elements
+  bindBySelector(FLOATING_HEADER_SELECTOR);
+  bindBySelector(FLOATING_FOOTER_SELECTOR);
+
+  // observe for dynamically added elements
+  observeAndBind(() => {
+    bindById(VIRTUAL_CONTAINER_ID);
+    bindBySelector(FLOATING_HEADER_SELECTOR);
+    bindBySelector(FLOATING_FOOTER_SELECTOR);
+  });
 }

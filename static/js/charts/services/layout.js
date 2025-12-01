@@ -1,53 +1,87 @@
 // static/js/charts/services/layout.js
-// layout utils for charts
+// Responsibility: Chart layout calculations
 import { logError, ErrorCategory } from '../../utils/errorLogger.js';
 
-// Unified grid layout for 4 charts - each gets exactly 25% of usable height
+// ─────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────
+
+const GRID_COUNT = 4;
+const GRID_LEFT = 40;
+const GRID_RIGHT = 16;
+const GRID_GAP = 8;
+const GRID_PADDING = 8;
+
+const MIN_HEIGHT = 200;
+const DEFAULT_HEIGHT = 520;
+const MAX_HEIGHT = 850;
+const LARGE_SCREEN_THRESHOLD = 600;
+const BOTTOM_OFFSET = 100;
+
+// ─────────────────────────────────────────────────────────────
+// Grid layout
+// ─────────────────────────────────────────────────────────────
+
 export function computeChartGrids(heightPx) {
-  const topPad = 8;
-  const bottomPad = 8;
-  const gap = 8;
-  const totalHeight = Math.max(200, heightPx || 520);
-  // usable = total - top padding - bottom padding - 3 gaps between 4 charts
-  const usable = totalHeight - topPad - bottomPad - gap * 3;
-  // each chart gets exactly 25% of usable space
-  const h = Math.floor(usable / 4);
-  const grids = Array.from({ length: 4 }, (_, i) => ({
-    left: 40,
-    right: 16,
-    top: topPad + i * (h + gap),
-    height: h,
+  const totalHeight = Math.max(MIN_HEIGHT, heightPx || DEFAULT_HEIGHT);
+
+  // usable = total - top/bottom padding - gaps between charts
+  const usable = totalHeight - GRID_PADDING * 2 - GRID_GAP * (GRID_COUNT - 1);
+  const gridHeight = Math.floor(usable / GRID_COUNT);
+
+  return Array.from({ length: GRID_COUNT }, (_, i) => ({
+    left: GRID_LEFT,
+    right: GRID_RIGHT,
+    top: GRID_PADDING + i * (gridHeight + GRID_GAP),
+    height: gridHeight
   }));
-  return grids;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Height calculation
+// ─────────────────────────────────────────────────────────────
+
+function getMountElement(mount) {
+  return mount || document.getElementById('chart-area-1');
+}
+
+function getElementHeight(el) {
+  if (!el) return 0;
+  return el.clientHeight || el.getBoundingClientRect().height || 0;
+}
+
+function getViewportHeight() {
+  return Math.max(
+    Number(window?.innerHeight || 0),
+    Number(document?.documentElement?.clientHeight || 0),
+    DEFAULT_HEIGHT
+  );
+}
+
+function storeFixedHeight(el, height) {
+  try {
+    if (el) el.dataset.fixedHeight = String(height);
+  } catch (e) {
+    logError(ErrorCategory.CHART, 'layout:storeFixedHeight', e);
+  }
 }
 
 export function ensureFixedChartHeight(host, mount) {
-  // use actual mount height on large screens
-  const fallback = 520;
-  const mountEl = mount || document.getElementById('chart-area-1');
-  const mountH = mountEl ? (mountEl.clientHeight || mountEl.getBoundingClientRect().height || 0) : 0;
-  
+  const mountEl = getMountElement(mount);
+  const mountHeight = getElementHeight(mountEl);
+
   // large screen: use actual container height
-  if (mountH > 600) {
-    try {
-      if (mountEl) mountEl.dataset.fixedHeight = String(mountH);
-    } catch (e) { logError(ErrorCategory.CHART, 'layout', e);}
-    return mountH;
+  if (mountHeight > LARGE_SCREEN_THRESHOLD) {
+    storeFixedHeight(mountEl, mountHeight);
+    return mountHeight;
   }
-  
-  // fallback for small screens or when height not yet computed
-  const viewportH = Math.max(
-    Number(window?.innerHeight || 0),
-    Number(document?.documentElement?.clientHeight || 0),
-    fallback
-  );
-  const hostRect = host?.getBoundingClientRect?.() || { top: 0 };
-  const top = Number(hostRect.top || 0);
-  const computed = Math.max(fallback, viewportH - top - 100);
-  const result = Math.min(computed, 850);
-  
-  try {
-    if (mountEl) mountEl.dataset.fixedHeight = String(result);
-  } catch (e) { logError(ErrorCategory.CHART, 'layout', e);}
+
+  // calculate based on viewport
+  const viewportHeight = getViewportHeight();
+  const hostTop = host?.getBoundingClientRect?.()?.top || 0;
+  const computed = Math.max(DEFAULT_HEIGHT, viewportHeight - hostTop - BOTTOM_OFFSET);
+  const result = Math.min(computed, MAX_HEIGHT);
+
+  storeFixedHeight(mountEl, result);
   return result;
 }

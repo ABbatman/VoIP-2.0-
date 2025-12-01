@@ -1,96 +1,54 @@
 // static/js/state/eventBus.js
-// A very simple publisher-subscriber (Pub/Sub) event bus.
-// It allows different parts of the application to communicate
-// without depending on each other directly.
+// Responsibility: Pub/Sub event bus for decoupled communication
 
-const eventListeners = {};
+// ─────────────────────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────────────────────
 
-/**
- * Subscribe to an event
- * @param {string} event - Event name
- * @param {Function} callback - Function to call when event occurs
- * @returns {Function} Unsubscribe function
- */
+const listeners = {};
+
+// ─────────────────────────────────────────────────────────────
+// Core API
+// ─────────────────────────────────────────────────────────────
+
 export function subscribe(event, callback) {
-  if (!eventListeners[event]) {
-    eventListeners[event] = [];
-  }
-  eventListeners[event].push(callback);
-  
+  if (!listeners[event]) listeners[event] = [];
+  listeners[event].push(callback);
   return () => unsubscribe(event, callback);
 }
 
-/**
- * Publish an event to all subscribers.
- * @param {string} eventName - The name of the event to publish.
- * @param {*} [data] - Optional data to pass to the subscribers' callback functions.
- */
-export function publish(eventName, data) {
-  if (!eventListeners[eventName]) {
-    return;
-  }
-  eventListeners[eventName].forEach((callback) => callback(data));
+export function publish(event, data) {
+  listeners[event]?.forEach(cb => cb(data));
 }
 
-/**
- * Unsubscribe from a specific event.
- * @param {string} eventName - The name of the event to unsubscribe from.
- * @param {Function} callback - The callback function to remove.
- */
-export function unsubscribe(eventName, callback) {
-  const listeners = eventListeners[eventName];
-  if (listeners) {
-    const index = listeners.indexOf(callback);
-    if (index > -1) {
-      listeners.splice(index, 1);
-    }
-  }
+export function unsubscribe(event, callback) {
+  const list = listeners[event];
+  if (!list) return;
+
+  const idx = list.indexOf(callback);
+  if (idx > -1) list.splice(idx, 1);
 }
 
-/**
- * Get the number of listeners for a specific event.
- * @param {string} eventName - The name of the event.
- * @returns {number} The number of listeners.
- */
-export function getListenerCount(eventName) {
-  return eventListeners[eventName] ? eventListeners[eventName].length : 0;
+// ─────────────────────────────────────────────────────────────
+// Utilities
+// ─────────────────────────────────────────────────────────────
+
+export const getListenerCount = event => listeners[event]?.length ?? 0;
+export const getRegisteredEvents = () => Object.keys(listeners);
+export const hasListeners = event => (listeners[event]?.length ?? 0) > 0;
+
+export function clearEvent(event) {
+  delete listeners[event];
 }
 
-/**
- * Get all registered event names.
- * @returns {string[]} Array of event names.
- */
-export function getRegisteredEvents() {
-  return Object.keys(eventListeners);
-}
-
-/**
- * Clear all listeners for a specific event.
- * @param {string} eventName - The name of the event.
- */
-export function clearEvent(eventName) {
-  if (eventListeners[eventName]) {
-    delete eventListeners[eventName];
-  }
-}
-
-/**
- * Clear all listeners for all events.
- */
 export function clearAllEvents() {
-  Object.keys(eventListeners).forEach((key) => delete eventListeners[key]);
+  Object.keys(listeners).forEach(key => delete listeners[key]);
 }
 
-/**
- * Check if an event has any listeners.
- * @param {string} eventName - The name of the event.
- * @returns {boolean} True if the event has listeners.
- */
-export function hasListeners(eventName) {
-  return eventListeners[eventName] && eventListeners[eventName].length > 0;
-}
+// ─────────────────────────────────────────────────────────────
+// Compat object export
+// ─────────────────────────────────────────────────────────────
 
-// Create eventBus object for backward compatibility
 export const eventBus = {
   subscribe,
   publish,

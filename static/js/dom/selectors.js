@@ -1,27 +1,42 @@
 // static/js/dom/selectors.js
-// Responsibility: centralize standard (non-virtual) DOM selectors for the table UI
+// Responsibility: Centralized DOM selectors for table UI
+import { getVirtualManager } from '../state/moduleRegistry.js';
 
-import { getVirtualManager } from "../state/moduleRegistry.js";
+// ─────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────
+
+const IDS = {
+  tableBody: 'tableBody',
+  expandAllBtn: 'btnExpandCollapseAll'
+};
+
+const SELECTORS = {
+  mainToggle: '.main-row .toggle-btn',
+  peerToggle: '.peer-row .toggle-btn'
+};
+
+// ─────────────────────────────────────────────────────────────
+// Public API
+// ─────────────────────────────────────────────────────────────
 
 export function getTableBody() {
-  return document.getElementById('tableBody');
+  return document.getElementById(IDS.tableBody);
 }
 
 export function getMainToggleButtons(root = document) {
-  const scope = root || document;
-  return Array.from(scope.querySelectorAll('.main-row .toggle-btn'));
+  return Array.from((root || document).querySelectorAll(SELECTORS.mainToggle));
 }
 
 export function getPeerToggleButtons(root = document) {
-  const scope = root || document;
-  return Array.from(scope.querySelectorAll('.peer-row .toggle-btn'));
+  return Array.from((root || document).querySelectorAll(SELECTORS.peerToggle));
 }
 
 export function getExpandAllButton() {
-  return document.getElementById('btnExpandCollapseAll');
+  return document.getElementById(IDS.expandAllBtn);
 }
 
 export function isVirtualModeActive() {
   const vm = getVirtualManager();
-  return !!(vm && vm.isActive);
+  return !!(vm?.isActive);
 }

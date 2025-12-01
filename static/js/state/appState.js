@@ -1,279 +1,239 @@
 // static/js/state/appState.js
+// Responsibility: Global application state management
+import { publish } from './eventBus.js';
 
-import { publish } from "./eventBus.js";
+// ─────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────
+
+const VALID_MODES = ['summary', 'cdr'];
+const VALID_TIME_RANGES = ['1h', '6h', '24h', '7d', '30d', 'custom'];
+const VALID_THEMES = ['light', 'dark', 'auto'];
+
+const DEFAULT_FILTERS = {
+  customer: '',
+  supplier: '',
+  destination: '',
+  customerGroup: '',
+  supplierGroup: '',
+  destinationGroup: '',
+  from: '',
+  to: ''
+};
+
+// ─────────────────────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────────────────────
 
 const appState = {
   isReversed: false,
   metricsData: null,
-  // NEW: Add a status field to track the application's global state.
-  // 'idle' = waiting for user, 'loading' = fetching data, 'error' = fetch failed.
-  status: "idle",
-  
-  // NEW: Dashboard filters and parameters
-  filters: {
-    customer: "",
-    supplier: "",
-    destination: "",
-    customerGroup: "",
-    supplierGroup: "",
-    destinationGroup: "",
-    from: "",
-    to: "",
-  },
-  
-  // NEW: Dashboard view settings
+  status: 'idle',
+
+  filters: { ...DEFAULT_FILTERS },
+
   dashboardView: {
-    currentMode: "summary", // "summary" | "cdr"
-    timeRange: "24h", // "1h", "6h", "24h", "7d", "30d", "custom"
+    currentMode: 'summary',
+    timeRange: '24h',
     autoRefresh: false,
-    refreshInterval: 30000, // 30 seconds
+    refreshInterval: 30000
   },
-  
-  // NEW: User preferences
+
   preferences: {
-    theme: "light", // "light" | "dark" | "auto"
-    language: "en",
+    theme: 'light',
+    language: 'en',
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    dateFormat: "YYYY-MM-DD",
-    timeFormat: "HH:mm:ss",
+    dateFormat: 'YYYY-MM-DD',
+    timeFormat: 'HH:mm:ss'
   },
-  
-  // NEW: Application settings
+
   settings: {
     debugMode: false,
     performanceMonitoring: false,
     showTooltips: true,
-    compactMode: false,
+    compactMode: false
   },
 
-  // NEW: UI visibility flags
   ui: {
     showCharts: false,
     showModeControls: false,
-    showTable: false,
+    showTable: false
   }
 };
 
-// --- GETTERS ---
+// ─────────────────────────────────────────────────────────────
+// Getters: Core
+// ─────────────────────────────────────────────────────────────
 
-export function isReverseMode() {
-  return appState.isReversed;
-}
+export const isReverseMode = () => appState.isReversed;
+export const getMetricsData = () => appState.metricsData;
+export const getAppStatus = () => appState.status;
 
-export function getMetricsData() {
-  return appState.metricsData;
-}
+// ─────────────────────────────────────────────────────────────
+// Getters: Filters
+// ─────────────────────────────────────────────────────────────
 
-export function getAppStatus() {
-  // NEW: Getter for the status
-  return appState.status;
-}
+export const getFilters = () => ({ ...appState.filters });
+export const getFilter = key => appState.filters[key] || '';
 
-// NEW: Filter getters
-export function getFilters() {
-  return { ...appState.filters };
-}
+// ─────────────────────────────────────────────────────────────
+// Getters: Dashboard view
+// ─────────────────────────────────────────────────────────────
 
-export function getFilter(key) {
-  return appState.filters[key] || "";
-}
+export const getDashboardView = () => ({ ...appState.dashboardView });
+export const getCurrentMode = () => appState.dashboardView.currentMode;
+export const getTimeRange = () => appState.dashboardView.timeRange;
+export const isAutoRefreshEnabled = () => appState.dashboardView.autoRefresh;
 
-// NEW: Dashboard view getters
-export function getDashboardView() {
-  return { ...appState.dashboardView };
-}
+// ─────────────────────────────────────────────────────────────
+// Getters: Preferences
+// ─────────────────────────────────────────────────────────────
 
-export function getCurrentMode() {
-  return appState.dashboardView.currentMode;
-}
+export const getPreferences = () => ({ ...appState.preferences });
+export const getTheme = () => appState.preferences.theme;
+export const getTimezone = () => appState.preferences.timezone;
 
-export function getTimeRange() {
-  return appState.dashboardView.timeRange;
-}
+// ─────────────────────────────────────────────────────────────
+// Getters: Settings
+// ─────────────────────────────────────────────────────────────
 
-export function isAutoRefreshEnabled() {
-  return appState.dashboardView.autoRefresh;
-}
+export const getSettings = () => appState.settings;
+export const isDebugMode = () => appState.settings.debugMode;
 
-// NEW: Preferences getters
-export function getPreferences() {
-  return { ...appState.preferences };
-}
+// ─────────────────────────────────────────────────────────────
+// Getters: UI
+// ─────────────────────────────────────────────────────────────
 
-export function getTheme() {
-  return appState.preferences.theme;
-}
+export const getUI = () => ({ ...appState.ui });
+export const isChartsVisible = () => !!appState.ui.showCharts;
+export const isModeControlsVisible = () => !!appState.ui.showModeControls;
+export const isTableVisible = () => !!appState.ui.showTable;
 
-export function getTimezone() {
-  return appState.preferences.timezone;
-}
-
-// NEW: Settings getters
-export function getSettings() {
-  return appState.settings;
-}
-
-export function isDebugMode() {
-  return appState.settings.debugMode;
-}
-
-// NEW: UI getters
-export function getUI() {
-  return { ...appState.ui };
-}
-export function isChartsVisible() {
-  return !!appState.ui.showCharts;
-}
-export function isModeControlsVisible() {
-  return !!appState.ui.showModeControls;
-}
-export function isTableVisible() {
-  return !!appState.ui.showTable;
-}
-
-// --- SETTERS ---
+// ─────────────────────────────────────────────────────────────
+// Setters: Core
+// ─────────────────────────────────────────────────────────────
 
 export function setReverseMode(isReversed) {
   appState.isReversed = isReversed;
-  console.log(`🔁 Reverse mode set to: ${appState.isReversed}`);
-  publish("appState:reverseModeChanged", isReversed);
+  publish('appState:reverseModeChanged', isReversed);
 }
 
 export function setMetricsData(data) {
   appState.metricsData = data;
-  publish("appState:dataChanged", data);
+  publish('appState:dataChanged', data);
 }
 
-/**
- * NEW: Sets the global application status and notifies all listeners.
- * @param {'idle' | 'loading' | 'success' | 'error'} newStatus
- */
 export function setAppStatus(newStatus) {
   appState.status = newStatus;
-  console.log(`🔄 App status changed to: ${newStatus}`);
-  publish("appState:statusChanged", newStatus);
+  publish('appState:statusChanged', newStatus);
 }
 
-// NEW: Filter setters
+// ─────────────────────────────────────────────────────────────
+// Setters: Filters
+// ─────────────────────────────────────────────────────────────
+
 export function setFilters(newFilters) {
-  console.log("🔍 setFilters - Current filters:", appState.filters);
-  console.log("🔍 setFilters - New filters:", newFilters);
-  
   Object.assign(appState.filters, newFilters);
-  console.log("🔍 Filters updated:", appState.filters);
-  publish("appState:filtersChanged", appState.filters);
+  publish('appState:filtersChanged', appState.filters);
 }
 
 export function setFilter(key, value) {
-  if (Object.prototype.hasOwnProperty.call(appState.filters, key)) {
-    appState.filters[key] = value;
-    console.log(`🔍 Filter "${key}" set to: "${value}"`);
-    publish("appState:filterChanged", { key, value });
-  } else {
-    console.warn(`⚠️ Unknown filter key: ${key}`);
-  }
+  if (!(key in appState.filters)) return;
+  appState.filters[key] = value;
+  publish('appState:filterChanged', { key, value });
 }
 
 export function resetFilters() {
-  appState.filters = {
-    customer: "",
-    supplier: "",
-    destination: "",
-    from: "",
-    to: "",
-  };
-  console.log("🔄 Filters reset to defaults");
-  publish("appState:filtersReset");
+  appState.filters = { ...DEFAULT_FILTERS };
+  publish('appState:filtersReset');
 }
 
-// NEW: Dashboard view setters
+// ─────────────────────────────────────────────────────────────
+// Setters: Dashboard view
+// ─────────────────────────────────────────────────────────────
+
 export function setDashboardView(newView) {
   Object.assign(appState.dashboardView, newView);
-  console.log("📊 Dashboard view updated:", appState.dashboardView);
-  publish("appState:dashboardViewChanged", appState.dashboardView);
+  publish('appState:dashboardViewChanged', appState.dashboardView);
 }
 
 export function setCurrentMode(mode) {
-  if (["summary", "cdr"].includes(mode)) {
-    appState.dashboardView.currentMode = mode;
-    console.log(`📊 Dashboard mode changed to: ${mode}`);
-    publish("appState:modeChanged", mode);
-  }
+  if (!VALID_MODES.includes(mode)) return;
+  appState.dashboardView.currentMode = mode;
+  publish('appState:modeChanged', mode);
 }
 
 export function setTimeRange(range) {
-  if (["1h", "6h", "24h", "7d", "30d", "custom"].includes(range)) {
-    appState.dashboardView.timeRange = range;
-    console.log(`⏰ Time range changed to: ${range}`);
-    publish("appState:timeRangeChanged", range);
-  }
+  if (!VALID_TIME_RANGES.includes(range)) return;
+  appState.dashboardView.timeRange = range;
+  publish('appState:timeRangeChanged', range);
 }
 
 export function setAutoRefresh(enabled, interval = null) {
   appState.dashboardView.autoRefresh = enabled;
-  if (interval) {
-    appState.dashboardView.refreshInterval = interval;
-  }
-  console.log(`🔄 Auto-refresh ${enabled ? 'enabled' : 'disabled'}, interval: ${appState.dashboardView.refreshInterval}ms`);
-  publish("appState:autoRefreshChanged", { enabled, interval: appState.dashboardView.refreshInterval });
+  if (interval) appState.dashboardView.refreshInterval = interval;
+  publish('appState:autoRefreshChanged', {
+    enabled,
+    interval: appState.dashboardView.refreshInterval
+  });
 }
 
-// NEW: Preferences setters
+// ─────────────────────────────────────────────────────────────
+// Setters: Preferences
+// ─────────────────────────────────────────────────────────────
+
 export function setPreferences(newPreferences) {
   Object.assign(appState.preferences, newPreferences);
-  console.log("⚙️ Preferences updated:", appState.preferences);
-  publish("appState:preferencesChanged", appState.preferences);
+  publish('appState:preferencesChanged', appState.preferences);
 }
 
 export function setTheme(theme) {
-  if (["light", "dark", "auto"].includes(theme)) {
-    appState.preferences.theme = theme;
-    console.log(`🎨 Theme changed to: ${theme}`);
-    publish("appState:themeChanged", theme);
-  }
+  if (!VALID_THEMES.includes(theme)) return;
+  appState.preferences.theme = theme;
+  publish('appState:themeChanged', theme);
 }
 
 export function setTimezone(timezone) {
   appState.preferences.timezone = timezone;
-  console.log(`🌍 Timezone changed to: ${timezone}`);
-  publish("appState:timezoneChanged", timezone);
+  publish('appState:timezoneChanged', timezone);
 }
 
-// NEW: Settings setters
+// ─────────────────────────────────────────────────────────────
+// Setters: Settings
+// ─────────────────────────────────────────────────────────────
+
 export function setSettings(newSettings) {
   Object.assign(appState.settings, newSettings);
-  console.log("⚙️ Settings updated:", appState.settings);
-  publish("appState:settingsChanged", newSettings);
+  publish('appState:settingsChanged', newSettings);
 }
 
 export function setDebugMode(enabled) {
   appState.settings.debugMode = enabled;
-  console.log(`🐛 Debug mode ${enabled ? 'enabled' : 'disabled'}`);
-  publish("appState:debugModeChanged", enabled);
+  publish('appState:debugModeChanged', enabled);
 }
 
-// NEW: UI setters
+// ─────────────────────────────────────────────────────────────
+// Setters: UI
+// ─────────────────────────────────────────────────────────────
+
 export function setUI(updates) {
   if (!updates || typeof updates !== 'object') return;
+
   const prev = { ...appState.ui };
   Object.assign(appState.ui, updates);
-  const next = { ...appState.ui };
-  // Only publish if something actually changed
-  if (prev.showCharts !== next.showCharts || prev.showModeControls !== next.showModeControls || prev.showTable !== next.showTable) {
-    publish('appState:uiChanged', next);
-  }
-}
-export function setShowCharts(visible) {
-  setUI({ showCharts: !!visible });
-}
-export function setShowModeControls(visible) {
-  setUI({ showModeControls: !!visible });
-}
-export function setShowTable(visible) {
-  setUI({ showTable: !!visible });
+
+  const changed = Object.keys(updates).some(k => prev[k] !== appState.ui[k]);
+  if (changed) publish('appState:uiChanged', { ...appState.ui });
 }
 
-// NEW: Utility functions
+export const setShowCharts = visible => setUI({ showCharts: !!visible });
+export const setShowModeControls = visible => setUI({ showModeControls: !!visible });
+export const setShowTable = visible => setUI({ showTable: !!visible });
+
+// ─────────────────────────────────────────────────────────────
+// Full state utilities
+// ─────────────────────────────────────────────────────────────
+
 export function getFullState() {
   return {
     isReversed: appState.isReversed,
@@ -287,9 +247,7 @@ export function getFullState() {
 }
 
 export function updateFullState(newState) {
-  if (newState && typeof newState === 'object') {
-    Object.assign(appState, newState);
-    // Notify state change via event bus
-    publish("appState:fullStateChanged", getFullState());
-  }
+  if (!newState || typeof newState !== 'object') return;
+  Object.assign(appState, newState);
+  publish('appState:fullStateChanged', getFullState());
 }

@@ -1,44 +1,43 @@
 // static/js/state/moduleRegistry.js
-// Centralized registry for module instances to avoid window pollution
-// Provides getters/setters with backward-compatible window.* bridge
+// Responsibility: Centralized module instance registry
 
-const _registry = {
+// ─────────────────────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────────────────────
+
+const registry = {
   virtualManager: null,
   dashboard: null,
-  tableRenderer: null,
+  tableRenderer: null
 };
 
-// --- Virtual Manager ---
-export function getVirtualManager() {
-  return _registry.virtualManager;
-}
+// ─────────────────────────────────────────────────────────────
+// Generic accessors
+// ─────────────────────────────────────────────────────────────
 
-export function setVirtualManager(instance) {
-  _registry.virtualManager = instance;
-}
+const get = key => registry[key];
+const set = (key, instance) => { registry[key] = instance; };
+const has = key => registry[key] != null;
 
-export function hasVirtualManager() {
-  return _registry.virtualManager !== null && _registry.virtualManager !== undefined;
-}
+// ─────────────────────────────────────────────────────────────
+// Virtual Manager
+// ─────────────────────────────────────────────────────────────
 
-// --- Dashboard ---
-export function getDashboard() {
-  return _registry.dashboard;
-}
+export const getVirtualManager = () => get('virtualManager');
+export const setVirtualManager = instance => set('virtualManager', instance);
+export const hasVirtualManager = () => has('virtualManager');
 
-export function setDashboard(instance) {
-  _registry.dashboard = instance;
-}
+// ─────────────────────────────────────────────────────────────
+// Dashboard
+// ─────────────────────────────────────────────────────────────
 
-// --- Table Renderer ---
-export function getTableRenderer() {
-  return _registry.tableRenderer;
-}
+export const getDashboard = () => get('dashboard');
+export const setDashboard = instance => set('dashboard', instance);
 
-export function setTableRenderer(instance) {
-  _registry.tableRenderer = instance;
-}
+// ─────────────────────────────────────────────────────────────
+// Table Renderer
+// ─────────────────────────────────────────────────────────────
 
-export function hasTableRenderer() {
-  return _registry.tableRenderer !== null && _registry.tableRenderer !== undefined;
-}
+export const getTableRenderer = () => get('tableRenderer');
+export const setTableRenderer = instance => set('tableRenderer', instance);
+export const hasTableRenderer = () => has('tableRenderer');

@@ -1,59 +1,73 @@
 // static/js/state/reducers/filtersReducer.js
-// Чистый редьюсер: на вход слепок полного состояния, на выход — новый слепок
-// Меняет только app.filters
+// Responsibility: Pure reducer for app.filters state
+
+// ─────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────
 
 const DEFAULT_FILTERS = {
-  customer: "",
-  supplier: "",
-  destination: "",
-  customerGroup: "",
-  supplierGroup: "",
-  destinationGroup: "",
-  from: "",
-  to: "",
+  customer: '',
+  supplier: '',
+  destination: '',
+  customerGroup: '',
+  supplierGroup: '',
+  destinationGroup: '',
+  from: '',
+  to: ''
 };
+
+// ─────────────────────────────────────────────────────────────
+// Action types
+// ─────────────────────────────────────────────────────────────
+
+const ACTIONS = {
+  SET_ALL: 'filters/set',
+  SET_ONE: 'filter/set',
+  RESET: 'filters/reset'
+};
+
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
+
+function updateAppFilters(state, filters) {
+  return {
+    ...state,
+    app: {
+      ...state.app,
+      filters
+    }
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
+// Reducer
+// ─────────────────────────────────────────────────────────────
 
 export function reducer(state, action) {
   if (!state || !action) return state;
+
   const { type, payload } = action;
 
   switch (type) {
-    case 'filters/set': {
-      const nextFilters = { ...(state.app?.filters || {}), ...(payload || {}) };
-      return {
-        ...state,
-        app: {
-          ...state.app,
-          filters: nextFilters,
-        }
-      };
-    }
+    case ACTIONS.SET_ALL:
+      return updateAppFilters(state, {
+        ...(state.app?.filters || {}),
+        ...(payload || {})
+      });
 
-    case 'filter/set': {
+    case ACTIONS.SET_ONE: {
       if (!payload || typeof payload.key !== 'string') return state;
-      const nextFilters = { ...(state.app?.filters || {}) };
-      nextFilters[payload.key] = payload.value ?? '';
-      return {
-        ...state,
-        app: {
-          ...state.app,
-          filters: nextFilters,
-        }
-      };
+      return updateAppFilters(state, {
+        ...(state.app?.filters || {}),
+        [payload.key]: payload.value ?? ''
+      });
     }
 
-    case 'filters/reset': {
-      return {
-        ...state,
-        app: {
-          ...state.app,
-          filters: { ...DEFAULT_FILTERS },
-        }
-      };
-    }
+    case ACTIONS.RESET:
+      return updateAppFilters(state, { ...DEFAULT_FILTERS });
 
     default:
-      // Возвращаем новый объект даже при отсутствии изменений
-      return state ? { ...state } : state;
+      return state;
   }
 }
