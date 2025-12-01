@@ -159,8 +159,8 @@ export class VirtualScroller {
     this.lastStartIndex = startIndex;
     this.lastEndIndex = endIndex;
 
-    const visibleData = this.data.slice(startIndex, endIndex);
-    const needCount = visibleData.length;
+    // Direct indexed access instead of slice — avoids array allocation
+    const needCount = endIndex - startIndex;
 
     ensurePool(this._rowPool, needCount);
 
@@ -170,7 +170,7 @@ export class VirtualScroller {
 
     for (let i = 0; i < needCount; i++) {
       const tr = this._rowPool[i];
-      const rowData = visibleData[i];
+      const rowData = this.data[startIndex + i]; // direct access instead of slice
       const needsAttach = tr.parentNode !== this.tbody;
 
       const cls = getRowClass(rowData);

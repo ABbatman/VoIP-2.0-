@@ -2,8 +2,8 @@
 // Responsibility: data extraction utilities for capsule tooltip
 import { logError, ErrorCategory } from '../../../utils/errorLogger.js';
 
-// candidate field names for entity extraction
-const NAME_CANDIDATES = [
+// use Set for O(1) lookup
+const NAME_CANDIDATES = new Set([
   'name',
   'customer', 'customername', 'customer_name',
   'client', 'clientname', 'client_name',
@@ -17,7 +17,11 @@ const NAME_CANDIDATES = [
   'supplier', 'suppliername', 'supplier_name',
   'vendor', 'vendorname', 'vendor_name',
   'carrier', 'carriername', 'carrier_name'
-];
+]);
+
+const NAME_CANDIDATES_LOWER = new Set(
+  Array.from(NAME_CANDIDATES).map(k => k.toLowerCase())
+);
 
 // normalize iterable to array
 export function toArray(value) {
@@ -36,19 +40,24 @@ export function toArray(value) {
 function extractNameFromObject(obj) {
   if (!obj || typeof obj !== 'object') return null;
 
-  // direct key match
-  for (const key of NAME_CANDIDATES) {
-    if (Object.prototype.hasOwnProperty.call(obj, key) && obj[key] != null) {
-      const val = String(obj[key]).trim();
-      if (val) return val;
-    }
+  // fast path: check common keys first
+  if (obj.name != null) {
+    const val = String(obj.name).trim();
+    if (val) return val;
+  }
+  if (obj.supplier != null) {
+    const val = String(obj.supplier).trim();
+    if (val) return val;
+  }
+  if (obj.provider != null) {
+    const val = String(obj.provider).trim();
+    if (val) return val;
   }
 
-  // case-insensitive fallback
+  // full search with Set lookup
   try {
-    const lowerCandidates = new Set(NAME_CANDIDATES.map(x => x.toLowerCase()));
     for (const key of Object.keys(obj)) {
-      if (!lowerCandidates.has(key.toLowerCase())) continue;
+      if (!NAME_CANDIDATES_LOWER.has(key.toLowerCase())) continue;
       const val = obj[key];
       if (val != null) {
         const str = String(val).trim();

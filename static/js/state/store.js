@@ -148,7 +148,10 @@ function commitChanges(prev, next) {
   if (!deepEqual(next.table.columnFilters, prev.table.columnFilters)) {
     resetColumnFilters();
     const cf = next.table.columnFilters || {};
-    Object.keys(cf).forEach(k => { if (cf[k]) setColumnFilter(k, cf[k]); });
+    // use for-in instead of Object.keys().forEach()
+    for (const k in cf) {
+      if (cf[k]) setColumnFilter(k, cf[k]);
+    }
   }
 
   // multi-sort

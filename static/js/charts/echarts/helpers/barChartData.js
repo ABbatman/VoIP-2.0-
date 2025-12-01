@@ -9,10 +9,11 @@ import { logError, ErrorCategory } from '../../../utils/errorLogger.js';
 // Color map building
 // ─────────────────────────────────────────────────────────────
 
-const ID_CANDIDATE_KEYS = [
+// use Set for O(1) lookup
+const ID_CANDIDATE_KEYS = new Set([
   'supplierId', 'providerId', 'vendorId', 'carrierId', 'peerId', 'id',
   'supplier_id', 'provider_id', 'vendor_id', 'carrier_id', 'peer_id'
-];
+]);
 
 export function buildColorMap({ providerRows, labels }) {
   const map = Object.create(null);
@@ -24,7 +25,7 @@ export function buildColorMap({ providerRows, labels }) {
     if (rows.length && key) {
       for (const r of rows) {
         const name = String(r?.[key] ?? '').trim();
-        const idKey = ID_CANDIDATE_KEYS.find(k => r && Object.prototype.hasOwnProperty.call(r, k));
+        const idKey = Object.keys(r || {}).find(k => ID_CANDIDATE_KEYS.has(k));
         const rawId = idKey ? r[idKey] : undefined;
         const id = rawId != null ? String(rawId) : undefined;
 
@@ -86,16 +87,17 @@ function collectLabelEntries(labels) {
 // Labels effective building
 // ─────────────────────────────────────────────────────────────
 
-const NAME_KEYS = [
+// use Set for O(1) lookup
+const NAME_KEYS = new Set([
   'name', 'supplier', 'provider', 'peer', 'vendor', 'carrier', 'operator',
   'route', 'trunk', 'gateway', 'partner', 'supplier_name', 'provider_name',
   'vendor_name', 'carrier_name', 'peer_name'
-];
+]);
 
-const ID_KEYS = [
+const ID_KEYS = new Set([
   'supplierId', 'providerId', 'vendorId', 'carrierId', 'peerId', 'id',
   'supplier_id', 'provider_id', 'vendor_id', 'carrier_id', 'peer_id'
-];
+]);
 
 function hasSupplierInfo(obj) {
   if (!obj || typeof obj !== 'object') return false;
@@ -146,11 +148,11 @@ export function buildLabelsEffective({ labels, providerRows, stepMs, interval })
       let name = null;
       let sid = null;
 
-      for (const k of ID_KEYS) {
-        if (sid == null && Object.prototype.hasOwnProperty.call(r, k)) sid = r[k];
-      }
-      for (const k of NAME_KEYS) {
-        if (name == null && Object.prototype.hasOwnProperty.call(r, k)) name = r[k];
+      // fast lookup using Set
+      for (const k of Object.keys(r)) {
+        if (sid == null && ID_KEYS.has(k)) sid = r[k];
+        if (name == null && NAME_KEYS.has(k)) name = r[k];
+        if (sid != null && name != null) break;
       }
 
       const key = String(sid ?? name ?? '');

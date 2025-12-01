@@ -16,14 +16,20 @@ const BAR_WIDTH_MAP = {
   '1d': 16
 };
 
-const PROVIDER_KEY_CANDIDATES = [
+// use Set for O(1) lookup
+const PROVIDER_KEY_CANDIDATES = new Set([
   'provider', 'Provider', 'supplier', 'Supplier', 'vendor', 'Vendor',
   'carrier', 'Carrier', 'operator', 'Operator', 'peer', 'Peer',
   'trunk', 'Trunk', 'gateway', 'Gateway', 'route', 'Route', 'partner', 'Partner',
   'provider_name', 'supplier_name', 'vendor_name', 'carrier_name', 'peer_name',
   'providerId', 'supplierId', 'vendorId', 'carrierId', 'peerId',
   'provider_id', 'supplier_id', 'vendor_id', 'carrier_id', 'peer_id'
-];
+]);
+
+// lowercase version for case-insensitive matching
+const PROVIDER_KEY_CANDIDATES_LOWER = new Set(
+  Array.from(PROVIDER_KEY_CANDIDATES).map(k => k.toLowerCase())
+);
 
 const TIME_KEYS = new Set(['time', 'Time', 'timestamp', 'Timestamp', 'slot', 'Slot', 'hour', 'Hour', 'date', 'Date']);
 const METRIC_KEYS = new Set(['TCall', 'TCalls', 'total_calls', 'Min', 'Minutes', 'ASR', 'ACD']);
@@ -209,49 +215,33 @@ export function makePairSets(opts, d, srcArr, centers) {
 // Provider key detection
 // ─────────────────────────────────────────────────────────────
 
-function collectUniqueValues(rows, keys, maxUniques = 200) {
-  const lowerKeys = keys.map(k => k.toLowerCase());
+// unified collector with optional filter
+function collectUniquesByKey(rows, { includeLower = null, excludeKeys = null, stringsOnly = false, maxUniques = 200 } = {}) {
   const uniquesByKey = new Map();
+  const rowCount = rows.length;
 
-  for (const r of rows) {
+  for (let i = 0; i < rowCount; i++) {
+    const r = rows[i];
     if (!r || typeof r !== 'object') continue;
 
-    for (const k of Object.keys(r)) {
-      if (!lowerKeys.includes(k.toLowerCase())) continue;
+    const keys = Object.keys(r);
+    const keyCount = keys.length;
+
+    for (let j = 0; j < keyCount; j++) {
+      const k = keys[j];
+
+      // filter by include set (case-insensitive)
+      if (includeLower && !includeLower.has(k.toLowerCase())) continue;
+      // filter by exclude set
+      if (excludeKeys && excludeKeys.has(k)) continue;
 
       const v = r[k];
       if (v == null) continue;
 
+      // strings only mode
+      if (stringsOnly && typeof v !== 'string') continue;
+
       const s = typeof v === 'string' ? v.trim() : (typeof v === 'number' ? String(v) : '');
-      if (!s) continue;
-
-      let set = uniquesByKey.get(k);
-      if (!set) {
-        set = new Set();
-        uniquesByKey.set(k, set);
-      }
-      set.add(s);
-
-      if (set.size > maxUniques) break;
-    }
-  }
-
-  return uniquesByKey;
-}
-
-function collectStringKeys(rows, excludeKeys, maxUniques = 200) {
-  const uniquesByKey = new Map();
-
-  for (const r of rows) {
-    if (!r || typeof r !== 'object') continue;
-
-    for (const k of Object.keys(r)) {
-      if (excludeKeys.has(k)) continue;
-
-      const v = r[k];
-      if (typeof v !== 'string') continue;
-
-      const s = v.trim();
       if (!s) continue;
 
       let set = uniquesByKey.get(k);
@@ -280,13 +270,13 @@ export function detectProviderKey(rows) {
   if (!Array.isArray(rows) || !rows.length) return null;
 
   // try known provider key candidates first
-  const candidateUniques = collectUniqueValues(rows, PROVIDER_KEY_CANDIDATES);
+  const candidateUniques = collectUniquesByKey(rows, { includeLower: PROVIDER_KEY_CANDIDATES_LOWER });
   const candidateKey = findBestKey(candidateUniques);
   if (candidateKey) return candidateKey;
 
   // fallback: find any string key with multiple unique values
   const excludeKeys = new Set([...TIME_KEYS, ...METRIC_KEYS]);
-  const stringUniques = collectStringKeys(rows, excludeKeys);
+  const stringUniques = collectUniquesByKey(rows, { excludeKeys, stringsOnly: true });
 
   return findBestKey(stringUniques);
 }

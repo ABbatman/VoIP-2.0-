@@ -68,9 +68,14 @@ export function collapseMain(id) {
   // collapse all peers under this main
   const body = getMainBody(id);
   const prefix = `${PEER_PREFIX}${body}-`;
-  peerExpanded.forEach(pid => {
-    if (pid.startsWith(prefix)) peerExpanded.delete(pid);
-  });
+  // collect IDs to delete first, then delete (avoid mutation during iteration)
+  const toDelete = [];
+  for (const pid of peerExpanded) {
+    if (pid.startsWith(prefix)) toDelete.push(pid);
+  }
+  for (let i = 0; i < toDelete.length; i++) {
+    peerExpanded.delete(toDelete[i]);
+  }
 
   emitChange('main', id, false);
 }
@@ -101,11 +106,15 @@ export const togglePeer = id => isPeerExpanded(id) ? collapsePeer(id) : expandPe
 export function closePeersUnderMain(mainId) {
   const body = getMainBody(mainId);
   const prefix = `${PEER_PREFIX}${body}-`;
-  let removed = 0;
-
-  peerExpanded.forEach(pid => {
-    if (pid.startsWith(prefix)) { peerExpanded.delete(pid); removed++; }
-  });
+  // collect IDs to delete first, then delete
+  const toDelete = [];
+  for (const pid of peerExpanded) {
+    if (pid.startsWith(prefix)) toDelete.push(pid);
+  }
+  const removed = toDelete.length;
+  for (let i = 0; i < removed; i++) {
+    peerExpanded.delete(toDelete[i]);
+  }
 
   if (removed) emitChange('peer', `${PEER_PREFIX}${body}-*`, false);
   return removed;
@@ -113,9 +122,11 @@ export function closePeersUnderMain(mainId) {
 
 export function expandAllMain(mainIds = []) {
   let changed = 0;
-  mainIds.forEach(id => {
+  const len = mainIds.length;
+  for (let i = 0; i < len; i++) {
+    const id = mainIds[i];
     if (!mainExpanded.has(id)) { mainExpanded.add(id); changed++; }
-  });
+  }
   if (changed) emitChange('main', '*', true);
 }
 

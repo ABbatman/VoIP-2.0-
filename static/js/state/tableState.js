@@ -111,7 +111,17 @@ export const getVisibleColumns = () => [...tableState.columns.visible];
 export const getColumnOrder = () => [...tableState.columns.order];
 export const getColumnWidth = columnKey => tableState.columns.widths[columnKey] || 100;
 export const getFrozenColumns = () => [...tableState.columns.frozen];
-export const isColumnVisible = columnKey => tableState.columns.visible.includes(columnKey);
+// cache Set for O(1) visibility check
+let _visibleColumnsSet = null;
+
+export function isColumnVisible(columnKey) {
+  // invalidate cache if visible array changed
+  if (!_visibleColumnsSet || _visibleColumnsSet._source !== tableState.columns.visible) {
+    _visibleColumnsSet = new Set(tableState.columns.visible);
+    _visibleColumnsSet._source = tableState.columns.visible;
+  }
+  return _visibleColumnsSet.has(columnKey);
+}
 
 // ─────────────────────────────────────────────────────────────
 // Getters: Behavior
@@ -162,8 +172,11 @@ export function setFullData(allMainRows, allPeerRows, allHourlyRows = []) {
   tableState.columnFilters = {};
 }
 
+// use Set for O(1) lookup
+const VALID_RENDERING_MODES = new Set(['auto', 'virtual', 'standard']);
+
 export function setRenderingMode(mode) {
-  if (['auto', 'virtual', 'standard'].includes(mode)) {
+  if (VALID_RENDERING_MODES.has(mode)) {
     tableState.renderingMode = mode;
     publish('tableState:changed');
   }
@@ -239,6 +252,7 @@ export function setColumnSettings(newSettings) {
 
 export function setVisibleColumns(columns) {
   tableState.columns.visible = [...columns];
+  _visibleColumnsSet = null; // invalidate cache
   publish('tableState:visibleColumnsChanged', tableState.columns.visible);
 }
 
@@ -260,6 +274,7 @@ export function toggleColumnVisibility(columnKey) {
   } else {
     tableState.columns.visible.push(columnKey);
   }
+  _visibleColumnsSet = null; // invalidate cache
   publish('tableState:columnVisibilityChanged', { columnKey, visible: index === -1 });
 }
 
@@ -315,8 +330,11 @@ export function setExportSettings(newSettings) {
   publish('tableState:exportChanged', tableState.export);
 }
 
+// use Set for O(1) lookup
+const VALID_EXPORT_FORMATS = new Set(['csv', 'excel', 'json']);
+
 export function setDefaultExportFormat(format) {
-  if (!['csv', 'excel', 'json'].includes(format)) return;
+  if (!VALID_EXPORT_FORMATS.has(format)) return;
   tableState.export.defaultFormat = format;
   publish('tableState:exportFormatChanged', format);
 }

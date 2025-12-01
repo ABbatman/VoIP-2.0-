@@ -61,9 +61,10 @@ function createMetricsBlock(title, metrics) {
   block.appendChild(titleEl);
 
   if (hasData(metrics)) {
-    Object.entries(metrics).forEach(([key, value]) => {
-      block.appendChild(createMetricRow(key, value));
-    });
+    // use for-in instead of Object.entries().forEach()
+    for (const key in metrics) {
+      block.appendChild(createMetricRow(key, metrics[key]));
+    }
   } else {
     const p = document.createElement('p');
     p.textContent = 'No data available.';

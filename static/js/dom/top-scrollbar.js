@@ -17,12 +17,24 @@ const HIDDEN_CLASS = 'is-hidden';
 // Helpers
 // ─────────────────────────────────────────────────────────────
 
+// cache DOM elements
+let _elementsCache = null;
+
 function getElements() {
-  return {
-    container: document.getElementById(IDS.container),
-    content: document.getElementById(IDS.content),
-    wrapper: document.querySelector(TABLE_WRAPPER_SELECTOR)
-  };
+  // invalidate cache if container is missing from DOM
+  if (_elementsCache && !document.body.contains(_elementsCache.container)) {
+    _elementsCache = null;
+  }
+
+  if (!_elementsCache) {
+    _elementsCache = {
+      container: document.getElementById(IDS.container),
+      content: document.getElementById(IDS.content),
+      wrapper: document.querySelector(TABLE_WRAPPER_SELECTOR)
+    };
+  }
+
+  return _elementsCache;
 }
 
 // ─────────────────────────────────────────────────────────────

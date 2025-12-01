@@ -69,23 +69,41 @@ export const VirtualConfig = { ...DEFAULTS };
 // Environment detection
 // ─────────────────────────────────────────────────────────────
 
+// cache mobile detection with resize invalidation
+let _isMobileCache = null;
+let _lastWidth = null;
+
 function isMobileDevice() {
-  return window.innerWidth <= VirtualConfig.MOBILE_BREAKPOINT;
+  const currentWidth = window.innerWidth;
+  if (_isMobileCache !== null && _lastWidth === currentWidth) {
+    return _isMobileCache;
+  }
+  _lastWidth = currentWidth;
+  _isMobileCache = currentWidth <= VirtualConfig.MOBILE_BREAKPOINT;
+  return _isMobileCache;
 }
 
 // ─────────────────────────────────────────────────────────────
 // Config getters
 // ─────────────────────────────────────────────────────────────
 
+// cache mobile config to avoid object spread on every call
+let _mobileConfigCache = null;
+
 export function getVirtualConfig() {
   if (!isMobileDevice()) return VirtualConfig;
 
-  return {
-    ...VirtualConfig,
-    ROW_HEIGHT: VirtualConfig.MOBILE_ROW_HEIGHT,
-    BUFFER_SIZE: VirtualConfig.MOBILE_BUFFER_SIZE,
-    CONTAINER_MAX_HEIGHT: VirtualConfig.MOBILE_CONTAINER_MAX_HEIGHT
-  };
+  // create mobile config once, invalidate on config update
+  if (!_mobileConfigCache) {
+    _mobileConfigCache = {
+      ...VirtualConfig,
+      ROW_HEIGHT: VirtualConfig.MOBILE_ROW_HEIGHT,
+      BUFFER_SIZE: VirtualConfig.MOBILE_BUFFER_SIZE,
+      CONTAINER_MAX_HEIGHT: VirtualConfig.MOBILE_CONTAINER_MAX_HEIGHT
+    };
+  }
+
+  return _mobileConfigCache;
 }
 
 export function getOptimizedConfig(dataSize) {
@@ -110,10 +128,14 @@ export function getOptimizedConfig(dataSize) {
 
 export function updateVirtualConfig(updates) {
   Object.assign(VirtualConfig, updates);
+  // invalidate mobile config cache
+  _mobileConfigCache = null;
 }
 
 export function resetVirtualConfig() {
   Object.assign(VirtualConfig, DEFAULTS);
+  // invalidate mobile config cache
+  _mobileConfigCache = null;
 }
 
 // ─────────────────────────────────────────────────────────────

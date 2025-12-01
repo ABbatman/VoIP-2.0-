@@ -48,9 +48,10 @@ function ensureEmptyDatalist() {
 }
 
 function setAttributes(el, attrs) {
-  Object.entries(attrs).forEach(([key, val]) => {
-    try { el.setAttribute(key, val); } catch {}
-  });
+  // use for-in instead of Object.entries().forEach()
+  for (const key in attrs) {
+    try { el.setAttribute(key, attrs[key]); } catch {}
+  }
 }
 
 function createDummyPassword(el) {
@@ -96,5 +97,9 @@ function initInput({ id, kind, url }) {
 
 export function initTypeaheadFilters() {
   ensureEmptyDatalist();
-  INPUTS.forEach(initInput);
+  // use indexed loop
+  const len = INPUTS.length;
+  for (let i = 0; i < len; i++) {
+    initInput(INPUTS[i]);
+  }
 }

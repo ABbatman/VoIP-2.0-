@@ -43,13 +43,28 @@ function setInputValue(id, value) {
   el.value = value;
 }
 
+// cache date inputs to avoid repeated DOM queries
+let _dateInputsCache = null;
+
 function getDateInputs() {
-  return {
-    fromDate: document.getElementById(DATE_IDS.fromDate),
-    toDate: document.getElementById(DATE_IDS.toDate),
-    fromTime: document.getElementById(DATE_IDS.fromTime),
-    toTime: document.getElementById(DATE_IDS.toTime)
-  };
+  // invalidate cache if elements are removed from DOM
+  if (_dateInputsCache) {
+    const { fromDate } = _dateInputsCache;
+    if (!fromDate || !document.body.contains(fromDate)) {
+      _dateInputsCache = null;
+    }
+  }
+
+  if (!_dateInputsCache) {
+    _dateInputsCache = {
+      fromDate: document.getElementById(DATE_IDS.fromDate),
+      toDate: document.getElementById(DATE_IDS.toDate),
+      fromTime: document.getElementById(DATE_IDS.fromTime),
+      toTime: document.getElementById(DATE_IDS.toTime)
+    };
+  }
+
+  return _dateInputsCache;
 }
 
 function hasAllDateInputs(inputs) {

@@ -18,7 +18,13 @@ export function subscribe(event, callback) {
 }
 
 export function publish(event, data) {
-  listeners[event]?.forEach(cb => cb(data));
+  const list = listeners[event];
+  if (!list) return;
+  // use indexed loop for better performance
+  const len = list.length;
+  for (let i = 0; i < len; i++) {
+    list[i](data);
+  }
 }
 
 export function unsubscribe(event, callback) {
@@ -42,7 +48,10 @@ export function clearEvent(event) {
 }
 
 export function clearAllEvents() {
-  Object.keys(listeners).forEach(key => delete listeners[key]);
+  // use for-in instead of Object.keys().forEach()
+  for (const key in listeners) {
+    delete listeners[key];
+  }
 }
 
 // ─────────────────────────────────────────────────────────────

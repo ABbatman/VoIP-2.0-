@@ -7,8 +7,11 @@ import { logError, ErrorCategory } from '../../utils/errorLogger.js';
 // ─────────────────────────────────────────────────────────────
 
 const DATA_ATTRS = ['data-pdd', 'data-atime', 'data-y-toggleable'];
+const DATA_ATTRS_LEN = DATA_ATTRS.length;
 const FILTER_ATTRS = ['data-filter-value', 'data-full-text'];
-const FILTER_CELL_CLASSES = ['main-cell', 'peer-cell', 'destination-cell', 'hour-datetime'];
+const FILTER_ATTRS_LEN = FILTER_ATTRS.length;
+// Use Set for O(1) class lookup
+const FILTER_CELL_CLASSES = new Set(['main-cell', 'peer-cell', 'destination-cell', 'hour-datetime']);
 
 // ─────────────────────────────────────────────────────────────
 // Helpers
@@ -24,19 +27,29 @@ function syncAttr(src, dst, attr) {
 }
 
 function isFilterCell(el) {
-  return FILTER_CELL_CLASSES.some(cls => el.classList?.contains(cls));
+  const classList = el.classList;
+  if (!classList) return false;
+  // O(1) Set lookup for each class
+  for (let i = 0; i < classList.length; i++) {
+    if (FILTER_CELL_CLASSES.has(classList[i])) return true;
+  }
+  return false;
 }
 
 function syncCell(src, dst) {
   // class
   if (dst.className !== src.className) dst.className = src.className;
 
-  // data-* attributes
-  DATA_ATTRS.forEach(attr => syncAttr(src, dst, attr));
+  // data-* attributes — indexed loop
+  for (let i = 0; i < DATA_ATTRS_LEN; i++) {
+    syncAttr(src, dst, DATA_ATTRS[i]);
+  }
 
-  // filter cell extra attributes
+  // filter cell extra attributes — indexed loop
   if (isFilterCell(dst)) {
-    FILTER_ATTRS.forEach(attr => syncAttr(src, dst, attr));
+    for (let i = 0; i < FILTER_ATTRS_LEN; i++) {
+      syncAttr(src, dst, FILTER_ATTRS[i]);
+    }
   }
 
   // content

@@ -51,58 +51,101 @@ export function attachData(vm) {
   // ───────────────────────────────────────────────────────────
 
   function createMainIndex(rows) {
-    return (rows || []).map((row, index) => ({
-      index,
-      groupId: buildId('main', row.main, row.destination),
-      main: row.main,
-      destination: row.destination,
-      level: 0,
-      hasChildren: true
-    }));
+    if (!rows) return [];
+    const len = rows.length;
+    const result = [];
+    for (let i = 0; i < len; i++) {
+      const row = rows[i];
+      result.push({
+        index: i,
+        groupId: buildId('main', row.main, row.destination),
+        main: row.main,
+        destination: row.destination,
+        level: 0,
+        hasChildren: true
+      });
+    }
+    return result;
   }
 
   function createPeerIndex(rows) {
-    return (rows || []).map((row, index) => ({
-      index,
-      groupId: buildId('peer', row.main, row.peer, row.destination),
-      parentId: buildId('main', row.main, row.destination),
-      main: row.main,
-      peer: row.peer,
-      destination: row.destination,
-      level: 1,
-      hasChildren: true
-    }));
+    if (!rows) return [];
+    const len = rows.length;
+    const result = [];
+    for (let i = 0; i < len; i++) {
+      const row = rows[i];
+      result.push({
+        index: i,
+        groupId: buildId('peer', row.main, row.peer, row.destination),
+        parentId: buildId('main', row.main, row.destination),
+        main: row.main,
+        peer: row.peer,
+        destination: row.destination,
+        level: 1,
+        hasChildren: true
+      });
+    }
+    return result;
   }
 
   function createHourlyIndex(rows) {
-    return (rows || []).map((row, index) => ({
-      index,
-      groupId: buildId('hour', row.main, row.peer, row.destination, index),
-      parentId: buildId('peer', row.main, row.peer, row.destination),
-      main: row.main,
-      peer: row.peer,
-      destination: row.destination,
-      date: row.date || row.Date || row.time || row.datetime || row.timestamp,
-      level: 2,
-      hasChildren: false
-    }));
+    if (!rows) return [];
+    const len = rows.length;
+    const result = [];
+    for (let i = 0; i < len; i++) {
+      const row = rows[i];
+      result.push({
+        index: i,
+        groupId: buildId('hour', row.main, row.peer, row.destination, i),
+        parentId: buildId('peer', row.main, row.peer, row.destination),
+        main: row.main,
+        peer: row.peer,
+        destination: row.destination,
+        date: row.date || row.Date || row.time || row.datetime || row.timestamp,
+        level: 2,
+        hasChildren: false
+      });
+    }
+    return result;
   }
 
   // ───────────────────────────────────────────────────────────
   // Init
   // ───────────────────────────────────────────────────────────
 
+  // Build Map<parentId, rows[]> for O(1) lookup
+  function buildParentMap(index) {
+    const map = new Map();
+    const len = index.length;
+    for (let i = 0; i < len; i++) {
+      const item = index[i];
+      const pid = item.parentId;
+      if (!pid) continue;
+      let arr = map.get(pid);
+      if (!arr) { arr = []; map.set(pid, arr); }
+      arr.push(item);
+    }
+    return map;
+  }
+
   function initializeLazyData() {
     ensureCaches();
     const { mainRows = [], peerRows = [], hourlyRows = [] } = vm.rawData || {};
+
+    const mainIndex = createMainIndex(mainRows);
+    const peerIndex = createPeerIndex(peerRows);
+    const hourlyIndex = createHourlyIndex(hourlyRows);
 
     vm.lazyData = {
       mainRowsCount: mainRows.length,
       peerRowsCount: peerRows.length,
       hourlyRowsCount: hourlyRows.length,
-      mainIndex: createMainIndex(mainRows),
-      peerIndex: createPeerIndex(peerRows),
-      hourlyIndex: createHourlyIndex(hourlyRows)
+      mainIndex,
+      peerIndex,
+      hourlyIndex,
+      // Pre-built Maps for O(1) parent lookup
+      peersByParent: buildParentMap(peerIndex),
+      hourlyByParent: buildParentMap(hourlyIndex)
     };
 
     clearCaches();

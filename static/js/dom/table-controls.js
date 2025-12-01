@@ -91,7 +91,12 @@ function clearFilterInputs() {
 
   const filterRow = getElement(IDS.filterRow);
   if (filterRow) {
-    filterRow.querySelectorAll('input').forEach(inp => { inp.value = ''; });
+    // use indexed loop instead of forEach
+    const inputs = filterRow.querySelectorAll('input');
+    const len = inputs.length;
+    for (let i = 0; i < len; i++) {
+      inputs[i].value = '';
+    }
   }
 }
 

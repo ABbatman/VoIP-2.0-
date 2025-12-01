@@ -12,8 +12,9 @@ import { logError, ErrorCategory } from '../utils/errorLogger.js';
 // ─────────────────────────────────────────────────────────────
 
 const METRICS = ['Min', 'ACD', 'ASR', 'SCall', 'TCall'];
-const NO_ANOMALY_METRICS = ['Min', 'SCall', 'TCall'];
-const SPARKBAR_METRICS = ['ASR', 'ACD'];
+// use Set for O(1) lookup
+const NO_ANOMALY_METRICS_SET = new Set(['Min', 'SCall', 'TCall']);
+const SPARKBAR_METRICS_SET = new Set(['ASR', 'ACD']);
 const SPARKBAR_MAX = { ASR: 100, ACD: 30 };
 const SPARKBAR_OPTS = { width: 24, height: 4, color: 'rgba(0,0,0,0.2)', bgColor: 'rgba(0,0,0,0.05)' };
 
@@ -28,13 +29,22 @@ try { injectHierarchyStyles(); } catch (e) { logError(ErrorCategory.TABLE, 'tabl
 // Helpers
 // ─────────────────────────────────────────────────────────────
 
+// pre-compiled regex for escapeHtml (avoid recreating on each call)
+const ESCAPE_REGEX = /[&<>"']/g;
+const ESCAPE_MAP = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;'
+};
+
 function escapeHtml(str) {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+  const s = String(str);
+  // fast path: no special chars
+  if (!ESCAPE_REGEX.test(s)) return s;
+  ESCAPE_REGEX.lastIndex = 0; // reset regex state
+  return s.replace(ESCAPE_REGEX, ch => ESCAPE_MAP[ch]);
 }
 
 function pad(n) {
@@ -185,7 +195,7 @@ function addMetricCells(tr, rowData) {
 
     // main cell
     const tdMain = createCell(value);
-    if (!NO_ANOMALY_METRICS.includes(metric)) {
+    if (!NO_ANOMALY_METRICS_SET.has(metric)) {
       tdMain.className = getAnomalyClass({ key: metric, value, yesterdayValue, deltaPercent });
     }
     if (metric === 'ASR') {
@@ -306,13 +316,13 @@ function renderMetricCellsString(rowData) {
     const deltaPercent = calcDeltaPercent(value, yesterdayValue);
 
     // main cell
-    const cls = NO_ANOMALY_METRICS.includes(metric) ? '' : getAnomalyClass({ key: metric, value, yesterdayValue, deltaPercent });
+    const cls = NO_ANOMALY_METRICS_SET.has(metric) ? '' : getAnomalyClass({ key: metric, value, yesterdayValue, deltaPercent });
     const heatmap = getHeatmapStyle(metric, value);
     const styleAttr = heatmap ? ` style="${heatmap}"` : '';
 
     // sparkbar for ASR/ACD
     let microChart = '';
-    if (typeof value === 'number' && SPARKBAR_METRICS.includes(metric)) {
+    if (typeof value === 'number' && SPARKBAR_METRICS_SET.has(metric)) {
       microChart = generateSparkbar(value, SPARKBAR_MAX[metric], SPARKBAR_OPTS);
     }
 

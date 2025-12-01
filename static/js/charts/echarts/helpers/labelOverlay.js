@@ -9,16 +9,17 @@ import { logError, ErrorCategory } from '../../../utils/errorLogger.js';
 // Constants
 // ─────────────────────────────────────────────────────────────
 
-const NAME_KEYS = [
+// use Set for O(1) lookup
+const NAME_KEYS = new Set([
   'name', 'supplier', 'provider', 'peer', 'vendor', 'carrier',
   'operator', 'route', 'trunk', 'gateway', 'partner',
   'supplier_name', 'provider_name', 'vendor_name', 'carrier_name', 'peer_name'
-];
+]);
 
-const ID_KEYS = [
+const ID_KEYS = new Set([
   'supplierId', 'providerId', 'vendorId', 'carrierId', 'peerId', 'id',
   'supplier_id', 'provider_id', 'vendor_id', 'carrier_id', 'peer_id'
-];
+]);
 
 const BASE_GAP = 4;
 const MIN_GAP = 1;
@@ -126,19 +127,25 @@ function createLabelLookup(labels) {
 // ─────────────────────────────────────────────────────────────
 
 function extractIdFromObject(obj) {
-  for (const k of ID_KEYS) {
-    if (Object.prototype.hasOwnProperty.call(obj, k) && obj[k] != null) {
-      return obj[k];
-    }
+  // fast path: check common keys first
+  if (obj.supplierId != null) return obj.supplierId;
+  if (obj.id != null) return obj.id;
+  if (obj.providerId != null) return obj.providerId;
+  // fallback to full search
+  for (const k of Object.keys(obj)) {
+    if (ID_KEYS.has(k) && obj[k] != null) return obj[k];
   }
   return null;
 }
 
 function extractNameFromObject(obj) {
-  for (const k of NAME_KEYS) {
-    if (Object.prototype.hasOwnProperty.call(obj, k) && obj[k] != null) {
-      return obj[k];
-    }
+  // fast path: check common keys first
+  if (obj.name != null) return obj.name;
+  if (obj.supplier != null) return obj.supplier;
+  if (obj.provider != null) return obj.provider;
+  // fallback to full search
+  for (const k of Object.keys(obj)) {
+    if (NAME_KEYS.has(k) && obj[k] != null) return obj[k];
   }
   return null;
 }
@@ -156,9 +163,12 @@ function normalizeEntry(item) {
   const val = Number(rawVal);
   if (!Number.isFinite(val)) return null;
 
+  // cache name extraction to avoid double call
+  const extractedName = extractNameFromObject(item);
+
   return {
     supplierId: extractIdFromObject(item),
-    name: extractNameFromObject(item) != null ? String(extractNameFromObject(item)) : null,
+    name: extractedName != null ? String(extractedName) : null,
     value: val
   };
 }

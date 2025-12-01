@@ -35,9 +35,17 @@ export function attachToggles(vm) {
     const btn = getExpandAllButton();
     if (!btn) return;
     const mainIndex = vm.lazyData?.mainIndex || [];
-    if (mainIndex.length === 0) return;
+    const len = mainIndex.length;
+    if (len === 0) return;
 
-    const anyExpanded = mainIndex.some(m => isMainExpanded(m.groupId));
+    // Use indexed loop with early exit instead of some()
+    let anyExpanded = false;
+    for (let i = 0; i < len; i++) {
+      if (isMainExpanded(mainIndex[i].groupId)) {
+        anyExpanded = true;
+        break;
+      }
+    }
     updateButton(btn, anyExpanded ? 'Hide All' : 'Show All', anyExpanded ? 'shown' : 'hidden');
   }
 
@@ -47,7 +55,13 @@ export function attachToggles(vm) {
     vm._expandCollapseAllQueued = null;
 
     const btn = getExpandAllButton();
-    const ids = (vm.lazyData.mainIndex || []).map(m => m.groupId);
+    // Use indexed loop instead of map
+    const mainIndex = vm.lazyData.mainIndex || [];
+    const len = mainIndex.length;
+    const ids = [];
+    for (let i = 0; i < len; i++) {
+      ids.push(mainIndex[i].groupId);
+    }
 
     if (queued === 'expand') {
       expandAllMain(ids);
@@ -86,32 +100,67 @@ export function attachToggles(vm) {
   }
 
   function updateAllToggleButtons() {
-    const container = getContainer();
-    if (!container) return;
+    // Use row pool from scroller instead of querySelectorAll
+    const pool = vm.adapter?.virtualScroller?._rowPool;
+    if (!pool || !pool.length) {
+      // Fallback to container query only if no pool
+      const container = getContainer();
+      if (!container) return;
+      updateToggleButtonsInContainer(container);
+      vm._lastStructuralChange = false;
+      return;
+    }
 
-    container.querySelectorAll('.main-row .toggle-btn').forEach(btn => {
-      const groupId = btn.dataset.targetGroup || btn.dataset.group;
-      if (groupId) {
-        const text = isMainExpanded(groupId) ? '−' : '+';
-        if (btn.textContent !== text) btn.textContent = text;
-      }
-    });
+    // Iterate pool directly — O(visible) instead of O(DOM)
+    const len = pool.length;
+    for (let i = 0; i < len; i++) {
+      const tr = pool[i];
+      if (!tr.parentNode) continue; // not attached
 
-    container.querySelectorAll('.peer-row .toggle-btn').forEach(btn => {
+      const btn = tr.querySelector('.toggle-btn');
+      if (!btn) continue;
+
       const groupId = btn.dataset.targetGroup || btn.dataset.group;
-      if (groupId) {
-        const text = isPeerExpanded(groupId) ? '−' : '+';
-        if (btn.textContent !== text) btn.textContent = text;
-      }
-    });
+      if (!groupId) continue;
+
+      const isMain = tr.classList.contains('main-row');
+      const expanded = isMain ? isMainExpanded(groupId) : isPeerExpanded(groupId);
+      const text = expanded ? '−' : '+';
+      if (btn.textContent !== text) btn.textContent = text;
+    }
 
     vm._lastStructuralChange = false;
+  }
+
+  // Fallback for when pool is not available
+  function updateToggleButtonsInContainer(container) {
+    const buttons = container.querySelectorAll('.toggle-btn');
+    const len = buttons.length;
+    for (let i = 0; i < len; i++) {
+      const btn = buttons[i];
+      const groupId = btn.dataset.targetGroup || btn.dataset.group;
+      if (!groupId) continue;
+
+      const tr = btn.closest('tr');
+      if (!tr) continue;
+
+      const isMain = tr.classList.contains('main-row');
+      const expanded = isMain ? isMainExpanded(groupId) : isPeerExpanded(groupId);
+      const text = expanded ? '−' : '+';
+      if (btn.textContent !== text) btn.textContent = text;
+    }
   }
 
   function showAllRows() {
     if (!vm.isActive || !vm.lazyData || !vm.adapter) return;
 
-    const ids = (vm.lazyData.mainIndex || []).map(m => m.groupId);
+    // Use indexed loop instead of map
+    const mainIndex = vm.lazyData.mainIndex || [];
+    const len = mainIndex.length;
+    const ids = [];
+    for (let i = 0; i < len; i++) {
+      ids.push(mainIndex[i].groupId);
+    }
     expandAllMain(ids);
 
     vm._lastStructuralChange = true;

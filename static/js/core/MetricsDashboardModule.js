@@ -28,13 +28,28 @@ const FILTER_IDS = {
 // Filter helpers
 // ─────────────────────────────────────────────────────────────
 
+// cache filter elements to avoid repeated DOM queries
+let _filterElementsCache = null;
+
 function getFilterElements() {
-  return {
-    fromDate: document.getElementById(FILTER_IDS.fromDate),
-    toDate: document.getElementById(FILTER_IDS.toDate),
-    fromTime: document.getElementById(FILTER_IDS.fromTime),
-    toTime: document.getElementById(FILTER_IDS.toTime)
-  };
+  // invalidate cache if elements are missing from DOM
+  if (_filterElementsCache) {
+    const { fromDate } = _filterElementsCache;
+    if (!fromDate || !document.body.contains(fromDate)) {
+      _filterElementsCache = null;
+    }
+  }
+
+  if (!_filterElementsCache) {
+    _filterElementsCache = {
+      fromDate: document.getElementById(FILTER_IDS.fromDate),
+      toDate: document.getElementById(FILTER_IDS.toDate),
+      fromTime: document.getElementById(FILTER_IDS.fromTime),
+      toTime: document.getElementById(FILTER_IDS.toTime)
+    };
+  }
+
+  return _filterElementsCache;
 }
 
 function areFilterElementsPresent() {

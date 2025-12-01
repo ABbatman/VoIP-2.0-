@@ -109,14 +109,16 @@ export function calculateMarkerLayout(api, {
   const actualBarWidth = barWidth * 0.35;
   const state = getAdaptiveMarkerState(actualBarWidth);
 
+  // pre-calculate common values
+  const dx = actualBarWidth * 0.6;
+  const len = grouped.length;
   const children = [];
 
-  for (let i = 0; i < grouped.length; i++) {
+  for (let i = 0; i < len; i++) {
     const { supplierId, name, value: val } = grouped[i];
     const c = api.coord([ts, val]);
 
     // align to blue bar (left offset)
-    const dx = actualBarWidth * 0.6;
     const x = Math.round(c[0] - dx);
     const y = Math.round(yPos[i]);
 

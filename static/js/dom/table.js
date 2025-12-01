@@ -30,17 +30,39 @@ const SCROLLBAR_UPDATE_DELAY = 50;
 // Helpers
 // ─────────────────────────────────────────────────────────────
 
-const norm = v => (v == null ? '' : String(v).trim().toLowerCase());
+// cache for normalized values to avoid repeated toLowerCase()
+const normCache = new Map();
+const NORM_CACHE_MAX = 10000;
+
+function norm(v) {
+  if (v == null) return '';
+  const s = String(v).trim();
+  // check cache
+  let result = normCache.get(s);
+  if (result === undefined) {
+    result = s.toLowerCase();
+    // limit cache size
+    if (normCache.size < NORM_CACHE_MAX) {
+      normCache.set(s, result);
+    }
+  }
+  return result;
+}
 
 function uniqueBy(arr, keyFn) {
   if (!Array.isArray(arr)) return [];
   const seen = new Set();
-  return arr.filter(r => {
+  const result = [];
+  const len = arr.length;
+  for (let i = 0; i < len; i++) {
+    const r = arr[i];
     const k = keyFn(r);
-    if (seen.has(k)) return false;
-    seen.add(k);
-    return true;
-  });
+    if (!seen.has(k)) {
+      seen.add(k);
+      result.push(r);
+    }
+  }
+  return result;
 }
 
 function getElement(id) {
@@ -158,8 +180,11 @@ export function renderGroupedTable(mainRows, peerRows, hourlyRows) {
 
       html += renderMainRowString(mainRow, { mainGroupId, isMainGroupOpen: isMainOpen });
 
+      // cache normalized main values for comparison
+      const mainNorm = norm(mainRow.main);
+      const destNorm = norm(mainRow.destination);
       let peers = pRows.filter(p =>
-        norm(p.main) === norm(mainRow.main) && norm(p.destination) === norm(mainRow.destination)
+        norm(p.main) === mainNorm && norm(p.destination) === destNorm
       );
 
       // apply peer filter only when collapsed

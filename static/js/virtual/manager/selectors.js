@@ -54,17 +54,49 @@ function passesColumnFilter(value, filter) {
 function uniqueByKey(arr, keyFn) {
   if (!Array.isArray(arr)) return [];
   const seen = new Set();
-  return arr.filter(r => { const k = keyFn(r); if (seen.has(k)) return false; seen.add(k); return true; });
+  const result = [];
+  const len = arr.length;
+  for (let i = 0; i < len; i++) {
+    const r = arr[i];
+    const k = keyFn(r);
+    if (!seen.has(k)) {
+      seen.add(k);
+      result.push(r);
+    }
+  }
+  return result;
 }
+
+// Cache filtersKey per render cycle
+let _filtersKeyCache = '';
+let _filtersKeyCacheTs = 0;
 
 function filtersKey() {
   try {
+    // Return cached value if within same frame (16ms)
+    const now = performance.now();
+    if (_filtersKeyCache && now - _filtersKeyCacheTs < 16) {
+      return _filtersKeyCache;
+    }
+
     const st = getState();
     const cf = st?.columnFilters || {};
     const gf = (st?.globalFilterQuery || '').trim().toLowerCase();
-    const parts = Object.keys(cf).sort().map(k => `${k}:${(cf[k] ?? '').toString().trim()}`);
-    parts.push(`__g:${gf}`);
-    return parts.join('|');
+
+    // Build key without creating intermediate arrays
+    const keys = Object.keys(cf).sort();
+    const len = keys.length;
+    let result = '';
+    for (let i = 0; i < len; i++) {
+      const k = keys[i];
+      if (i > 0) result += '|';
+      result += `${k}:${(cf[k] ?? '').toString().trim()}`;
+    }
+    result += `|__g:${gf}`;
+
+    _filtersKeyCache = result;
+    _filtersKeyCacheTs = now;
+    return result;
   } catch (e) {
     logError(ErrorCategory.TABLE, 'selectors:filtersKey', e);
     return '';
@@ -188,8 +220,11 @@ export function attachSelectors(vm) {
 
     const visibleData = [];
     const seen = new Set();
+    const mainIndex = vm.lazyData.mainIndex;
+    const mainLen = mainIndex.length;
 
-    vm.lazyData.mainIndex.forEach(mainMeta => {
+    for (let mi = 0; mi < mainLen; mi++) {
+      const mainMeta = mainIndex[mi];
       const fullRow = vm.getMainRowLazy(mainMeta.index);
       const mainRowData = { ...fullRow, ...mainMeta, type: 'main' };
 
@@ -197,7 +232,7 @@ export function attachSelectors(vm) {
       if (!vm._mainFilterPass.has(mainMeta.groupId)) {
         vm._mainFilterPass.set(mainMeta.groupId, checkMainRowPass(mainRowData, mainMeta, columnFilters, globalFilter));
       }
-      if (!vm._mainFilterPass.get(mainMeta.groupId)) return;
+      if (!vm._mainFilterPass.get(mainMeta.groupId)) continue;
 
       // add main row
       const mk = rowKey(mainRowData);
@@ -205,20 +240,28 @@ export function attachSelectors(vm) {
 
       // expanded peers
       if (vm.openMainGroups.has(mainMeta.groupId)) {
-        getPeerRowsLazy(mainMeta.groupId).forEach(peerRow => {
+        const peerRows = getPeerRowsLazy(mainMeta.groupId);
+        const peerLen = peerRows.length;
+
+        for (let pi = 0; pi < peerLen; pi++) {
+          const peerRow = peerRows[pi];
           const pk = rowKey(peerRow);
           if (!seen.has(pk)) { seen.add(pk); visibleData.push(peerRow); }
 
           // expanded hourly
           if (vm.openHourlyGroups.has(peerRow.groupId)) {
-            getHourlyRowsLazy(peerRow.groupId).forEach(h => {
+            const hourlyRows = getHourlyRowsLazy(peerRow.groupId);
+            const hourLen = hourlyRows.length;
+
+            for (let hi = 0; hi < hourLen; hi++) {
+              const h = hourlyRows[hi];
               const hk = rowKey(h);
               if (!seen.has(hk)) { seen.add(hk); visibleData.push(h); }
-            });
+            }
           }
-        });
+        }
       }
-    });
+    }
 
     return visibleData;
   }
@@ -252,17 +295,37 @@ export function attachSelectors(vm) {
   // ───────────────────────────────────────────────────────────
 
   function filterRows(rows, columnFilters, globalFilter) {
-    return rows.filter(r => {
+    // Use indexed loop instead of filter for better performance
+    const result = [];
+    const len = rows.length;
+
+    for (let i = 0; i < len; i++) {
+      const r = rows[i];
+      let pass = true;
+
+      // Check column filters
       for (const k in columnFilters) {
         const f = (columnFilters[k] ?? '').toString();
-        if (f && !passesColumnFilter(r[k], f)) return false;
+        if (f && !passesColumnFilter(r[k], f)) {
+          pass = false;
+          break;
+        }
       }
-      if (globalFilter) {
-        const texts = [norm(r.main), norm(r.peer), norm(r.destination)];
-        if (!texts.some(t => t.includes(globalFilter))) return false;
+
+      // Check global filter
+      if (pass && globalFilter) {
+        const mainText = norm(r.main);
+        const peerText = norm(r.peer);
+        const destText = norm(r.destination);
+        if (!mainText.includes(globalFilter) && !peerText.includes(globalFilter) && !destText.includes(globalFilter)) {
+          pass = false;
+        }
       }
-      return true;
-    });
+
+      if (pass) result.push(r);
+    }
+
+    return result;
   }
 
   // ───────────────────────────────────────────────────────────
@@ -275,9 +338,14 @@ export function attachSelectors(vm) {
 
     if (!mainOpen && vm._peerRowsCache.has(cacheKey)) return vm._peerRowsCache.get(cacheKey);
 
-    // build peer rows
-    const peerMetas = vm.lazyData.peerIndex.filter(p => p.parentId === mainGroupId);
-    const peerRows = peerMetas.map(meta => ({ ...vm.rawData.peerRows[meta.index], ...meta, type: 'peer' }));
+    // build peer rows — O(1) lookup using pre-built Map
+    const peerMetas = vm.lazyData.peersByParent?.get(mainGroupId) || [];
+    const peerLen = peerMetas.length;
+    const peerRows = [];
+    for (let i = 0; i < peerLen; i++) {
+      const meta = peerMetas[i];
+      peerRows.push({ ...vm.rawData.peerRows[meta.index], ...meta, type: 'peer' });
+    }
     let base = uniqueByKey(peerRows, peerKeyOf);
 
     // if main is open, skip filters
@@ -314,9 +382,14 @@ export function attachSelectors(vm) {
 
     if (!peerOpen && vm._hourlyRowsCache.has(cacheKey)) return vm._hourlyRowsCache.get(cacheKey);
 
-    // build hourly rows
-    const hourlyMetas = vm.lazyData.hourlyIndex.filter(h => h.parentId === peerGroupId);
-    const hourlyRows = hourlyMetas.map(meta => ({ ...vm.rawData.hourlyRows[meta.index], ...meta, type: 'hourly' }));
+    // build hourly rows — O(1) lookup using pre-built Map
+    const hourlyMetas = vm.lazyData.hourlyByParent?.get(peerGroupId) || [];
+    const hourlyLen = hourlyMetas.length;
+    const hourlyRows = [];
+    for (let i = 0; i < hourlyLen; i++) {
+      const meta = hourlyMetas[i];
+      hourlyRows.push({ ...vm.rawData.hourlyRows[meta.index], ...meta, type: 'hourly' });
+    }
 
     const timeKey = hourlyRows[0]?.time !== undefined ? 'time' : 'hour';
     const keyFn = r => hourKeyOf(r, timeKey);

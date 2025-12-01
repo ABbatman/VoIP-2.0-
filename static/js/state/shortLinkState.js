@@ -49,13 +49,28 @@ function clearShortIdFromUrl() {
 // ─────────────────────────────────────────────────────────────
 
 function cleanTableState(tableState) {
-  VOLATILE_TABLE_KEYS.forEach(k => delete tableState[k]);
-  VOLATILE_PERF_KEYS.forEach(k => delete tableState.performance?.[k]);
-  VOLATILE_BEHAVIOR_KEYS.forEach(k => delete tableState.behavior?.[k]);
+  // use indexed loops instead of forEach
+  for (let i = 0; i < VOLATILE_TABLE_KEYS.length; i++) {
+    delete tableState[VOLATILE_TABLE_KEYS[i]];
+  }
+  if (tableState.performance) {
+    for (let i = 0; i < VOLATILE_PERF_KEYS.length; i++) {
+      delete tableState.performance[VOLATILE_PERF_KEYS[i]];
+    }
+  }
+  if (tableState.behavior) {
+    for (let i = 0; i < VOLATILE_BEHAVIOR_KEYS.length; i++) {
+      delete tableState.behavior[VOLATILE_BEHAVIOR_KEYS[i]];
+    }
+  }
 }
 
 function cleanAppState(appState) {
-  VOLATILE_SETTINGS_KEYS.forEach(k => delete appState.settings?.[k]);
+  if (appState.settings) {
+    for (let i = 0; i < VOLATILE_SETTINGS_KEYS.length; i++) {
+      delete appState.settings[VOLATILE_SETTINGS_KEYS[i]];
+    }
+  }
 }
 
 // ─────────────────────────────────────────────────────────────

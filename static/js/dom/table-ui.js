@@ -36,10 +36,10 @@ const DEFAULT_FILTER_DEBOUNCE = 150;
 
 const ARROW_SVG = `<svg viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></svg>`;
 
-// Y-column indices in metrics array (0-based)
-const Y_COLUMN_INDICES = [1, 4, 7, 10, 13];
-// Delta column positions in 15-metric sequence (1-based)
-const DELTA_POSITIONS = [3, 6, 9, 12, 15];
+// Y-column indices in metrics array (0-based) - use Set for O(1) lookup
+const Y_COLUMN_INDICES = new Set([1, 4, 7, 10, 13]);
+// Delta column positions in 15-metric sequence (1-based) - use Set for O(1) lookup
+const DELTA_POSITIONS = new Set([3, 6, 9, 12, 15]);
 
 // ─────────────────────────────────────────────────────────────
 // Column configuration
@@ -172,7 +172,7 @@ function formatAggIntValue(val) {
 
 function createMetricCell(val, idx) {
   const td = document.createElement('td');
-  const isDelta = DELTA_POSITIONS.includes(idx + 1);
+  const isDelta = DELTA_POSITIONS.has(idx + 1);
   const isMinOrYMin = idx === 0 || idx === 1;
 
   if (isDelta) {
@@ -189,7 +189,7 @@ function createMetricCell(val, idx) {
     td.textContent = formatAggValue(val);
   }
 
-  if (Y_COLUMN_INDICES.includes(idx)) {
+  if (Y_COLUMN_INDICES.has(idx)) {
     td.setAttribute('data-y-toggleable', 'true');
   }
 
@@ -274,17 +274,24 @@ export function renderTableFooter() {
 
 export function updateSortArrows() {
   const { multiSort, textFields } = getState();
-  const activeKeys = multiSort.map(s => s.key);
+  // use Map for O(1) lookup of sort index
+  const sortIndexMap = new Map(multiSort.map((s, i) => [s.key, i]));
+  // use Set for O(1) textFields check
+  const textFieldsSet = new Set(textFields);
 
-  document.querySelectorAll('.sort-arrow').forEach(arrow => {
+  const arrows = document.querySelectorAll('.sort-arrow');
+  const arrowCount = arrows.length;
+
+  for (let i = 0; i < arrowCount; i++) {
+    const arrow = arrows[i];
     const key = arrow.dataset.sortKey;
     arrow.classList.remove('active', 'inactive', 'down', 'up', 'right', 'secondary-sort');
     arrow.innerHTML = ARROW_SVG;
 
-    const idx = activeKeys.indexOf(key);
+    const idx = sortIndexMap.get(key);
     if (idx === 0) {
       const dir = multiSort[0].dir;
-      const isTextField = textFields.includes(key);
+      const isTextField = textFieldsSet.has(key);
       const isDown = (isTextField && dir === 'asc') || (!isTextField && dir === 'desc');
       arrow.classList.add(isDown ? 'down' : 'up', 'active');
     } else if (idx > 0) {
@@ -292,7 +299,7 @@ export function updateSortArrows() {
     } else {
       arrow.classList.add('inactive', 'right');
     }
-  });
+  }
 }
 
 // legacy - delegated handler covers all cases

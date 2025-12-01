@@ -7,25 +7,41 @@ import { parseRowTs } from '../echarts/helpers/dataTransform.js';
 // ─────────────────────────────────────────────────────────────
 
 const METRIC_NAMES = ['TCalls', 'ASR', 'Minutes', 'ACD'];
-const TIME_KEYS = ['time', 'slot', 'hour', 'Time', 'timestamp'];
+// use Set for O(1) lookup
+const TIME_KEYS_SET = new Set(['time', 'slot', 'hour', 'Time', 'timestamp']);
 
 function clamp(v, lo, hi) {
   return Math.max(lo, Math.min(hi, v));
 }
 
 function getRowTimestamp(row) {
-  for (const k of TIME_KEYS) {
-    if (row[k] != null) return parseRowTs(row[k]);
-  }
+  // fast path: check common keys first
+  if (row.time != null) return parseRowTs(row.time);
+  if (row.slot != null) return parseRowTs(row.slot);
+  if (row.hour != null) return parseRowTs(row.hour);
+  if (row.Time != null) return parseRowTs(row.Time);
+  if (row.timestamp != null) return parseRowTs(row.timestamp);
   return NaN;
 }
 
-function createEmptyBins(count, alignedFrom, stepMs) {
-  return Array.from({ length: count }, (_, i) => ({
-    x: alignedFrom + i * stepMs,
-    sum: 0,
-    count: 0
-  }));
+// create all metric bins in one pass
+function createAllBins(binCount, alignedFrom, stepMs) {
+  const bins = {
+    TCalls: new Array(binCount),
+    ASR: new Array(binCount),
+    Minutes: new Array(binCount),
+    ACD: new Array(binCount)
+  };
+
+  for (let i = 0; i < binCount; i++) {
+    const x = alignedFrom + i * stepMs;
+    bins.TCalls[i] = { x, sum: 0, count: 0 };
+    bins.ASR[i] = { x, sum: 0, count: 0 };
+    bins.Minutes[i] = { x, sum: 0, count: 0 };
+    bins.ACD[i] = { x, sum: 0, count: 0 };
+  }
+
+  return bins;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -51,39 +67,30 @@ function getBinValue(bin, isAverage) {
 }
 
 function binsToSeries({ binsArr, binCount, alignedFrom, fromTs, toTs, stepMs, isAverage }) {
-  const out = [];
+  // pre-compute edge indices
+  const leftIdx = clamp(Math.floor((fromTs - alignedFrom) / stepMs), 0, binCount - 1);
+  const rightIdx = clamp(Math.floor((toTs - 1 - alignedFrom) / stepMs), 0, binCount - 1);
+
+  // use Map for O(1) deduplication during build
+  const seen = new Map();
 
   // add all bins
   for (let i = 0; i < binCount; i++) {
     const bin = binsArr[i];
     if (bin) {
-      out.push({ x: bin.x, y: getBinValue(bin, isAverage) });
+      seen.set(bin.x, { x: bin.x, y: getBinValue(bin, isAverage) });
     }
   }
 
-  // add explicit edge points
-  const leftIdx = clamp(Math.floor((fromTs - alignedFrom) / stepMs), 0, binCount - 1);
-  const rightIdx = clamp(Math.floor((toTs - 1 - alignedFrom) / stepMs), 0, binCount - 1);
-
+  // add explicit edge points (overwrite if exists)
   const leftBin = binsArr[leftIdx];
   const rightBin = binsArr[rightIdx];
 
-  if (leftBin) out.push({ x: fromTs, y: getBinValue(leftBin, isAverage) });
-  if (rightBin) out.push({ x: toTs, y: getBinValue(rightBin, isAverage) });
+  if (leftBin) seen.set(fromTs, { x: fromTs, y: getBinValue(leftBin, isAverage) });
+  if (rightBin) seen.set(toTs, { x: toTs, y: getBinValue(rightBin, isAverage) });
 
-  // sort and dedupe
-  out.sort((a, b) => a.x - b.x);
-
-  const deduped = [];
-  for (const p of out) {
-    if (deduped.length && deduped[deduped.length - 1].x === p.x) {
-      deduped[deduped.length - 1] = p;
-    } else {
-      deduped.push(p);
-    }
-  }
-
-  return deduped;
+  // convert to sorted array
+  return Array.from(seen.values()).sort((a, b) => a.x - b.x);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -95,13 +102,8 @@ export function computeBinsAndSeries(rows, { fromTs, toTs, stepMs }) {
   const alignedTo = Math.ceil((toTs + stepMs) / stepMs) * stepMs;
   const binCount = Math.max(1, Math.ceil((alignedTo - alignedFrom) / stepMs));
 
-  // create bins for each metric
-  const bins = {
-    TCalls: createEmptyBins(binCount, alignedFrom, stepMs),
-    ASR: createEmptyBins(binCount, alignedFrom, stepMs),
-    Minutes: createEmptyBins(binCount, alignedFrom, stepMs),
-    ACD: createEmptyBins(binCount, alignedFrom, stepMs)
-  };
+  // create all metric bins in one pass
+  const bins = createAllBins(binCount, alignedFrom, stepMs);
 
   const includeLo = fromTs - 2 * stepMs;
   const includeHi = toTs + 2 * stepMs;

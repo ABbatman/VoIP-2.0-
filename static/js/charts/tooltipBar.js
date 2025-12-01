@@ -7,21 +7,22 @@ import { logError, ErrorCategory } from '../utils/errorLogger.js';
 // Constants
 // ─────────────────────────────────────────────────────────────
 
-const DEST_KEYS = ['destination', 'Destination', 'dst', 'Dst', 'country', 'Country', 'prefix', 'Prefix', 'route', 'Route', 'direction', 'Direction'];
-const CUST_KEYS = ['customer', 'Customer', 'client', 'Client', 'account', 'Account', 'buyer', 'Buyer'];
-const TIME_KEYS = ['time', 'Time', 'timestamp', 'Timestamp', 'slot', 'Slot', 'hour', 'Hour', 'datetime', 'DateTime', 'ts', 'TS', 'period', 'Period', 'start', 'Start', 'start_time', 'StartTime'];
+// use Set for O(1) lookup
+const DEST_KEYS_SET = new Set(['destination', 'Destination', 'dst', 'Dst', 'country', 'Country', 'prefix', 'Prefix', 'route', 'Route', 'direction', 'Direction']);
+const DEST_KEYS_LOWER = new Set(['destination', 'dst', 'country', 'prefix', 'route', 'direction']);
+const CUST_KEYS_SET = new Set(['customer', 'Customer', 'client', 'Client', 'account', 'Account', 'buyer', 'Buyer']);
+const CUST_KEYS_LOWER = new Set(['customer', 'client', 'account', 'buyer']);
 
 // ─────────────────────────────────────────────────────────────
 // Key detection
 // ─────────────────────────────────────────────────────────────
 
-function detectKey(rows, candidates) {
+function detectKey(rows, lowerSet) {
   try {
-    const lowerCandidates = candidates.map(k => k.toLowerCase());
     for (const r of rows || []) {
       if (!r || typeof r !== 'object') continue;
       for (const k of Object.keys(r)) {
-        if (!lowerCandidates.includes(k.toLowerCase())) continue;
+        if (!lowerSet.has(k.toLowerCase())) continue;
         const v = r[k];
         if (v == null) continue;
         const str = typeof v === 'string' ? v.trim() : (typeof v === 'number' ? String(v) : '');
@@ -66,9 +67,12 @@ function computeAggValue(metric, agg) {
 // ─────────────────────────────────────────────────────────────
 
 function getRowTime(row) {
-  for (const k of TIME_KEYS) {
-    if (row[k] != null) return parseRowTs(row[k]);
-  }
+  // fast path: check common keys first
+  if (row.time != null) return parseRowTs(row.time);
+  if (row.Time != null) return parseRowTs(row.Time);
+  if (row.timestamp != null) return parseRowTs(row.timestamp);
+  if (row.slot != null) return parseRowTs(row.slot);
+  if (row.hour != null) return parseRowTs(row.hour);
   return NaN;
 }
 
@@ -232,8 +236,8 @@ function formatSingleSupplierTooltip({ supplierName, hoveredVal, metric, custLin
 export function makeBarOverlayTooltipFormatter({ metricName, stepMs, providerKey, rows, supplierName }) {
   const allRows = Array.isArray(rows) ? rows : [];
   const provKey = String(providerKey || '').trim();
-  const destKey = detectKey(allRows, DEST_KEYS);
-  const custKey = detectKey(allRows, CUST_KEYS);
+  const destKey = detectKey(allRows, DEST_KEYS_LOWER);
+  const custKey = detectKey(allRows, CUST_KEYS_LOWER);
   const metric = String(metricName);
 
   return (p) => {

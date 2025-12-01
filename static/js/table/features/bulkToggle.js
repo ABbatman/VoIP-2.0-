@@ -48,9 +48,15 @@ export function expandAllPeersStandard() {
   renderCoordinator.requestRender('table', async () => {
     try {
       const { pagedData } = await getTableData();
-      const mainIds = Array.isArray(pagedData)
-        ? pagedData.map(r => buildMainGroupId(r.main, r.destination))
-        : [];
+      // use indexed loop instead of map()
+      const mainIds = [];
+      if (Array.isArray(pagedData)) {
+        const len = pagedData.length;
+        for (let i = 0; i < len; i++) {
+          const r = pagedData[i];
+          mainIds.push(buildMainGroupId(r.main, r.destination));
+        }
+      }
       expandAllMain(mainIds);
       await renderStandardTable();
     } catch (e) {

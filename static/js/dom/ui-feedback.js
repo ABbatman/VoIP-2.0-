@@ -61,7 +61,13 @@ function getElement(id) {
 }
 
 function setButtonsEnabled(enabled) {
-  document.querySelectorAll('.btn').forEach(btn => { btn.disabled = !enabled; });
+  // use indexed loop instead of forEach
+  const buttons = document.querySelectorAll('.btn');
+  const len = buttons.length;
+  const disabled = !enabled;
+  for (let i = 0; i < len; i++) {
+    buttons[i].disabled = disabled;
+  }
 }
 
 function resetDefaultState() {

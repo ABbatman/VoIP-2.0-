@@ -80,6 +80,12 @@ export function putCachedMetrics(params, data) {
     const json = JSON.stringify(data);
     const size = json?.length || 0;
 
+    // subtract old size if key exists (overwrite case)
+    const existing = cache.get(key);
+    if (existing) {
+      totalBytes -= existing.size || 0;
+    }
+
     cache.set(key, { data, size });
     totalBytes += size;
 

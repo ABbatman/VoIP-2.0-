@@ -7,7 +7,11 @@ import { getChartsZoomRange } from '../state/runtimeFlags.js';
 // Constants
 // ─────────────────────────────────────────────────────────────
 
-const TIME_KEYS = ['time', 'Time', 'timestamp', 'Timestamp', 'slot', 'Slot', 'hour', 'Hour', 'datetime', 'DateTime', 'ts', 'TS'];
+// use Set for O(1) lookup (fallback only)
+const TIME_KEYS_SET = new Set(['time', 'Time', 'timestamp', 'Timestamp', 'slot', 'Slot', 'hour', 'Hour', 'datetime', 'DateTime', 'ts', 'TS']);
+
+// metrics list for aggregation
+const AGG_METRICS = ['ASR', 'ACD', 'PDD', 'ATime'];
 
 // ─────────────────────────────────────────────────────────────
 // Worker client (lazy loaded)
@@ -31,11 +35,16 @@ async function getWorkerClient() {
 // ─────────────────────────────────────────────────────────────
 
 function parseRowTs(row) {
-  let val = null;
-  for (const key of TIME_KEYS) {
-    if (row[key] != null) {
-      val = row[key];
-      break;
+  // fast path: check common keys first
+  let val = row.time ?? row.Time ?? row.timestamp ?? row.slot ?? row.hour ?? row.ts;
+
+  // fallback to full search if not found
+  if (val == null) {
+    for (const key of Object.keys(row)) {
+      if (TIME_KEYS_SET.has(key)) {
+        val = row[key];
+        break;
+      }
     }
   }
 
@@ -206,8 +215,11 @@ function applyGlobalFilter(rows, query) {
 
   const q = query.toLowerCase();
   return rows.filter(row => {
-    for (const key in row) {
-      if (String(row[key] ?? '').toLowerCase().includes(q)) return true;
+    // cache keys for this row
+    const keys = Object.keys(row);
+    const len = keys.length;
+    for (let i = 0; i < len; i++) {
+      if (String(row[keys[i]] ?? '').toLowerCase().includes(q)) return true;
     }
     return false;
   });
@@ -329,9 +341,10 @@ function addToAggregator(agg, row) {
   if (!isNaN(tcall)) agg.TCall += tcall;
 
   const weight = !isNaN(scall) && scall > 0 ? scall : 1;
-  const metrics = ['ASR', 'ACD', 'PDD', 'ATime'];
 
-  for (const m of metrics) {
+  // use cached metrics list
+  for (let i = 0; i < AGG_METRICS.length; i++) {
+    const m = AGG_METRICS[i];
     const val = parseNumber(row[m]);
     if (!isNaN(val)) {
       agg[`sum${m}`] += val * weight;
@@ -384,7 +397,9 @@ function aggregateMainRows(peerRows) {
     agg.TCall += pr.TCall || 0;
 
     const weight = pr.SCall > 0 ? pr.SCall : 1;
-    for (const m of ['ASR', 'ACD', 'PDD', 'ATime']) {
+    // use cached metrics list
+    for (let i = 0; i < AGG_METRICS.length; i++) {
+      const m = AGG_METRICS[i];
       if (pr[m]) {
         agg[`sum${m}`] += pr[m] * weight;
         agg[`cnt${m}`] += weight;

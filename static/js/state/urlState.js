@@ -29,7 +29,10 @@ function decodeState(encodedState) {
 }
 
 function cleanTableState(tableState) {
-  VOLATILE_TABLE_KEYS.forEach(k => delete tableState[k]);
+  // use indexed loop instead of forEach
+  for (let i = 0; i < VOLATILE_TABLE_KEYS.length; i++) {
+    delete tableState[VOLATILE_TABLE_KEYS[i]];
+  }
 }
 
 // ─────────────────────────────────────────────────────────────

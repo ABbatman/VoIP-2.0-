@@ -78,8 +78,21 @@ function debounce(fn, wait = DEBOUNCE_MS) {
   };
 }
 
+// cache DOM elements to avoid repeated getElementById calls
+const _elemCache = new Map();
+
 function getElement(id) {
-  return document.getElementById(id);
+  let el = _elemCache.get(id);
+  if (el === undefined) {
+    el = document.getElementById(id);
+    _elemCache.set(id, el);
+  }
+  // check if element is still in DOM
+  if (el && !document.body.contains(el)) {
+    el = document.getElementById(id);
+    _elemCache.set(id, el);
+  }
+  return el;
 }
 
 function getElementBySelector(selector) {
@@ -98,12 +111,15 @@ function setDisplay(el, show, displayValue = 'flex') {
 // Date range helpers
 // ─────────────────────────────────────────────────────────────
 
+// pre-defined date input IDs
+const DATE_INPUT_IDS = ['fromDate', 'toDate', 'fromTime', 'toTime'];
+
 function areAllDateInputsEmpty() {
-  const ids = ['fromDate', 'toDate', 'fromTime', 'toTime'];
-  return ids.every(id => {
-    const el = getElement(id);
-    return !el?.value?.trim();
-  });
+  for (let i = 0; i < DATE_INPUT_IDS.length; i++) {
+    const el = getElement(DATE_INPUT_IDS[i]);
+    if (el?.value?.trim()) return false;
+  }
+  return true;
 }
 
 function hasUrlState() {

@@ -19,21 +19,49 @@ const SCROLL_CONTAINER_SELECTOR = '.results-display__table-wrapper';
 // ─────────────────────────────────────────────────────────────
 
 function computeNextMultiSort(current, key) {
-  let ms = Array.isArray(current) ? [...current] : [];
-  const found = ms.find(s => s.key === key);
+  const ms = Array.isArray(current) ? current : [];
+  const len = ms.length;
 
-  if (!found) {
-    // new key — add at front
-    ms.unshift({ key, dir: 'asc' });
-  } else if (ms[0]?.key === key) {
-    // toggle direction if already primary
-    found.dir = found.dir === 'asc' ? 'desc' : 'asc';
-  } else {
-    // promote to primary with asc
-    ms = [{ key, dir: 'asc' }, ...ms.filter(s => s.key !== key)];
+  // find index of key
+  let foundIdx = -1;
+  for (let i = 0; i < len; i++) {
+    if (ms[i].key === key) {
+      foundIdx = i;
+      break;
+    }
   }
 
-  return ms.slice(0, MAX_SORT_KEYS);
+  if (foundIdx === -1) {
+    // new key — add at front, limit to MAX_SORT_KEYS
+    const result = [{ key, dir: 'asc' }];
+    const copyLen = Math.min(len, MAX_SORT_KEYS - 1);
+    for (let i = 0; i < copyLen; i++) {
+      result.push(ms[i]);
+    }
+    return result;
+  }
+
+  if (foundIdx === 0) {
+    // toggle direction if already primary
+    const result = [];
+    for (let i = 0; i < len && i < MAX_SORT_KEYS; i++) {
+      if (i === 0) {
+        result.push({ key: ms[i].key, dir: ms[i].dir === 'asc' ? 'desc' : 'asc' });
+      } else {
+        result.push(ms[i]);
+      }
+    }
+    return result;
+  }
+
+  // promote to primary with asc
+  const result = [{ key, dir: 'asc' }];
+  for (let i = 0; i < len && result.length < MAX_SORT_KEYS; i++) {
+    if (ms[i].key !== key) {
+      result.push(ms[i]);
+    }
+  }
+  return result;
 }
 
 function getScrollContainer() {

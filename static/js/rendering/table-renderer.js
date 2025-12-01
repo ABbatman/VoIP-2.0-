@@ -27,16 +27,33 @@ const VIRTUAL_DOM_IDS = [
 function uniqueByKeys(arr, keys) {
   if (!Array.isArray(arr)) return [];
   const seen = new Set();
-  return arr.filter(r => {
-    const k = keys.map(key => r?.[key] ?? '').join('|');
-    if (seen.has(k)) return false;
-    seen.add(k);
-    return true;
-  });
+  const result = [];
+  const len = arr.length;
+  const keyCount = keys.length;
+
+  for (let i = 0; i < len; i++) {
+    const r = arr[i];
+    // build key inline instead of map().join()
+    let k = '';
+    for (let j = 0; j < keyCount; j++) {
+      if (j > 0) k += '|';
+      k += r?.[keys[j]] ?? '';
+    }
+    if (!seen.has(k)) {
+      seen.add(k);
+      result.push(r);
+    }
+  }
+  return result;
 }
 
 function isDomVirtualReady() {
-  return VIRTUAL_DOM_IDS.every(id => document.getElementById(id));
+  // use indexed loop instead of every()
+  const len = VIRTUAL_DOM_IDS.length;
+  for (let i = 0; i < len; i++) {
+    if (!document.getElementById(VIRTUAL_DOM_IDS[i])) return false;
+  }
+  return true;
 }
 
 function clearTableBody() {

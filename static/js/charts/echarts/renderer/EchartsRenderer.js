@@ -16,24 +16,24 @@ const RESIZE_DEBOUNCE = 100;
 // Container helpers
 // ─────────────────────────────────────────────────────────────
 
-function ensureContainer(container) {
+export function ensureContainer(container, tag = 'EchartsRenderer') {
   if (typeof container === 'string') {
     const el = document.querySelector(container);
-    if (!el) throw new Error(`[EchartsRenderer] Container not found: ${container}`);
+    if (!el) throw new Error(`[${tag}] Container not found: ${container}`);
     return el;
   }
-  if (!container) throw new Error('[EchartsRenderer] Container is required');
+  if (!container) throw new Error(`[${tag}] Container is required`);
   return container;
 }
 
-function hasDimensions(el) {
+export function hasDimensions(el) {
   if (!el) return false;
   const w = el.clientWidth || el.getBoundingClientRect().width;
   const h = el.clientHeight || el.getBoundingClientRect().height;
   return w > 0 && h > 0;
 }
 
-function waitForDimensions(el, maxWait = DIMENSION_MAX_WAIT) {
+export function waitForDimensions(el, maxWait = DIMENSION_MAX_WAIT) {
   return new Promise((resolve) => {
     if (hasDimensions(el)) return resolve(true);
 
@@ -54,7 +54,7 @@ function waitForDimensions(el, maxWait = DIMENSION_MAX_WAIT) {
 // Dispose helpers
 // ─────────────────────────────────────────────────────────────
 
-function disposeExisting(el) {
+export function disposeExisting(el) {
   try {
     const existing = echarts.getInstanceByDom(el);
     if (existing) existing.dispose();
@@ -63,7 +63,7 @@ function disposeExisting(el) {
   }
 }
 
-function isDisposed(chart) {
+export function isDisposed(chart) {
   return !chart || (typeof chart.isDisposed === 'function' && chart.isDisposed());
 }
 

@@ -14,6 +14,7 @@ import { logError, ErrorCategory } from '../utils/errorLogger.js';
 const DEFAULT_ROW_HEIGHT = 40;
 const DEFAULT_BUFFER_SIZE = 5;
 const METRICS = ['Min', 'ACD', 'ASR', 'SCall', 'TCall'];
+const METRICS_LEN = METRICS.length;
 
 // ─────────────────────────────────────────────────────────────
 // Helpers
@@ -143,7 +144,9 @@ export class VirtualTableAdapter {
   _metricCells(r) {
     const cells = [];
 
-    for (const m of METRICS) {
+    // Use indexed loop with cached length
+    for (let i = 0; i < METRICS_LEN; i++) {
+      const m = METRICS[i];
       const val = parseNum(r[m]);
       const yVal = parseNum(r[`Y${m}`]);
       const delta = computeDeltaPercent(val, yVal);

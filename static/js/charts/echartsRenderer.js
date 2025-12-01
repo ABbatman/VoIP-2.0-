@@ -7,6 +7,13 @@ import { attach as attachZoom, applyRange as applyZoomRange } from './echarts/se
 import { makeBarLineLikeTooltip } from './echarts/helpers/tooltip.js';
 import { getStepMs } from './echarts/helpers/time.js';
 import { logError, ErrorCategory } from '../utils/errorLogger.js';
+import {
+  ensureContainer as ensureContainerBase,
+  hasDimensions,
+  waitForDimensions,
+  disposeExisting,
+  isDisposed
+} from './echarts/renderer/EchartsRenderer.js';
 
 // ─────────────────────────────────────────────────────────────
 // Registry
@@ -19,55 +26,10 @@ export async function registerEchartsRenderers() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Helpers
+// Helpers (reuse from EchartsRenderer)
 // ─────────────────────────────────────────────────────────────
 
-function ensureContainer(container) {
-  if (typeof container === 'string') {
-    const el = document.querySelector(container);
-    if (!el) throw new Error(`[echartsRenderer] Container not found: ${container}`);
-    return el;
-  }
-  if (!container) throw new Error('[echartsRenderer] Container is required');
-  return container;
-}
-
-function isDisposed(chart) {
-  return !chart || (typeof chart.isDisposed === 'function' && chart.isDisposed());
-}
-
-function hasDimensions(el) {
-  if (!el) return false;
-  const w = el.clientWidth || el.getBoundingClientRect().width;
-  const h = el.clientHeight || el.getBoundingClientRect().height;
-  return w > 0 && h > 0;
-}
-
-function waitForDimensions(el, maxWait = 1000) {
-  return new Promise((resolve) => {
-    if (hasDimensions(el)) return resolve(true);
-
-    const start = Date.now();
-    const interval = setInterval(() => {
-      if (hasDimensions(el)) {
-        clearInterval(interval);
-        resolve(true);
-      } else if (Date.now() - start > maxWait) {
-        clearInterval(interval);
-        resolve(false);
-      }
-    }, 32);
-  });
-}
-
-function disposeExisting(el) {
-  try {
-    const existing = echarts.getInstanceByDom(el);
-    if (existing) existing.dispose();
-  } catch (e) {
-    logError(ErrorCategory.CHART, 'echartsRenderer:disposeExisting', e);
-  }
-}
+const ensureContainer = (container) => ensureContainerBase(container, 'echartsRenderer');
 
 function getContainerHeight(el, fallback = 520) {
   return el.clientHeight || el.getBoundingClientRect().height || fallback;

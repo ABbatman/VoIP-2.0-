@@ -5,12 +5,35 @@
 // Helpers
 // ─────────────────────────────────────────────────────────────
 
-function matchesPeer(peer, mainRow) {
-  return peer.main === mainRow.main && peer.destination === mainRow.destination;
+// Build composite key for parent lookup
+const mainKey = r => `${r.main ?? ''}|${r.destination ?? ''}`;
+const peerKey = r => `${r.main ?? ''}|${r.peer ?? ''}|${r.destination ?? ''}`;
+
+// Pre-index rows by parent key → O(n) instead of O(n×m)
+function buildPeerIndex(peerRows) {
+  const map = new Map();
+  const len = peerRows.length;
+  for (let i = 0; i < len; i++) {
+    const p = peerRows[i];
+    const key = mainKey(p);
+    let arr = map.get(key);
+    if (!arr) { arr = []; map.set(key, arr); }
+    arr.push({ row: p, index: i });
+  }
+  return map;
 }
 
-function matchesHour(hour, peerRow) {
-  return hour.main === peerRow.main && hour.peer === peerRow.peer && hour.destination === peerRow.destination;
+function buildHourlyIndex(hourlyRows) {
+  const map = new Map();
+  const len = hourlyRows.length;
+  for (let i = 0; i < len; i++) {
+    const h = hourlyRows[i];
+    const key = peerKey(h);
+    let arr = map.get(key);
+    if (!arr) { arr = []; map.set(key, arr); }
+    arr.push({ row: h, index: i });
+  }
+  return map;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -18,23 +41,40 @@ function matchesHour(hour, peerRow) {
 // ─────────────────────────────────────────────────────────────
 
 export class VirtualDataProcessor {
-  // flatten main/peer/hourly into single array
+  // flatten main/peer/hourly into single array — O(n + m + k) complexity
   static prepareDataForVirtualization(mainRows, peerRows, hourlyRows) {
-    const result = [];
+    // Pre-index peers and hourly for O(1) lookup
+    const peersByMain = buildPeerIndex(peerRows);
+    const hourlyByPeer = buildHourlyIndex(hourlyRows);
 
-    mainRows.forEach((mainRow, mainIdx) => {
+    const result = [];
+    const mainLen = mainRows.length;
+
+    for (let mainIdx = 0; mainIdx < mainLen; mainIdx++) {
+      const mainRow = mainRows[mainIdx];
       const mainGroupId = `main-${mainIdx}`;
+
+      // Add main row (reuse object, add metadata)
       result.push({ ...mainRow, type: 'main', groupId: mainGroupId, level: 0 });
 
-      const relatedPeers = peerRows.filter(p => matchesPeer(p, mainRow));
+      // Get related peers from index — O(1) lookup
+      const mKey = mainKey(mainRow);
+      const relatedPeers = peersByMain.get(mKey) || [];
+      const peerLen = relatedPeers.length;
 
-      relatedPeers.forEach((peerRow, peerIdx) => {
+      for (let peerIdx = 0; peerIdx < peerLen; peerIdx++) {
+        const { row: peerRow } = relatedPeers[peerIdx];
         const peerGroupId = `peer-${mainIdx}-${peerIdx}`;
+
         result.push({ ...peerRow, type: 'peer', groupId: peerGroupId, level: 1, parentId: mainGroupId });
 
-        const relatedHours = hourlyRows.filter(h => matchesHour(h, peerRow));
+        // Get related hourly from index — O(1) lookup
+        const pKey = peerKey(peerRow);
+        const relatedHours = hourlyByPeer.get(pKey) || [];
+        const hourLen = relatedHours.length;
 
-        relatedHours.forEach((hourRow, hourIdx) => {
+        for (let hourIdx = 0; hourIdx < hourLen; hourIdx++) {
+          const { row: hourRow } = relatedHours[hourIdx];
           result.push({
             ...hourRow,
             type: 'hourly',
@@ -42,9 +82,9 @@ export class VirtualDataProcessor {
             level: 2,
             parentId: peerGroupId
           });
-        });
-      });
-    });
+        }
+      }
+    }
 
     return result;
   }

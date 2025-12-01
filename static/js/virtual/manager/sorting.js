@@ -36,20 +36,42 @@ export function attachSorting() {
   }
 
   function normalizeMultiSort(multiSort) {
-    const arr = Array.isArray(multiSort) ? [...multiSort] : [];
-    if (arr.length === 0) return arr;
+    if (!Array.isArray(multiSort) || multiSort.length === 0) return [];
 
-    const primary = arr[0]?.key;
-    const hasMain = arr.some(s => s.key === 'main');
-    const hasDest = arr.some(s => s.key === 'destination');
+    const len = multiSort.length;
+    const primary = multiSort[0]?.key;
+
+    // Single pass to find main/dest items and check flags
+    let mainItem = null;
+    let destItem = null;
+    const others = [];
+
+    for (let i = 0; i < len; i++) {
+      const s = multiSort[i];
+      if (s.key === 'main') mainItem = s;
+      else if (s.key === 'destination') destItem = s;
+      else others.push(s);
+    }
+
+    const hasMain = mainItem !== null;
+    const hasDest = destItem !== null;
 
     if (hasMain && hasDest && (primary === 'main' || primary === 'destination')) {
-      const destItem = arr.find(s => s.key === 'destination');
-      const mainItem = arr.find(s => s.key === 'main');
-      const others = arr.filter(s => s.key !== 'main' && s.key !== 'destination');
-      return primary === 'destination'
-        ? [destItem, mainItem, ...others].filter(Boolean)
-        : [mainItem, destItem, ...others].filter(Boolean);
+      // Build result without spread
+      const result = primary === 'destination'
+        ? [destItem, mainItem]
+        : [mainItem, destItem];
+      const othersLen = others.length;
+      for (let i = 0; i < othersLen; i++) {
+        result.push(others[i]);
+      }
+      return result;
+    }
+
+    // Return copy without spread
+    const arr = [];
+    for (let i = 0; i < len; i++) {
+      arr.push(multiSort[i]);
     }
     return arr;
   }

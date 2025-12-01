@@ -44,10 +44,13 @@ function handleVisibilityChange(isVisible) {
     table.classList.toggle(HIDDEN_CLASS, !isVisible);
   }
 
-  // update all toggle button icons
-  document.querySelectorAll(TOGGLE_BTN_SELECTOR).forEach(btn => {
-    btn.innerHTML = getYColumnToggleIcon(isVisible);
-  });
+  // update all toggle button icons - use indexed loop
+  const icon = getYColumnToggleIcon(isVisible);
+  const buttons = document.querySelectorAll(TOGGLE_BTN_SELECTOR);
+  const len = buttons.length;
+  for (let i = 0; i < len; i++) {
+    buttons[i].innerHTML = icon;
+  }
 
   // update scrollbar after repaint
   setTimeout(updateTopScrollbar, SCROLLBAR_UPDATE_DELAY);

@@ -14,8 +14,20 @@ import { logError, ErrorCategory } from '../../utils/errorLogger.js';
 export function attachHeader(vm) {
   function syncYToggleIcons() {
     const visible = areYColumnsVisible();
-    getYToggleButtons().forEach(btn => { btn.innerHTML = getYColumnToggleIcon(visible); });
-    getResultsTables().forEach(tbl => { tbl.classList.toggle('y-columns-hidden', !visible); });
+    const icon = getYColumnToggleIcon(visible);
+
+    // Use indexed loops instead of forEach
+    const buttons = getYToggleButtons();
+    const btnLen = buttons.length;
+    for (let i = 0; i < btnLen; i++) {
+      buttons[i].innerHTML = icon;
+    }
+
+    const tables = getResultsTables();
+    const tblLen = tables.length;
+    for (let i = 0; i < tblLen; i++) {
+      tables[i].classList.toggle('y-columns-hidden', !visible);
+    }
   }
 
   function renderTableHeaders() {

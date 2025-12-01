@@ -218,13 +218,20 @@ function syncFloatingHeader() {
 }
 
 function syncCellWidths(srcCells, dstCells) {
-  const srcArr = Array.from(srcCells);
-  const dstArr = Array.from(dstCells);
-  const widths = srcArr.map(c => Math.round(c.getBoundingClientRect().width));
+  // use indexed loop to avoid creating intermediate arrays
+  const srcLen = srcCells.length;
+  const dstLen = dstCells.length;
+  const minLen = Math.min(srcLen, dstLen);
 
-  dstArr.forEach((cell, i) => {
-    setCellWidth(cell, widths[i] || 0);
-  });
+  for (let i = 0; i < minLen; i++) {
+    const width = Math.round(srcCells[i].getBoundingClientRect().width);
+    setCellWidth(dstCells[i], width);
+  }
+
+  // handle remaining dst cells with 0 width
+  for (let i = minLen; i < dstLen; i++) {
+    setCellWidth(dstCells[i], 0);
+  }
 }
 
 export function initStickyHeader() {
@@ -327,7 +334,14 @@ function getInteractionContext() {
   let hasActiveFilters = false;
   try {
     const { columnFilters = {} } = getState();
-    hasActiveFilters = Object.values(columnFilters).some(v => String(v || '').trim().length > 0);
+    // use for-in loop instead of Object.values().some()
+    for (const key in columnFilters) {
+      const v = columnFilters[key];
+      if (v && String(v).trim().length > 0) {
+        hasActiveFilters = true;
+        break;
+      }
+    }
   } catch (e) {
     logError(ErrorCategory.STATE, 'getInteractionContext', e);
   }

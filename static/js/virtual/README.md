@@ -168,3 +168,126 @@ if (ok) {
   - Update `_computeFilterSortKey()` to include it.
   - Add/adjust a unit test that verifies stability of the key and cache invalidation behavior.
 - Recommended format: a normalized JSON string with minimal/no whitespace differences.
+
+---
+
+## Оптимизации
+
+### Критичные оптимизации (Часть 1)
+
+#### 1. `data-processor.js` — O(n×m×k) → O(n+m+k)
+```js
+// Было: вложенные filter внутри forEach
+mainRows.forEach((mainRow) => {
+  const relatedPeers = peerRows.filter(p => matchesPeer(p, mainRow)); // O(m) каждый раз
+});
+
+// Стало: pre-index в Map
+const peersByMain = buildPeerIndex(peerRows);  // O(m) один раз
+const relatedPeers = peersByMain.get(mKey);    // O(1) lookup
+```
+
+#### 2. `data-cache.js` — pre-index по parentId
+```js
+// lazyData теперь содержит:
+vm.lazyData = {
+  peersByParent: buildParentMap(peerIndex),   // Map<parentId, rows[]>
+  hourlyByParent: buildParentMap(hourlyIndex) // Map<parentId, rows[]>
+};
+```
+
+#### 3. `selectors.js` — O(1) lookup вместо O(n) filter
+```js
+// Было:
+const peerMetas = vm.lazyData.peerIndex.filter(p => p.parentId === mainGroupId);
+
+// Стало:
+const peerMetas = vm.lazyData.peersByParent?.get(mainGroupId) || [];
+```
+
+#### 4. `diff.js` — Set для O(1) + indexed loops
+```js
+// Было:
+const FILTER_CELL_CLASSES = ['main-cell', 'peer-cell', ...];
+FILTER_CELL_CLASSES.some(cls => el.classList.contains(cls));
+
+// Стало:
+const FILTER_CELL_CLASSES = new Set(['main-cell', 'peer-cell', ...]);
+for (let i = 0; i < classList.length; i++) {
+  if (FILTER_CELL_CLASSES.has(classList[i])) return true;
+}
+```
+
+### Оптимизации среднего приоритета (Часть 2)
+
+#### 5. `toggles.js` — row pool вместо querySelectorAll
+```js
+// Было:
+container.querySelectorAll('.main-row .toggle-btn').forEach(btn => { ... });
+
+// Стало: используем pool напрямую
+const pool = vm.adapter?.virtualScroller?._rowPool;
+for (let i = 0; i < pool.length; i++) {
+  const btn = pool[i].querySelector('.toggle-btn');
+  // ...
+}
+```
+
+#### 6. `virtual-scroller.js` — indexed access вместо slice
+```js
+// Было:
+const visibleData = this.data.slice(startIndex, endIndex);
+const rowData = visibleData[i];
+
+// Стало:
+const rowData = this.data[startIndex + i]; // direct access
+```
+
+#### 7. `selectors.js` — кэширование filtersKey per frame
+```js
+// Кэш на 16ms (один frame) предотвращает повторные вычисления
+let _filtersKeyCache = '';
+let _filtersKeyCacheTs = 0;
+
+function filtersKey() {
+  const now = performance.now();
+  if (_filtersKeyCache && now - _filtersKeyCacheTs < 16) {
+    return _filtersKeyCache; // cached
+  }
+  // ... compute ...
+}
+```
+
+#### 8. `selectors.js` — indexed loop вместо filter
+```js
+// Было:
+return rows.filter(r => { ... });
+
+// Стало:
+const result = [];
+for (let i = 0; i < len; i++) {
+  if (pass) result.push(r);
+}
+return result;
+```
+
+### Сложность операций после оптимизации
+
+| Операция | До | После |
+|----------|-----|-------|
+| prepareDataForVirtualization | O(n×m×k) | **O(n+m+k)** |
+| getPeerRowsLazy (per call) | O(all_peers) | **O(1)** lookup |
+| getHourlyRowsLazy (per call) | O(all_hourly) | **O(1)** lookup |
+| updateAllToggleButtons | O(DOM_traversal) | **O(visible_rows)** |
+| render (slice) | O(visible) alloc | **O(1)** indexed |
+| isFilterCell | O(4) | **O(1)** Set |
+| filtersKey | O(keys) per call | **O(1)** cached |
+
+### Принципы оптимизации
+
+1. **Pre-indexing** — Map вместо filter для parent-child relationships
+2. **Direct access** — indexed loop вместо slice/map/forEach
+3. **Set для констант** — O(1) lookup для class/attr checks
+4. **Frame caching** — кэширование результатов на 16ms
+5. **Pool access** — прямой доступ к row pool вместо querySelectorAll
+6. **Early exit** — break при первом несовпадении в фильтрах

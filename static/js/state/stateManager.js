@@ -97,7 +97,14 @@ export class StateManager {
 
   _setupEventSubscriptions() {
     const handler = () => this._handleStateChange();
-    [...APP_STATE_EVENTS, ...TABLE_STATE_EVENTS].forEach(event => subscribe(event, handler));
+    // subscribe to app state events
+    for (let i = 0; i < APP_STATE_EVENTS.length; i++) {
+      subscribe(APP_STATE_EVENTS[i], handler);
+    }
+    // subscribe to table state events
+    for (let i = 0; i < TABLE_STATE_EVENTS.length; i++) {
+      subscribe(TABLE_STATE_EVENTS[i], handler);
+    }
   }
 
   _loadInitialState() {
@@ -127,9 +134,10 @@ export class StateManager {
 
   _notifyListeners() {
     const state = this.getCompleteState();
-    this.stateChangeListeners.forEach(listener => {
+    // use for-of instead of forEach for Set
+    for (const listener of this.stateChangeListeners) {
       try { listener(state); } catch (e) { logError(ErrorCategory.STATE, 'StateManager:listener', e); }
-    });
+    }
   }
 
   // ─────────────────────────────────────────────────────────────

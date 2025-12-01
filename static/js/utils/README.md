@@ -373,3 +373,88 @@ npm install morphdom
 - **Современные браузеры**: ES6+, DOM APIs
 - **Существующие модули**: Полная совместимость
 - **Виртуализация**: Защищена от изменений
+
+---
+
+# Utils Module — Полная структура
+
+```
+utils/
+├── domPatcher.js         # Efficient DOM updates with morphdom
+├── errorLogger.js        # Centralized error logging
+├── metrics.js            # Metric parsing, formatting, anomaly detection
+├── date.js               # UTC date parse/format helpers
+├── helpers.js            # Common helpers
+└── index.js              # Re-exports
+```
+
+## Дополнительные модули
+
+### `errorLogger.js`
+Централизованное логирование ошибок:
+
+```js
+import { logError, logWarn, logDebug, ErrorCategory, LogLevel } from './errorLogger.js';
+
+logError(ErrorCategory.FETCH, 'fetchMetrics', error);
+logWarn(ErrorCategory.UI, 'tooltip', 'Element not found');
+logDebug(ErrorCategory.STATE, 'store', 'Action dispatched', action);
+
+// Safe wrappers
+const result = trySafe(() => riskyOperation(), fallbackValue, ErrorCategory.DOM, 'context');
+const asyncResult = await trySafeAsync(asyncFn, fallback, ErrorCategory.FETCH, 'context');
+```
+
+### `metrics.js`
+Работа с метриками:
+
+```js
+import { parseNum, computeDeltaPercent, formatMetricValue, getAnomalyClass } from './metrics.js';
+
+const n = parseNum('1,234.5'); // 1234.5
+const delta = computeDeltaPercent(110, 100); // 10
+const formatted = formatMetricValue('ASR', 85.567); // 85.6
+const cls = getAnomalyClass('ASR', 85, 70, 21); // 'cell-positive'
+```
+
+### `date.js`
+UTC-даты:
+
+```js
+import { parseUtc, formatUtc } from './date.js';
+
+const ts = parseUtc('2024-01-15 10:30:00'); // timestamp ms
+const str = formatUtc(ts); // '2024-01-15 10:30:00'
+```
+
+## Оптимизации в utils
+
+### domPatcher.js — indexed loop
+```js
+// Было:
+PATCH_EVENTS.forEach(event => eventBus.subscribe(event, () => this._queuePatch()));
+
+// Стало:
+const handler = () => this._queuePatch();
+const len = PATCH_EVENTS.length;
+for (let i = 0; i < len; i++) {
+  eventBus.subscribe(PATCH_EVENTS[i], handler);
+}
+```
+
+### metrics.js — Set для констант
+```js
+const NO_ANOMALY_METRICS = new Set(['Min', 'SCall', 'TCall']);
+const DECIMAL_METRICS = new Set(['ACD', 'ASR']);
+
+// O(1) lookup
+if (NO_ANOMALY_METRICS.has(metric)) return '';
+```
+
+## Принципы
+
+1. **Централизация** — логирование, парсинг, форматирование
+2. **Set для констант** — O(1) поиск
+3. **Indexed loops** — для подписок на события
+4. **Safe wrappers** — trySafe, trySafeAsync
+5. **Защита виртуализации** — PROTECTED_IDS Set

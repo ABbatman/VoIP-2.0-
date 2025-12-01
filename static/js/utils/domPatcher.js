@@ -101,7 +101,12 @@ export class DOMPatcher {
     // no-op for filtersChanged to avoid overwriting inputs during typing
     eventBus.subscribe('appState:filtersChanged', () => {});
 
-    PATCH_EVENTS.forEach(event => eventBus.subscribe(event, () => this._queuePatch()));
+    // use indexed loop instead of forEach
+    const handler = () => this._queuePatch();
+    const len = PATCH_EVENTS.length;
+    for (let i = 0; i < len; i++) {
+      eventBus.subscribe(PATCH_EVENTS[i], handler);
+    }
 
     eventBus.subscribe('tableState:searchDebounceChanged', ms => {
       try { this.setDebounceDelay(ms); } catch (e) { logError(ErrorCategory.DOM, 'domPatcher:debounce', e); }

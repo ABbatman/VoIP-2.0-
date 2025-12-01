@@ -124,9 +124,13 @@ function renderItems(container, items, activeIndex, renderer) {
     return;
   }
 
-  items.forEach((item, idx) => {
-    container.appendChild(createItemElement(item, idx, idx === activeIndex, renderer));
-  });
+  // use DocumentFragment for batch DOM updates
+  const fragment = document.createDocumentFragment();
+  const len = items.length;
+  for (let i = 0; i < len; i++) {
+    fragment.appendChild(createItemElement(items[i], i, i === activeIndex, renderer));
+  }
+  container.appendChild(fragment);
 }
 
 function positionContainer(inputEl, listEl) {

@@ -25,28 +25,47 @@ const STYLE_PROPS = [
 
 function measureCellWidths(row) {
   if (!row) return [];
-  return Array.from(row.children).map(th => th.getBoundingClientRect().width);
+  const children = row.children;
+  const len = children.length;
+  const widths = [];
+  for (let i = 0; i < len; i++) {
+    widths.push(children[i].getBoundingClientRect().width);
+  }
+  return widths;
 }
 
 function applyWidths(row, widths) {
   if (!row || !widths?.length) return;
-  Array.from(row.children).forEach((th, i) => {
-    if (i >= widths.length) return;
+  const children = row.children;
+  const len = Math.min(children.length, widths.length);
+  for (let i = 0; i < len; i++) {
     const w = Math.round(widths[i]) + 'px';
-    Object.assign(th.style, { boxSizing: 'border-box', width: w, minWidth: w, maxWidth: w });
-  });
+    const style = children[i].style;
+    style.boxSizing = 'border-box';
+    style.width = w;
+    style.minWidth = w;
+    style.maxWidth = w;
+  }
 }
+
+// Cache length for indexed loop
+const STYLE_PROPS_LEN = STYLE_PROPS.length;
 
 function copyHeaderStyles(srcRow, dstRow) {
   if (!srcRow || !dstRow) return;
-  const srcThs = Array.from(srcRow.children || []);
-  const dstThs = Array.from(dstRow.children || []);
-  if (srcThs.length !== dstThs.length) return;
+  const srcThs = srcRow.children || [];
+  const dstThs = dstRow.children || [];
+  const len = srcThs.length;
+  if (len !== dstThs.length) return;
 
-  srcThs.forEach((s, idx) => {
-    const cs = window.getComputedStyle(s);
-    STYLE_PROPS.forEach(p => { dstThs[idx].style[p] = cs[p]; });
-  });
+  for (let i = 0; i < len; i++) {
+    const cs = window.getComputedStyle(srcThs[i]);
+    const dstStyle = dstThs[i].style;
+    for (let j = 0; j < STYLE_PROPS_LEN; j++) {
+      const p = STYLE_PROPS[j];
+      dstStyle[p] = cs[p];
+    }
+  }
 }
 
 function bindFloatingYToggle(vm) {
