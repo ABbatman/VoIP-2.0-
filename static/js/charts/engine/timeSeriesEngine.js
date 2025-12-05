@@ -98,9 +98,14 @@ function binsToSeries({ binsArr, binCount, alignedFrom, fromTs, toTs, stepMs, is
 // ─────────────────────────────────────────────────────────────
 
 export function computeBinsAndSeries(rows, { fromTs, toTs, stepMs }) {
+  // validate inputs
+  if (!Number.isFinite(fromTs) || !Number.isFinite(toTs) || !stepMs || stepMs <= 0) {
+    return { bins: null, series: { TCalls: [], ASR: [], Minutes: [], ACD: [] } };
+  }
+
   const alignedFrom = Math.floor((fromTs - stepMs) / stepMs) * stepMs;
   const alignedTo = Math.ceil((toTs + stepMs) / stepMs) * stepMs;
-  const binCount = Math.max(1, Math.ceil((alignedTo - alignedFrom) / stepMs));
+  const binCount = Math.max(1, Math.min(10000, Math.ceil((alignedTo - alignedFrom) / stepMs)));
 
   // create all metric bins in one pass
   const bins = createAllBins(binCount, alignedFrom, stepMs);
@@ -210,6 +215,14 @@ export function intervalToStep(interval) {
 
 export function shapeChartPayload(rows, { type, fromTs, toTs, stepMs, height }) {
   const { bins, series } = computeBinsAndSeries(rows, { fromTs, toTs, stepMs });
+
+  // handle invalid input case
+  if (!bins) {
+    return { 
+      data: type === 'line' ? { TCalls: [], ASR: [], Minutes: [], ACD: [] } : [],
+      options: { height: height || 0, fromTs, toTs, xDomain: [fromTs, toTs] }
+    };
+  }
 
   if (type === 'line') {
     return {

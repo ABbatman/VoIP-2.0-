@@ -1,29 +1,30 @@
 import json
 import hashlib
 import os
-from typing import Optional, Tuple, TYPE_CHECKING, Any
+from typing import Optional, Tuple, Any
 
 try:
-    import redis  # type: ignore
-except Exception:  # During type-checking or if not installed in current interpreter
-    redis = None  # type: ignore
-    
+    import redis.asyncio as aioredis  # type: ignore
+except ImportError:
+    aioredis = None  # type: ignore
 
 DEFAULT_TTL_SECONDS = 60
 
+# Module-level connection pool (lazy init)
+_pool: Any = None
 
-if TYPE_CHECKING:
-    from redis import Redis as _RedisType  # type: ignore
 
-
-def _make_client() -> Any:
-    url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-    return redis.from_url(url)  # type: ignore[attr-defined]
+async def _get_pool() -> Any:
+    """Get or create async Redis connection pool."""
+    global _pool
+    if _pool is None:
+        url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        _pool = aioredis.from_url(url, decode_responses=True)  # type: ignore
+    return _pool
 
 
 class Cache:
     def __init__(self, ttl_seconds: int = DEFAULT_TTL_SECONDS):
-        self.client = _make_client()
         self.ttl = ttl_seconds
         self.hits = 0
         self.misses = 0
@@ -34,32 +35,35 @@ class Cache:
         digest = hashlib.sha256(raw.encode()).hexdigest()
         return f"{prefix}:{digest}"
 
-    def get_json(self, key: str) -> Optional[dict]:
-        data = self.client.get(key)
+    async def get_json(self, key: str) -> Optional[dict]:
+        """Async get from Redis."""
+        client = await _get_pool()
+        data = await client.get(key)
         if not data:
             self.misses += 1
             return None
         self.hits += 1
         return json.loads(data)
 
-    def set_json(self, key: str, value: dict) -> None:
-        self.client.setex(key, self.ttl, json.dumps(value, default=str))
+    async def set_json(self, key: str, value: dict) -> None:
+        """Async set to Redis with TTL."""
+        client = await _get_pool()
+        await client.setex(key, self.ttl, json.dumps(value, default=str))
 
-    def invalidate_prefix(self, prefix: str) -> int:
-        # Simple scan-based invalidation
+    async def invalidate_prefix(self, prefix: str) -> int:
+        """Async scan-based invalidation."""
+        client = await _get_pool()
         cursor = 0
         total = 0
         pattern = f"{prefix}:*"
         while True:
-            cursor, keys = self.client.scan(cursor=cursor, match=pattern, count=500)
+            cursor, keys = await client.scan(cursor=cursor, match=pattern, count=500)
             if keys:
                 total += len(keys)
-                self.client.delete(*keys)
+                await client.delete(*keys)
             if cursor == 0:
                 break
         return total
 
     def stats(self) -> Tuple[int, int]:
         return self.hits, self.misses
-
-

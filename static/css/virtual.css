@@ -1,7 +1,10 @@
-/* Virtual Scroller Styles - Integration with existing table system */
-/* Localized comments in English as requested */
+/* static/css/virtual.css */
+/* Virtual scroll container styles */
 
-/* Virtual scroll container - replaces pagination with scrollable area */
+/* ===================================================================
+   VIRTUAL SCROLL CONTAINER
+   =================================================================== */
+
 .virtual-scroll-container {
   position: relative;
   overflow-y: auto;
@@ -10,9 +13,13 @@
   border: 1px solid #ddd;
   border-radius: 4px;
   background: #fff;
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: auto;
+  overflow-anchor: none;
+  contain: layout style;
 }
 
-/* Spacer element that creates the scrollbar height */
+/* spacer for scrollbar height */
 .virtual-scroll-spacer {
   position: absolute;
   top: 0;
@@ -22,7 +29,7 @@
   z-index: 1;
 }
 
-/* Table positioning for virtual scrolling */
+/* table positioning */
 .virtual-scroll-container table {
   position: relative;
   width: 100%;
@@ -30,13 +37,7 @@
   z-index: 2;
 }
 
-/* Ensure smooth scrolling performance */
-.virtual-scroll-container {
-  -webkit-overflow-scrolling: touch;
-  scroll-behavior: smooth;
-}
-
-/* Style table actions when using virtual scroller */
+/* table actions bar */
 .results-display__table-actions {
   display: flex;
   align-items: center;
@@ -46,20 +47,22 @@
 
 
 
-/* Virtual scroller status indicator */
+/* status indicator */
 .virtual-scroller-status {
   position: absolute;
   top: 5px;
   right: 5px;
-  background: rgba(0, 123, 255, 0.1);
-  color: #007bff;
+  z-index: 10;
   padding: 2px 6px;
   font-size: 11px;
+  color: #007bff;
+  background: rgba(0, 123, 255, 0.1);
   border-radius: 3px;
-  z-index: 10;
 }
 
-/* Responsive adjustments for virtual scroller */
+/* ===================================================================
+   RESPONSIVE
+   =================================================================== */
 @media (max-width: 768px) {
   .virtual-scroll-container {
     max-height: 400px;
@@ -67,7 +70,10 @@
   }
 }
 
-/* Loading state for virtual scroller */
+/* ===================================================================
+   LOADING STATE
+   =================================================================== */
+
 .virtual-scroll-container.loading {
   opacity: 0.7;
   pointer-events: none;
@@ -79,22 +85,28 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  background: rgba(255, 255, 255, 0.9);
-  padding: 10px 20px;
-  border-radius: 4px;
   z-index: 100;
+  padding: 10px 20px;
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 4px;
 }
 
-/* Ensure table headers remain visible during virtual scrolling */
+/* ===================================================================
+   STICKY HEADER
+   =================================================================== */
+
 .virtual-scroll-container thead {
   position: sticky;
   top: 0;
-  background: #fff;
   z-index: 10;
+  background: #fff;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
-/* Toggle button styling for virtualized rows */
+/* ===================================================================
+   TOGGLE BUTTON (virtual-specific overrides)
+   =================================================================== */
+
 .virtual-scroll-container .toggle-btn {
   background: none;
   border: 1px solid #ccc;

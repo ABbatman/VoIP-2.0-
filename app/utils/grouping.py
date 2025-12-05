@@ -33,7 +33,7 @@ def build_where_clause(customer=None, supplier=None, destination=None, time_from
 
     where_sql = "WHERE " + " AND ".join(clauses) if clauses else ""
 
-    log_info(f"🔍 WHERE clause: {where_sql}")
-    log_info(f"📦 Parameters: {params}")
+    log_info(f"WHERE clause: {where_sql}")
+    log_info(f"Parameters: {params}")
 
     return where_sql, tuple(params)

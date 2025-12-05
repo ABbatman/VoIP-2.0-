@@ -18,5 +18,3 @@ sonus_aggregation_new = Table(
     Column('pdd', Integer, nullable=True),
     schema='public',
 )
-
-

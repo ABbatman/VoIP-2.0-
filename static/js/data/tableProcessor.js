@@ -142,7 +142,10 @@ function tryParseNumber(str) {
 
 function passesNumericFilter(value, operator, threshold) {
   const numValue = parseNumber(value);
-  if (isNaN(numValue) || isNaN(threshold)) return true;
+  // if threshold is invalid, skip filter
+  if (isNaN(threshold)) return true;
+  // if value cannot be parsed as number, it fails numeric filter
+  if (isNaN(numValue)) return false;
 
   switch (operator) {
     case '>=': return numValue >= threshold;
@@ -156,8 +159,9 @@ function passesNumericFilter(value, operator, threshold) {
 }
 
 function passesColumnFilter(value, filter) {
-  const trimmed = filter.trim();
-  const numericValue = parseNumber(value);
+  if (filter == null) return true;
+  const trimmed = String(filter).trim();
+  if (!trimmed) return true;
 
   // two-char operators
   const twoCharOp = trimmed.slice(0, 2);
@@ -171,13 +175,16 @@ function passesColumnFilter(value, filter) {
     return passesNumericFilter(value, oneCharOp, tryParseNumber(trimmed.slice(1)));
   }
 
-  // plain numeric means >=
+  // plain numeric means >= (filter out values less than threshold or non-numeric)
   const plainNum = tryParseNumber(trimmed);
-  if (!isNaN(plainNum) && !isNaN(numericValue)) {
+  if (!isNaN(plainNum)) {
+    const numericValue = parseNumber(value);
+    // if value is not a number, it fails numeric filter
+    if (isNaN(numericValue)) return false;
     return numericValue >= plainNum;
   }
 
-  // fallback: substring match
+  // fallback: substring match for text filters
   return String(value ?? '').toLowerCase().includes(trimmed.toLowerCase());
 }
 
@@ -185,19 +192,24 @@ function passesColumnFilter(value, filter) {
 // Filter application
 // ─────────────────────────────────────────────────────────────
 
+function applyColumnFiltersToRow(row, columnFilters, skipPeer = false) {
+  for (const key in columnFilters) {
+    if (skipPeer && key === 'peer') continue;
+    if (!passesColumnFilter(row[key], columnFilters[key])) return false;
+  }
+  return true;
+}
+
 function applyColumnFilters(mainRows, peerRows, columnFilters) {
   if (!Object.keys(columnFilters).length) return mainRows;
 
   const peerFilter = columnFilters.peer?.toLowerCase();
 
   return mainRows.filter(mainRow => {
-    // check non-peer filters
-    for (const key in columnFilters) {
-      if (key === 'peer') continue;
-      if (!passesColumnFilter(mainRow[key], columnFilters[key])) return false;
-    }
+    // check non-peer filters on main row
+    if (!applyColumnFiltersToRow(mainRow, columnFilters, true)) return false;
 
-    // check peer filter
+    // check peer filter - main row passes if ANY of its peers match
     if (peerFilter) {
       return peerRows.some(pr =>
         pr.main === mainRow.main &&
@@ -207,6 +219,34 @@ function applyColumnFilters(mainRows, peerRows, columnFilters) {
     }
 
     return true;
+  });
+}
+
+function filterPeerRows(peerRows, columnFilters, filteredMainRows) {
+  if (!Object.keys(columnFilters).length) return peerRows;
+  
+  // build set of valid main+destination combinations
+  const validMainDest = new Set(filteredMainRows.map(m => `${m.main}||${m.destination}`));
+  
+  return peerRows.filter(pr => {
+    // must belong to a filtered main row
+    if (!validMainDest.has(`${pr.main}||${pr.destination}`)) return false;
+    // apply all column filters
+    return applyColumnFiltersToRow(pr, columnFilters, false);
+  });
+}
+
+function filterHourlyRows(hourlyRows, columnFilters, filteredPeerRows) {
+  if (!Object.keys(columnFilters).length) return hourlyRows;
+  
+  // build set of valid main+peer+destination combinations
+  const validKeys = new Set(filteredPeerRows.map(p => `${p.main}||${p.peer}||${p.destination}`));
+  
+  return hourlyRows.filter(hr => {
+    // must belong to a filtered peer row
+    if (!validKeys.has(`${hr.main}||${hr.peer}||${hr.destination}`)) return false;
+    // apply all column filters
+    return applyColumnFiltersToRow(hr, columnFilters, false);
   });
 }
 
@@ -245,16 +285,20 @@ function getFilteredAndSortedData() {
     effectiveMainRows = aggregateMainRows(effectivePeerRows);
   }
 
-  // apply filters
-  let filtered = applyColumnFilters(effectiveMainRows, effectivePeerRows, columnFilters);
-  filtered = applyGlobalFilter(filtered, globalFilterQuery);
-  filtered = sortRows(filtered, multiSort);
+  // apply column filters to all row levels
+  let filteredMain = applyColumnFilters(effectiveMainRows, effectivePeerRows, columnFilters);
+  let filteredPeer = filterPeerRows(effectivePeerRows, columnFilters, filteredMain);
+  let filteredHourly = filterHourlyRows(effectiveHourlyRows, columnFilters, filteredPeer);
+
+  // apply global filter
+  filteredMain = applyGlobalFilter(filteredMain, globalFilterQuery);
+  filteredMain = sortRows(filteredMain, multiSort);
 
   return {
-    data: filtered,
-    count: filtered.length,
-    effectivePeerRows,
-    effectiveHourlyRows
+    data: filteredMain,
+    count: filteredMain.length,
+    effectivePeerRows: filteredPeer,
+    effectiveHourlyRows: filteredHourly
   };
 }
 
@@ -305,16 +349,20 @@ export async function getProcessedDataAsync() {
     }
   }
 
-  // apply filters and sorting
-  let filtered = applyColumnFilters(effectiveMainRows, effectivePeerRows, columnFilters);
-  filtered = applyGlobalFilter(filtered, globalFilterQuery);
-  filtered = sortRows(filtered, multiSort);
+  // apply column filters to all row levels
+  let filteredMain = applyColumnFilters(effectiveMainRows, effectivePeerRows, columnFilters);
+  let filteredPeer = filterPeerRows(effectivePeerRows, columnFilters, filteredMain);
+  let filteredHourly = filterHourlyRows(effectiveHourlyRows, columnFilters, filteredPeer);
+
+  // apply global filter and sorting
+  filteredMain = applyGlobalFilter(filteredMain, globalFilterQuery);
+  filteredMain = sortRows(filteredMain, multiSort);
 
   return {
-    pagedData: filtered,
-    totalFiltered: filtered.length,
-    peerRows: effectivePeerRows,
-    hourlyRows: effectiveHourlyRows
+    pagedData: filteredMain,
+    totalFiltered: filteredMain.length,
+    peerRows: filteredPeer,
+    hourlyRows: filteredHourly
   };
 }
 
@@ -325,13 +373,19 @@ export async function getProcessedDataAsync() {
 function createEmptyAggregator(keys) {
   return {
     ...keys,
+    // current period
     Min: 0, SCall: 0, TCall: 0,
     sumASR: 0, sumACD: 0, sumPDD: 0, sumATime: 0,
-    cntASR: 0, cntACD: 0, cntPDD: 0, cntATime: 0
+    cntASR: 0, cntACD: 0, cntPDD: 0, cntATime: 0,
+    // Y period (24h ago)
+    YMin: 0, YSCall: 0, YTCall: 0,
+    sumYASR: 0, sumYACD: 0,
+    cntYASR: 0, cntYACD: 0
   };
 }
 
 function addToAggregator(agg, row) {
+  // current period
   const min = parseNumber(row.Min);
   const scall = parseNumber(row.SCall);
   const tcall = parseNumber(row.TCall);
@@ -342,7 +396,7 @@ function addToAggregator(agg, row) {
 
   const weight = !isNaN(scall) && scall > 0 ? scall : 1;
 
-  // use cached metrics list
+  // current period weighted metrics
   for (let i = 0; i < AGG_METRICS.length; i++) {
     const m = AGG_METRICS[i];
     const val = parseNumber(row[m]);
@@ -351,18 +405,60 @@ function addToAggregator(agg, row) {
       agg[`cnt${m}`] += weight;
     }
   }
+
+  // Y period (24h ago)
+  const ymin = parseNumber(row.YMin);
+  const yscall = parseNumber(row.YSCall);
+  const ytcall = parseNumber(row.YTCall);
+
+  if (!isNaN(ymin)) agg.YMin += ymin;
+  if (!isNaN(yscall)) agg.YSCall += yscall;
+  if (!isNaN(ytcall)) agg.YTCall += ytcall;
+
+  const yweight = !isNaN(yscall) && yscall > 0 ? yscall : 1;
+
+  // Y period weighted metrics (ASR, ACD)
+  const yasr = parseNumber(row.YASR);
+  const yacd = parseNumber(row.YACD);
+  if (!isNaN(yasr)) {
+    agg.sumYASR += yasr * yweight;
+    agg.cntYASR += yweight;
+  }
+  if (!isNaN(yacd)) {
+    agg.sumYACD += yacd * yweight;
+    agg.cntYACD += yweight;
+  }
 }
 
 function finalizeAggregator(agg, keyFields) {
+  // current period
+  const Min = agg.Min;
+  const SCall = agg.SCall;
+  const TCall = agg.TCall;
+  const ASR = agg.cntASR > 0 ? agg.sumASR / agg.cntASR : 0;
+  const ACD = agg.cntACD > 0 ? agg.sumACD / agg.cntACD : 0;
+  const PDD = agg.cntPDD > 0 ? agg.sumPDD / agg.cntPDD : 0;
+  const ATime = agg.cntATime > 0 ? agg.sumATime / agg.cntATime : 0;
+
+  // Y period
+  const YMin = agg.YMin;
+  const YSCall = agg.YSCall;
+  const YTCall = agg.YTCall;
+  const YASR = agg.cntYASR > 0 ? agg.sumYASR / agg.cntYASR : 0;
+  const YACD = agg.cntYACD > 0 ? agg.sumYACD / agg.cntYACD : 0;
+
+  // deltas
+  const pct = (now, prev) => Math.abs(prev) > 0 ? ((now - prev) / Math.abs(prev)) * 100 : 0;
+
   return {
     ...keyFields,
-    Min: agg.Min,
-    SCall: agg.SCall,
-    TCall: agg.TCall,
-    ASR: agg.cntASR > 0 ? agg.sumASR / agg.cntASR : 0,
-    ACD: agg.cntACD > 0 ? agg.sumACD / agg.cntACD : 0,
-    PDD: agg.cntPDD > 0 ? agg.sumPDD / agg.cntPDD : 0,
-    ATime: agg.cntATime > 0 ? agg.sumATime / agg.cntATime : 0
+    Min, SCall, TCall, ASR, ACD, PDD, ATime,
+    YMin, YSCall, YTCall, YASR, YACD,
+    Min_delta: pct(Min, YMin),
+    ACD_delta: pct(ACD, YACD),
+    ASR_delta: pct(ASR, YASR),
+    SCall_delta: pct(SCall, YSCall),
+    TCall_delta: pct(TCall, YTCall)
   };
 }
 
@@ -392,18 +488,34 @@ function aggregateMainRows(peerRows) {
     }
 
     const agg = map.get(key);
+    
+    // current period
     agg.Min += pr.Min || 0;
     agg.SCall += pr.SCall || 0;
     agg.TCall += pr.TCall || 0;
 
     const weight = pr.SCall > 0 ? pr.SCall : 1;
-    // use cached metrics list
     for (let i = 0; i < AGG_METRICS.length; i++) {
       const m = AGG_METRICS[i];
       if (pr[m]) {
         agg[`sum${m}`] += pr[m] * weight;
         agg[`cnt${m}`] += weight;
       }
+    }
+
+    // Y period (24h ago)
+    agg.YMin += pr.YMin || 0;
+    agg.YSCall += pr.YSCall || 0;
+    agg.YTCall += pr.YTCall || 0;
+
+    const yweight = pr.YSCall > 0 ? pr.YSCall : 1;
+    if (pr.YASR) {
+      agg.sumYASR += pr.YASR * yweight;
+      agg.cntYASR += yweight;
+    }
+    if (pr.YACD) {
+      agg.sumYACD += pr.YACD * yweight;
+      agg.cntYACD += yweight;
     }
   }
 

@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-from typing import List
+from datetime import datetime
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from app.schemas.metrics import MetricIn, MetricOut, MetricFilter, PaginatedMetricsResponse
 from app.repositories.metrics_repository import MetricsRepository
 from app.services.metrics_service import MetricsService
 from app.schemas.common import StatusResponse
 from app.utils.cache import Cache
-from fastapi import Query
-from datetime import datetime
 
 
 router = APIRouter()
@@ -51,19 +49,19 @@ async def get_metrics_report(
             "reverse": reverse,
         },
     )
-    cached = _cache.get_json(cache_key)
+    cached = await _cache.get_json(cache_key)
     if cached:
         return cached
 
     data = await service.get_full_metrics_report(customer, supplier, destination, time_from, time_to, reverse)
-    _cache.set_json(cache_key, data)
+    await _cache.set_json(cache_key, data)
     return data
 
 
 @router.get("/metrics/page", response_model=PaginatedMetricsResponse)
 async def list_metrics_page(filters: MetricFilter = Depends(), service: MetricsService = Depends(get_service)) -> PaginatedMetricsResponse:
     cache_key = Cache.build_key("api:metrics_page", filters.dict(by_alias=True))
-    cached = _cache.get_json(cache_key)
+    cached = await _cache.get_json(cache_key)
     if cached:
         return PaginatedMetricsResponse(**cached)
 
@@ -80,7 +78,7 @@ async def list_metrics_page(filters: MetricFilter = Depends(), service: MetricsS
         prev_cursor=filters.prev_cursor,
     )
     resp = PaginatedMetricsResponse(items=[MetricOut(**row) for row in rows], next_cursor=next_c, prev_cursor=prev_c)
-    _cache.set_json(cache_key, resp.dict())
+    await _cache.set_json(cache_key, resp.dict())
     return resp
 
 
@@ -88,5 +86,3 @@ async def list_metrics_page(filters: MetricFilter = Depends(), service: MetricsS
 async def delete_metric(id: int, service: MetricsService = Depends(get_service)) -> StatusResponse:
     await service.delete_metric(id)
     return StatusResponse(success=True, message="deleted")
-
-

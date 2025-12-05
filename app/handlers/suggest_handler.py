@@ -26,7 +26,7 @@ class SuggestHandler(tornado.web.RequestHandler):
 
         # Query param name is 'q' (prefix)
         q = self.get_argument("q", default="").strip()
-        log_info(f" SuggestHandler {kind} q='{q}'")
+        log_info(f"SuggestHandler {kind} q='{q}'")
 
         # Build statement: SELECT DISTINCT col FROM table [WHERE col ILIKE q%] ORDER BY col ASC
         stmt = select(func.distinct(col).label("v")).order_by(col.asc())

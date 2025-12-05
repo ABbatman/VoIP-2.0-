@@ -1,10 +1,11 @@
 import tornado.web
 from pydantic import ValidationError
 
-from app.services.metrics_service import MetricsService
+from app.constants import MAIN_HEADERS, PEER_HEADERS, HOURLY_HEADERS, FIVE_MIN_HEADERS
 from app.models.query_params import MetricsQueryParams
-from app.utils.logger import log_info, log_exception, json_response, json_error
 from app.repositories.metrics_repository import MetricsRepository
+from app.services.metrics_service import MetricsService
+from app.utils.logger import log_info, log_exception, json_response, json_error
 
 
 class BaseMetricsHandler(tornado.web.RequestHandler):
@@ -23,14 +24,14 @@ class BaseMetricsHandler(tornado.web.RequestHandler):
     async def get(self):
         """Unified GET handler for all metrics endpoints."""
         try:
-            log_info(f" GET {self.request.path} - Received request.")
+            log_info(f"GET {self.request.path} - Received request")
 
             try:
                 query_args = {key: self.get_argument(key) for key in self.request.arguments}
                 params = MetricsQueryParams.model_validate(query_args)
-                log_info(f" Query parameters validated successfully: {params.model_dump()}")
+                log_info(f"Query params validated: {params.model_dump()}")
             except ValidationError as e:
-                log_info(f" Validation failed: {e.errors()}")
+                log_info(f"Validation failed: {e.errors()}")
                 error_details = e.errors()[0]
                 error_msg = f"Parameter '{error_details['loc'][0]}': {error_details['msg']}"
                 return json_error(self, error_msg, status=400)
@@ -56,7 +57,7 @@ class BaseMetricsHandler(tornado.web.RequestHandler):
             return json_response(self, report_data)
 
         except Exception as e:
-            log_exception(e, f" Error in {self.__class__.__name__}")
+            log_exception(e, f"Error in {self.__class__.__name__}")
             return json_error(self, "An internal server error occurred.", status=500)
 
     @staticmethod
@@ -70,50 +71,16 @@ class BaseMetricsHandler(tornado.web.RequestHandler):
             rows_compact = [[row.get(k) for k in headers] for row in rows]
             return {"headers": headers, "rows": rows_compact}
 
-        # Define headers for each section based on service schema
-        main_headers = [
-            "main", "destination",
-            "Min", "YMin", "Min_delta",
-            "ACD", "YACD", "ACD_delta",
-            "ASR", "YASR", "ASR_delta",
-            "SCall", "YSCall", "SCall_delta",
-            "TCall", "YTCall", "TCall_delta",
-        ]
-        peer_headers = [
-            "main", "peer", "destination",
-            "Min", "YMin", "Min_delta",
-            "ACD", "YACD", "ACD_delta",
-            "ASR", "YASR", "ASR_delta",
-            "SCall", "YSCall", "SCall_delta",
-            "TCall", "YTCall", "TCall_delta",
-        ]
-        hourly_headers = [
-            "main", "peer", "destination", "time",
-            "Min", "YMin", "Min_delta",
-            "ACD", "YACD", "ACD_delta",
-            "ASR", "YASR", "ASR_delta",
-            "SCall", "YSCall", "SCall_delta",
-            "TCall", "YTCall", "TCall_delta",
-        ]
-        five_min_headers = [
-            "main", "peer", "destination", "time", "slot",
-            "Min", "YMin", "Min_delta",
-            "ACD", "YACD", "ACD_delta",
-            "ASR", "YASR", "ASR_delta",
-            "SCall", "YSCall", "SCall_delta",
-            "TCall", "YTCall", "TCall_delta",
-        ]
-
         out = {
             "today_metrics": data.get("today_metrics", {}),
             "yesterday_metrics": data.get("yesterday_metrics", {}),
-            "main": compact_rows(data.get("main_rows", []), main_headers),
-            "peer": compact_rows(data.get("peer_rows", []), peer_headers),
-            "hourly": compact_rows(data.get("hourly_rows", []), hourly_headers),
+            "main": compact_rows(data.get("main_rows", []), MAIN_HEADERS),
+            "peer": compact_rows(data.get("peer_rows", []), PEER_HEADERS),
+            "hourly": compact_rows(data.get("hourly_rows", []), HOURLY_HEADERS),
         }
-        # Include five_min if present to support 5m compact payloads
+        # include five_min if present
         if isinstance(data.get("five_min_rows"), list) and data.get("five_min_rows"):
-            out["five_min"] = compact_rows(data.get("five_min_rows", []), five_min_headers)
+            out["five_min"] = compact_rows(data.get("five_min_rows", []), FIVE_MIN_HEADERS)
         return out
 
 # Backward-compatible alias

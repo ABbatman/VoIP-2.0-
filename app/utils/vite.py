@@ -2,11 +2,10 @@
 
 import json
 import os
-from markupsafe import Markup # We need this again
+from markupsafe import Markup 
 from app import config
 
 class ViteLoader:
-    # ... class code is correct and doesn't need changes ...
     _instance = None
     
     def __init__(self):
@@ -21,7 +20,7 @@ class ViteLoader:
                 with open(manifest_path, 'r') as f:
                     self.manifest = json.load(f)
             except Exception as e:
-                print(f"❌ Could not read Vite manifest at {manifest_path}: {e}")
+                print(f"Could not read Vite manifest at {manifest_path}: {e}")
 
     @classmethod
     def instance(cls):

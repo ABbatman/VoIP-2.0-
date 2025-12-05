@@ -69,30 +69,49 @@ function aggregatePeerRows(hourlyRows) {
     if (!groups.has(key)) {
       groups.set(key, {
         main: row.main, peer: row.peer, destination: row.destination,
-        Min: 0, SCall: 0, TCall: 0, _pddW: 0, _atimeW: 0, _attempts: 0
+        // current period
+        Min: 0, SCall: 0, TCall: 0, _pddW: 0, _atimeW: 0, _attempts: 0,
+        // Y period (24h ago)
+        YMin: 0, YSCall: 0, YTCall: 0, _yasrW: 0, _yacdW: 0, _yAttempts: 0, _ySCalls: 0
       });
     }
 
     const g = groups.get(key);
+    // current period
     g.Min += num(row.Min);
     g.SCall += int(row.SCall);
     g.TCall += int(row.TCall);
     g._pddW += num(row.PDD) * int(row.TCall);
     g._atimeW += num(row.ATime) * int(row.SCall);
     g._attempts += int(row.TCall);
+    // Y period
+    g.YMin += num(row.YMin);
+    g.YSCall += int(row.YSCall);
+    g.YTCall += int(row.YTCall);
+    const ySCall = int(row.YSCall);
+    const yTCall = int(row.YTCall);
+    if (row.YASR != null) { g._yasrW += num(row.YASR) * (ySCall > 0 ? ySCall : 1); g._yAttempts += (ySCall > 0 ? ySCall : 1); }
+    if (row.YACD != null) { g._yacdW += num(row.YACD) * (ySCall > 0 ? ySCall : 1); g._ySCalls += (ySCall > 0 ? ySCall : 1); }
   }
 
+  const pct = (now, prev) => Math.abs(prev) > 0 ? ((now - prev) / Math.abs(prev)) * 100 : 0;
   const result = [];
   for (const g of groups.values()) {
+    const ASR = g.TCall > 0 ? Math.min(100, round1((g.SCall / g.TCall) * 100)) : 0;
+    const ACD = g.SCall > 0 ? round1(g.Min / g.SCall) : 0;
+    const YASR = g._yAttempts > 0 ? round1(g._yasrW / g._yAttempts) : 0;
+    const YACD = g._ySCalls > 0 ? round1(g._yacdW / g._ySCalls) : 0;
     result.push({
       main: g.main, peer: g.peer, destination: g.destination,
-      Min: round1(g.Min),
-      SCall: g.SCall,
-      TCall: g.TCall,
-      ASR: g.TCall > 0 ? Math.min(100, round1((g.SCall / g.TCall) * 100)) : 0,
-      ACD: g.SCall > 0 ? round1(g.Min / g.SCall) : 0,
+      Min: round1(g.Min), SCall: g.SCall, TCall: g.TCall, ASR, ACD,
       PDD: g._attempts > 0 ? round1(g._pddW / g._attempts) : 0,
-      ATime: g.SCall > 0 ? round1(g._atimeW / g.SCall) : 0
+      ATime: g.SCall > 0 ? round1(g._atimeW / g.SCall) : 0,
+      YMin: round1(g.YMin), YSCall: g.YSCall, YTCall: g.YTCall, YASR, YACD,
+      Min_delta: round1(pct(g.Min, g.YMin)),
+      ACD_delta: round1(pct(ACD, YACD)),
+      ASR_delta: round1(pct(ASR, YASR)),
+      SCall_delta: round1(pct(g.SCall, g.YSCall)),
+      TCall_delta: round1(pct(g.TCall, g.YTCall))
     });
   }
 
@@ -112,24 +131,43 @@ function aggregateMainRows(peerRows) {
     const key = `${row.main || ''}|${row.destination || ''}`;
 
     if (!groups.has(key)) {
-      groups.set(key, { main: row.main, destination: row.destination, Min: 0, SCall: 0, TCall: 0 });
+      groups.set(key, {
+        main: row.main, destination: row.destination,
+        Min: 0, SCall: 0, TCall: 0,
+        YMin: 0, YSCall: 0, YTCall: 0, _yasrW: 0, _yacdW: 0, _yAttempts: 0, _ySCalls: 0
+      });
     }
 
     const g = groups.get(key);
+    // current period
     g.Min += num(row.Min);
     g.SCall += int(row.SCall);
     g.TCall += int(row.TCall);
+    // Y period
+    g.YMin += num(row.YMin);
+    g.YSCall += int(row.YSCall);
+    g.YTCall += int(row.YTCall);
+    const ySCall = int(row.YSCall);
+    if (row.YASR != null) { g._yasrW += num(row.YASR) * (ySCall > 0 ? ySCall : 1); g._yAttempts += (ySCall > 0 ? ySCall : 1); }
+    if (row.YACD != null) { g._yacdW += num(row.YACD) * (ySCall > 0 ? ySCall : 1); g._ySCalls += (ySCall > 0 ? ySCall : 1); }
   }
 
+  const pct = (now, prev) => Math.abs(prev) > 0 ? ((now - prev) / Math.abs(prev)) * 100 : 0;
   const result = [];
   for (const g of groups.values()) {
+    const ASR = g.TCall > 0 ? Math.min(100, round1((g.SCall / g.TCall) * 100)) : 0;
+    const ACD = g.SCall > 0 ? round1(g.Min / g.SCall) : 0;
+    const YASR = g._yAttempts > 0 ? round1(g._yasrW / g._yAttempts) : 0;
+    const YACD = g._ySCalls > 0 ? round1(g._yacdW / g._ySCalls) : 0;
     result.push({
       main: g.main, destination: g.destination,
-      Min: round1(g.Min),
-      SCall: g.SCall,
-      TCall: g.TCall,
-      ASR: g.TCall > 0 ? Math.min(100, round1((g.SCall / g.TCall) * 100)) : 0,
-      ACD: g.SCall > 0 ? round1(g.Min / g.SCall) : 0
+      Min: round1(g.Min), SCall: g.SCall, TCall: g.TCall, ASR, ACD,
+      YMin: round1(g.YMin), YSCall: g.YSCall, YTCall: g.YTCall, YASR, YACD,
+      Min_delta: round1(pct(g.Min, g.YMin)),
+      ACD_delta: round1(pct(ACD, YACD)),
+      ASR_delta: round1(pct(ASR, YASR)),
+      SCall_delta: round1(pct(g.SCall, g.YSCall)),
+      TCall_delta: round1(pct(g.TCall, g.YTCall))
     });
   }
 

@@ -18,10 +18,8 @@ const RENDER_OPTIONS = { debounceMs: 0, cooldownMs: 0 };
 
 async function getTableData() {
   const app = await import('../../data/tableProcessor.js');
-  const { getMetricsData } = await import('../../state/appState.js');
-  const data = getMetricsData();
-  const { pagedData } = app.getProcessedData();
-  return { pagedData, peerRows: data?.peer_rows || [], hourlyRows: data?.hourly_rows || [] };
+  const { pagedData, peerRows, hourlyRows } = app.getProcessedData();
+  return { pagedData, peerRows: peerRows || [], hourlyRows: hourlyRows || [] };
 }
 
 async function renderStandardTable() {

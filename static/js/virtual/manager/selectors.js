@@ -348,20 +348,13 @@ export function attachSelectors(vm) {
     }
     let base = uniqueByKey(peerRows, peerKeyOf);
 
-    // if main is open, skip filters
-    if (mainOpen) {
-      const result = uniqueByKey(vm.applySortingToPeerRows(base), peerKeyOf);
-      vm._peerRowsCache.set(cacheKey, result);
-      return result;
-    }
-
-    // apply filters
+    // always apply filters (even when main is open)
     try {
       const { columnFilters, globalFilterQuery } = getState();
       const globalFilter = (globalFilterQuery || '').trim().toLowerCase();
       const filtered = filterRows(base, columnFilters || {}, globalFilter);
       const result = uniqueByKey(vm.applySortingToPeerRows(filtered), peerKeyOf);
-      vm._peerRowsCache.set(cacheKey, result);
+      if (!mainOpen) vm._peerRowsCache.set(cacheKey, result);
       return result;
     } catch (e) {
       logError(ErrorCategory.TABLE, 'selectors:peerFilter', e);
@@ -395,20 +388,13 @@ export function attachSelectors(vm) {
     const keyFn = r => hourKeyOf(r, timeKey);
     let base = uniqueByKey(hourlyRows, keyFn);
 
-    // if peer is open, skip filters
-    if (peerOpen) {
-      const result = uniqueByKey(vm.applySortingToHourlyRows(base), keyFn);
-      vm._hourlyRowsCache.set(cacheKey, result);
-      return result;
-    }
-
-    // apply filters
+    // always apply filters (even when peer is open)
     try {
       const { columnFilters, globalFilterQuery } = getState();
       const globalFilter = (globalFilterQuery || '').trim().toLowerCase();
       const filtered = filterRows(base, columnFilters || {}, globalFilter);
       const result = uniqueByKey(vm.applySortingToHourlyRows(filtered), keyFn);
-      vm._hourlyRowsCache.set(cacheKey, result);
+      if (!peerOpen) vm._hourlyRowsCache.set(cacheKey, result);
       return result;
     } catch (e) {
       logError(ErrorCategory.TABLE, 'selectors:hourlyFilter', e);

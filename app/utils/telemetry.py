@@ -28,5 +28,3 @@ def init_otel(app=None, engine=None, service_name: str = "metrics-service"):
         SQLAlchemyInstrumentor().instrument(engine=engine.sync_engine)
 
     return trace.get_tracer(service_name)
-
-

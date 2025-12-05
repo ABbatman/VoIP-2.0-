@@ -131,10 +131,13 @@ function hasUrlState() {
 
 function initDefaultDateRange(isStateLoaded) {
   if (isStateLoaded) return;
-  if (!areAllDateInputsEmpty()) return;
   if (hasUrlState()) return;
 
-  setDefaultDateRange();
+  // delay to ensure flatpickr is ready
+  setTimeout(() => {
+    if (!areAllDateInputsEmpty()) return;
+    setDefaultDateRange();
+  }, 50);
 }
 
 // ─────────────────────────────────────────────────────────────

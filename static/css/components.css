@@ -25,7 +25,16 @@
   background: var(--ds-color-bg, #ffffff);
   white-space: nowrap;
   user-select: none;
-  transition: all 0.2s ease-in-out;
+  contain: layout style;
+  will-change: transform;
+}
+
+/* stable focus outline for floating footer inputs */
+.floating-table-footer input:focus,
+.floating-table-footer input.is-focused {
+  outline: 2px solid #007bff !important;
+  outline-offset: -1px;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
 }
 
 .btn:hover {

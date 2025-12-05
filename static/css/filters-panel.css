@@ -7,17 +7,15 @@
  * ===================================================================
  */
 .filters-panel {
+  position: relative;
+  z-index: 150; /* above floating footer (z-index: 100) */
   display: flex;
   align-items: flex-start;
-  /* Allow multi-row top alignment */
   gap: 8px;
-  /* Space between items */
   padding: 10px;
   background-color: #f8f9fa;
   border-radius: 8px;
   margin-bottom: 20px;
-
-  /* Allow wrapping to create a true second row */
   flex-wrap: wrap;
 }
 
@@ -212,32 +210,91 @@
 /*
  * ===================================================================
  *  BLOCK: .time-popup (for N, Z, +, - buttons)
- *  This is a separate, globally positioned component.
+ *  Modern minimalist time control buttons
  * ===================================================================
  */
 .time-popup {
   display: none;
-  /* Hidden by default, shown by JS */
   position: absolute;
-  background-color: #f0f0f0;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  padding: 4px;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  padding: 6px;
+  box-shadow: 
+    0 4px 16px rgba(0, 0, 0, 0.08),
+    0 1px 3px rgba(0, 0, 0, 0.04);
   z-index: 1000;
-  /* High z-index to appear on top of other elements */
+  gap: 4px;
+}
+
+.time-popup.is-visible {
+  display: flex;
 }
 
 .time-popup__button {
-  min-width: 30px;
-  padding: 5px 8px;
-  margin: 0 2px;
-  border: 1px solid #aaa;
-  background-color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   cursor: pointer;
-  border-radius: 3px;
+  border-radius: 8px;
+  transition: all 0.15s ease;
 }
 
 .time-popup__button:hover {
-  background-color: #e9e9e9;
+  background: #f1f5f9;
+  color: #334155;
+  transform: translateY(-1px);
+}
+
+.time-popup__button:active {
+  transform: translateY(0);
+  background: #e2e8f0;
+}
+
+/* + and - buttons: subtle style */
+.time-popup__button[data-action="hour-plus"],
+.time-popup__button[data-action="hour-minus"] {
+  font-size: 18px;
+  font-weight: 400;
+}
+
+.time-popup__button[data-action="hour-plus"]:hover {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.time-popup__button[data-action="hour-minus"]:hover {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+/* N (Now) button: accent blue */
+.time-popup__button[data-action="now"] {
+  color: #3b82f6;
+}
+
+.time-popup__button[data-action="now"]:hover {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+/* Z (Zero) button: neutral */
+.time-popup__button[data-action="zero"] {
+  color: #8b5cf6;
+}
+
+.time-popup__button[data-action="zero"]:hover {
+  background: #ede9fe;
+  color: #6d28d9;
 }

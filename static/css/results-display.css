@@ -1,16 +1,10 @@
 /* static/css/results-display.css */
+/* Table display and data visualization styles */
 
-/*
- * ===================================================================
- *  BLOCK: .results-display
- * ===================================================================
- */
+/* ===================================================================
+   SUMMARY DISPLAY
+   =================================================================== */
 
-/*
- * ===================================================================
- *  BLOCK: .summary-display
- * ===================================================================
- */
 .summary-display {
   display: flex; /* visible by default; JS toggles .is-hidden */
   flex-wrap: wrap;
@@ -28,11 +22,7 @@
   font-family: monospace;
 }
 
-/*
- * ===================================================================
- *  ELEMENT: .results-display__controls
- * ===================================================================
- */
+/* controls bar */
 .results-display__controls {
   display: none;
   justify-content: space-between;
@@ -41,7 +31,6 @@
   padding: 5px;
 }
 
-/* Sub-elements for controls */
 .results-display__pagination {
   display: flex;
   align-items: center;
@@ -68,22 +57,19 @@
   width: 250px;
 }
 
-/*
- * ===================================================================
- *  ELEMENT: .results-display__table-wrapper
- *  This provides HORIZONTAL scrolling only. The entire page handles vertical scroll.
- * ===================================================================
- */
+/* ===================================================================
+   TABLE WRAPPER - horizontal scroll container
+   =================================================================== */
+
 .results-display__table-wrapper {
   overflow-x: auto;
   border: 1px solid #ddd;
 }
 
-/*
- * ===================================================================
- *  ELEMENT: .results-display__table
- * ===================================================================
- */
+/* ===================================================================
+   TABLE BASE
+   =================================================================== */
+
 .results-display__table {
   border-collapse: collapse;
   width: 100%;
@@ -93,22 +79,12 @@
   background-color: #ffffff; /* solid background for contrast */
 }
 
-/*
- * ===================================================================
- *  ELEMENT: .results-display__table th
- *  --- MODIFIED: This block is now empty. Styles are moved to table-header.css ---
- * ===================================================================
- */
+/* ===================================================================
+   TABLE CELLS
+   =================================================================== */
 
-/*
- * ===================================================================
- *  Base styles for all table cells (th and td)
- * ===================================================================
- */
 .results-display__table th,
 .results-display__table td {
-  /* --- MODIFIED: The common border rule is removed to apply it specifically later --- */
-  /* border: 1px solid #ccc; */
   color: #212529; /* ensure readable text in all cells */
   background-color: #ffffff; /* keep solid background for cells */
   padding: 6px 10px;
@@ -155,14 +131,14 @@
   flex: 0 0 auto;
 }
 
-/* Prevent overlap in peer column: clip and ellipsis */
+/* peer column overflow */
 .results-display__table td.peer-cell {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* Prevent date text from spilling into peer: make it flexible and clip */
+/* date/time flex layout */
 .results-display__table td.hour-datetime .date-part {
   flex: 1 1 auto;
   min-width: 0;
@@ -206,29 +182,45 @@
   }
 }
 
-/* Make metric columns (from 4th onward) consume all remaining width */
+/* Metric columns (from 4th onward) - compact numeric styling */
 .results-display__table th:nth-child(n+4),
 .results-display__table td:nth-child(n+4) {
-  width: calc(60% / 15);
-  min-width: 0;
+  width: 75px;
+  min-width: 60px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  padding: 6px 8px;
 }
 
-/* Ensure the first three columns consume exactly 35% (10% + 10% + 15%) */
+/* Text columns (1-3): flexible width with ellipsis */
 .results-display__table th:nth-child(1),
 .results-display__table td:nth-child(1) {
   width: 15%;
-  min-width: 200px;
-  /* ensure date+time fit in hourly rows */
+  min-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .results-display__table th:nth-child(2),
 .results-display__table td:nth-child(2) {
-  width: 10%;
+  width: 12%;
+  min-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .results-display__table th:nth-child(3),
 .results-display__table td:nth-child(3) {
-  width: 15%;
+  width: 13%;
+  min-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Add vertical separators only between metric columns (from 4th) */
@@ -237,10 +229,9 @@
   border-left: 1px solid #e2e8f0;
 }
 
-/* --- NEW: Add a specific border rule for data cells (td) only --- */
+/* data cell borders reset */
 .results-display__table td {
   border: none;
-  /* no per-cell borders */
 }
 
 /* Shared horizontal separator for each data row */
@@ -261,11 +252,11 @@
 }
 
 
-/* 
- * ===================================================================
- *  NEW FEATURE: Row Hover Highlight
- * ===================================================================
- */
+/* ===================================================================
+   ROW STATES
+   =================================================================== */
+
+/* hover highlight */
 .results-display__table tbody tr:hover {
   background-color: #e9ecef;
 }
@@ -274,16 +265,12 @@
   background-color: inherit;
 }
 
-/* 
- * ===================================================================
- *  NEW FEATURE: Selected Row Highlight (on click)
- * ===================================================================
- */
+/* selected row highlight */
 .results-display__table tr.row-selected td {
   background-color: #dbeafe;
 }
 
-/* ... The rest of the file remains unchanged and correct ... */
+/* column 1-2 border adjustments */
 .results-display__table th:nth-child(1),
 .results-display__table td:nth-child(1) {
   border-right: none;
@@ -361,22 +348,6 @@
   width: auto;
 }
 
-/* Column width distribution for first 3 columns */
-.results-display__table th:nth-child(1),
-.results-display__table td:nth-child(1) {
-  width: 15%;
-}
-
-.results-display__table th:nth-child(2),
-.results-display__table td:nth-child(2) {
-  width: 10%;
-}
-
-.results-display__table th:nth-child(3),
-.results-display__table td:nth-child(3) {
-  width: 15%;
-}
-
 .metric-cell {
   padding: 4px 6px;
   font-size: 13px;
@@ -415,7 +386,6 @@
 .results-display__filters-actions .scroll-top-btn {
   padding: 0 10px !important;
   height: 24px !important;
-  /* doubled */
   line-height: 24px !important;
   font-size: 12px;
   background-color: #28a745 !important;
@@ -429,20 +399,15 @@
   color: #333 !important;
 }
 
-/* Scroll to top button in footer filter */
+/* scroll-top button in footer */
 .results-display__column-filters .scroll-top-btn {
   padding: 0 10px !important;
-  /* slightly wider */
   height: 24px !important;
-  /* doubled */
   line-height: 24px !important;
   font-size: 12px;
   align-self: flex-start;
-  /* avoid stretching full width */
   width: 32%;
-  /* doubled from 16% */
   background-color: #28a745 !important;
-  /* match Summary Table */
   border-color: #28a745 !important;
   color: #fff !important;
 }
@@ -456,7 +421,6 @@
 
 .results-display__column-filters .scroll-top-btn:hover {
   background-color: #e0e0e0 !important;
-  /* gray on hover */
   border-color: #bbb !important;
   color: #333 !important;
 }
@@ -468,11 +432,8 @@
   border: 1px solid #ddd;
   border-radius: 4px;
   font-size: inherit;
-  /* match table font size */
   font-family: inherit;
-  /* match table font family */
   line-height: inherit;
-  /* match table line-height */
 }
 
 .results-display__column-filters input::placeholder {
@@ -480,15 +441,16 @@
   font-style: italic;
 }
 
-/* --- NEW: Aggregates row styles --- */
+/* aggregates row */
 .results-display__aggregates td {
   background-color: #f8f9fa;
-  /* match filters footer */
   font-weight: 600;
   font-size: 13px;
 }
 
 .sort-arrow {
+  flex: 0 0 auto;
+  min-width: 16px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -514,60 +476,31 @@
   margin: auto;
 }
 
-/* Make metric headers (from 4th column) slightly smaller so text and sort icon fit */
-#virtual-scroll-container thead th:nth-child(n+4) .th-label {
+/* metric header sizing (virtual + floating) */
+#virtual-scroll-container thead th:nth-child(n+4) .th-label,
+.floating-table-header .results-display__table thead th:nth-child(n+4) .th-label {
   font-size: 0.8em;
-  /* one more step smaller */
-}
-
-#virtual-scroll-container thead th:nth-child(n+4) .sort-arrow {
-  width: 10px;
-  height: 10px;
-  min-width: 10px;
-}
-
-#virtual-scroll-container thead th:nth-child(n+4) .sort-arrow svg {
-  width: 10px;
-  height: 10px;
-}
-
-/* Force metric headers to a single line without ellipsis; keep both text and icon visible */
-#virtual-scroll-container thead th:nth-child(n+4) .th-left-part {
-  white-space: nowrap;
-  overflow: visible;
-}
-
-#virtual-scroll-container thead th:nth-child(n+4) .th-label {
   white-space: nowrap;
   text-overflow: clip;
   overflow: visible;
 }
 
-/* Apply same sizing to floating header */
-.floating-table-header .results-display__table thead th:nth-child(n+4) .th-label {
-  font-size: 0.8em;
-}
-
+#virtual-scroll-container thead th:nth-child(n+4) .sort-arrow,
 .floating-table-header .results-display__table thead th:nth-child(n+4) .sort-arrow {
   width: 10px;
   height: 10px;
   min-width: 10px;
 }
 
+#virtual-scroll-container thead th:nth-child(n+4) .sort-arrow svg,
 .floating-table-header .results-display__table thead th:nth-child(n+4) .sort-arrow svg {
   width: 10px;
   height: 10px;
 }
 
-/* Single line in floating header as well */
+#virtual-scroll-container thead th:nth-child(n+4) .th-left-part,
 .floating-table-header .results-display__table thead th:nth-child(n+4) .th-left-part {
   white-space: nowrap;
-  overflow: visible;
-}
-
-.floating-table-header .results-display__table thead th:nth-child(n+4) .th-label {
-  white-space: nowrap;
-  text-overflow: clip;
   overflow: visible;
 }
 
@@ -617,7 +550,7 @@
   cursor: help;
 }
 
-/* Unified tooltip style for table cells */
+/* tooltips */
 .pdd-atime-tooltip,
 .ellipsis-tooltip {
   position: fixed;
@@ -637,7 +570,7 @@
 .pdd-atime-tooltip.is-hidden,
 .ellipsis-tooltip.is-hidden { display: none !important; }
 
-/* Thick border after destination column (3rd) and at start of each metric group */
+/* metric group borders */
 .results-display__table th:nth-child(3),
 .results-display__table td:nth-child(3) {
   border-right: 2px solid #a9a9a9 !important;
@@ -685,34 +618,20 @@
   text-overflow: ellipsis;
 }
 
-/* Make label truncate to leave room for Y toggle */
 .th-left-part .th-label {
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* On small screens, reserve space for Y toggle */
+/* responsive adjustments */
 @media (max-width: 768px) {
   .th-left-part {
-    max-width: calc(100% - 24px);
+    max-width: calc(100% - 22px);
   }
 
   .y-column-toggle-btn svg {
     width: 14px;
     height: 14px;
-  }
-}
-
-/* Make sort arrow shrinkable and not push content on narrow screens */
-.sort-arrow {
-  flex: 0 0 auto;
-  min-width: 16px;
-}
-
-@media (max-width: 768px) {
-  .th-left-part {
-    max-width: calc(100% - 22px);
-    /* keep space for arrow */
   }
 }
 
@@ -741,32 +660,42 @@
   display: block;
 }
 
-@media (max-width: 768px) {
-  .y-column-toggle-btn svg {
-    width: 14px;
-    height: 14px;
-  }
-}
+/* ===================================================================
+   STICKY/FLOATING ELEMENTS
+   =================================================================== */
 
-/* Sticky header for sorting area (Customer/Supplier/Destination and Y-toggle) */
+/* sticky header */
 #virtual-scroll-container thead {
-  background: #fff;
+  background: #eef2f7;
 }
 
 #virtual-scroll-container thead th {
   position: sticky;
   top: 0;
   z-index: 50;
-  background: #fff;
+  /* background inherited from table-header.css */
 }
 
-/* Ensure floating cloned header uses the same header theme */
-.floating-table-header .results-display__table thead th {
+/* floating header - match original header exactly */
+.floating-table-header {
+  overflow: hidden;
+}
+
+.floating-table-header .results-display__table thead {
   background: #eef2f7;
-  /* match table-header.css */
+  border-bottom: 2px solid #c8d1dc;
 }
 
-/* Floating footer visual parity */
+.floating-table-header .results-display__table th {
+  background-color: #eef2f7;
+  text-transform: uppercase;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: #000;
+}
+
+/* floating footer */
 .floating-table-footer .results-display__table tfoot td {
   background: #f8f9fa;
 }
@@ -775,12 +704,23 @@
   background-color: #e9ecef;
 }
 
-/* Reduce width of METRIC filters (columns 4+) in footer to 75% */
+/* footer filter inputs width */
 .results-display__table tfoot td:nth-child(n+4) input {
-  width: 75%;
+  width: 90%;
+  min-width: 60px;
 }
 
-/* Same reduction for floating footer */
 .floating-table-footer .results-display__table tfoot td:nth-child(n+4) input {
-  width: 75%;
+  width: 90%;
+  min-width: 60px;
+}
+
+/* floating header/footer - inherit metric column styling */
+.floating-table-header .results-display__table th:nth-child(n+4),
+.floating-table-footer .results-display__table td:nth-child(n+4) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

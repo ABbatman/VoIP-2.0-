@@ -20,5 +20,3 @@ metrics = Table(
     Index('ix_metrics_time_customer_supplier', 'time', 'customer', 'supplier'),
     schema='public',
 )
-
-

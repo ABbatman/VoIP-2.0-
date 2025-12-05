@@ -39,6 +39,8 @@ metadata: MetaData = MetaData()
 
 # Create the async engine using asyncpg
 # Echo is tied to DEBUG for easy SQL troubleshooting in dev.
+if config.DATABASE_URL is None:
+    raise RuntimeError("DATABASE_URL is not configured")
 ASYNC_DATABASE_URL: str = _to_asyncpg_url(config.DATABASE_URL)
 async_engine: AsyncEngine = create_async_engine(
     ASYNC_DATABASE_URL,
@@ -56,11 +58,8 @@ AsyncSessionFactory = async_sessionmaker(
     autoflush=False,
 )
 
-
 @asynccontextmanager
 async def get_session() -> AsyncIterator[AsyncSession]:
     """Yield a SQLAlchemy AsyncSession bound to the async engine."""
     async with AsyncSessionFactory() as session:
         yield session
-
-

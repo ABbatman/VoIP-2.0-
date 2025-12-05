@@ -400,20 +400,28 @@ function restoreScrollState(state) {
 
   const restore = () => {
     try {
-      if (container && containerY != null) container.scrollTop = containerY;
-      if (container && containerX != null) container.scrollLeft = containerX;
-      window.scrollTo(windowX, windowY);
+      if (container && containerY != null) {
+        container.scrollTop = containerY;
+        container.scrollLeft = containerX ?? 0;
+      }
+      window.scrollTo({ left: windowX, top: windowY, behavior: 'instant' });
     } catch {}
+  };
+
+  const finalRestore = () => {
+    restore();
     enableScrollAnchoring(container);
   };
+
+  // immediate restore
+  restore();
 
   // multiple restore attempts for reliability
   requestAnimationFrame(() => {
     restore();
-    requestAnimationFrame(restore);
+    requestAnimationFrame(finalRestore);
   });
-  Promise.resolve().then(restore);
-  setTimeout(restore, SCROLL_RESTORE_DELAY);
+  setTimeout(finalRestore, SCROLL_RESTORE_DELAY);
 }
 
 export function connectFilterEventHandlers() {

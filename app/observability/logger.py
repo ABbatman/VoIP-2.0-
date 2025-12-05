@@ -125,4 +125,3 @@ def configure_logging(config_module) -> None:
 
     # Light startup smoke logs
     logging.getLogger("startup").info("logging configured", extra={})
-

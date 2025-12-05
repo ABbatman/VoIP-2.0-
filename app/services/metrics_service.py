@@ -28,7 +28,7 @@ class MetricsService:
         granularity: str = "both",
     ) -> Dict[str, Any]:
         """Compute totals, grouped and hourly metrics with YoY (yesterday) deltas."""
-        log_info(" Computing full metrics report...")
+        log_info("Computing full metrics report")
 
         rows_today, rows_yesterday = await self._fetch_comparison_data(
             customer, supplier, destination, time_from, time_to
@@ -211,3 +211,24 @@ class MetricsService:
             enriched_rows.append(combined)
 
         return enriched_rows
+
+    # --- CRUD proxy methods for FastAPI router ---
+
+    async def insert_metric(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Insert a new metric record."""
+        new_id = await self._repo.insert_metric(data)
+        return {**data, "id": new_id}
+
+    async def delete_metric(self, metric_id: int) -> None:
+        """Delete metric by id."""
+        await self._repo.delete_metric(metric_id)
+
+    async def list_metrics_page(
+        self,
+        filters: Dict[str, Any],
+        limit: int,
+        next_cursor: Optional[str],
+        prev_cursor: Optional[str],
+    ) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[str]]:
+        """Paginated metrics list."""
+        return await self._repo.get_metrics_page(filters, limit, next_cursor, prev_cursor)

@@ -1,6 +1,6 @@
 # app/models/query_params.py
 
-# --- MODIFIED: Import model_validator for Pydantic V2 style validation ---
+# Pydantic V2 model for query params validation
 from pydantic import BaseModel, Field, model_validator
 from typing import Optional
 from datetime import datetime
@@ -19,9 +19,7 @@ class MetricsQueryParams(BaseModel):
     reverse: bool = False
     granularity: str = "both"  # allowed: '5m' | '1h' | 'both'
 
-    # --- MODIFIED: Using Pydantic V2's model_validator ---
-    # This is a more modern and robust way to validate fields that depend on each other.
-    # It runs after individual field validation is complete.
+    # cross-field validation
     @model_validator(mode='after')
     def check_dates(self) -> 'MetricsQueryParams':
         """
@@ -43,7 +41,7 @@ class MetricsQueryParams(BaseModel):
             self.granularity = "both"
         return self
 
-    # --- MODIFIED: Using 'from_attributes' instead of 'orm_mode' for Pydantic V2 ---
+    # Pydantic V2 config
     class Config:
         # This allows the model to be populated from object attributes as well as dictionaries.
         from_attributes = True

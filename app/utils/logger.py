@@ -46,7 +46,7 @@ def log_info(message):
 
 def log_exception(e: Exception, context: str = ""):
     # print("💥 log_exception:", context, e) # Also can be commented out
-    error_logger.error(f"❌ Exception in {context}:\n{traceback.format_exc()}")
+    error_logger.error(f"Exception in {context}:\n{traceback.format_exc()}")
 
 def json_response(handler, data: dict, status: int = 200):
     log_info(f"{handler.request.method} {handler.request.path} → {status}")
@@ -67,7 +67,7 @@ def monitor_loggers():
             error_count = len(error_logger.handlers)
             # This check is good for debugging but can be removed in production
             if access_count == 0 or error_count == 0:
-                print(f"❌ Log handlers might have dropped! Access: {access_count}, Error: {error_count}")
+                print(f"Log handlers dropped! Access: {access_count}, Error: {error_count}")
             time.sleep(60)
     
     # Run monitoring in a daemon thread so it doesn't block app shutdown

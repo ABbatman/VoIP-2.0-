@@ -1,7 +1,7 @@
 # app/db/db.py
 
 import asyncpg
-from contextlib import asynccontextmanager # <-- НОВОЕ: Импортируем правильный декоратор
+from contextlib import asynccontextmanager
 from app import config
 from app.utils.logger import log_info
 
@@ -20,9 +20,9 @@ async def init_db_pool():
                 min_size=5,
                 max_size=20
             )
-            log_info("✅ Successfully created database connection pool.")
+            log_info("Database connection pool created")
         except Exception as e:
-            log_info(f"❌ Failed to create database connection pool: {e}")
+            log_info(f"Failed to create database connection pool: {e}")
             raise e
 
 @asynccontextmanager

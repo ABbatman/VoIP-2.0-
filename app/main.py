@@ -1,15 +1,16 @@
 # app/main.py
 
+import logging
 import tornado.ioloop
 import tornado.web
 import asyncio
-import signal # NEW: Import for handling shutdown signals
+import signal
 
 import app.config as config
 from app.routes.api_routes import make_app
 from app.utils.logger import log_info, monitor_loggers
 from app.observability.logger import configure_logging
-from app.observability.tracing import init_tracing  # // initialize otel tracer
+from app.observability.tracing import init_tracing
 
 from app.db.db import init_db_pool, get_db_pool
 
@@ -42,18 +43,16 @@ async def main():
     # 0. Configure structured JSON logging as early as possible
     try:
         configure_logging(config)
-    except Exception:
-        # Fallbacks are handled inside configure_logging
-        pass
+    except Exception as e:
+        # Log but don't crash - basic logging still works
+        logging.warning(f"Failed to configure structured logging: {e}")
 
-    # 0.1 Initialize OpenTelemetry tracing (idempotent).
-    #     Uses Console exporter by default. If OTLP exporter is available and
-    #     configured via standard env vars, it will be used automatically.
+    # 0.1 Initialize OpenTelemetry tracing (idempotent)
     try:
         init_tracing(config)
-    except Exception:
-        # Safe no-op if OTEL SDK or instrumentations are not installed.
-        pass
+    except Exception as e:
+        # Safe no-op if OTEL SDK not installed
+        logging.debug(f"OpenTelemetry not initialized: {e}")
 
     # 1. Initialize the database connection pool first.
     await init_db_pool()

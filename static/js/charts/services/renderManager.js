@@ -8,6 +8,7 @@ import { parseUtc } from '../../utils/date.js';
 import { ensureFixedChartHeight } from './layout.js';
 import { getChartsCurrentInterval, setChartsCurrentInterval } from '../../state/runtimeFlags.js';
 import { logError, ErrorCategory } from '../../utils/errorLogger.js';
+import { showLoadingOverlay, hideLoadingOverlay } from '../../dom/ui-feedback.js';
 
 // ─────────────────────────────────────────────────────────────
 // Constants
@@ -115,6 +116,8 @@ export async function render(type) {
   initOnce();
   currentType = type || currentType || DEFAULT_TYPE;
 
+  showLoadingOverlay();
+
   try {
     await ensureDefaults();
   } catch (e) {
@@ -123,46 +126,56 @@ export async function render(type) {
 
   const host = getHost();
   const mount = getMount();
-  if (!host || !mount) return;
+  if (!host || !mount) {
+    hideLoadingOverlay();
+    return;
+  }
 
   const renderer = getRenderer(currentType) || getRenderer(DEFAULT_TYPE);
-  if (!renderer) return;
+  if (!renderer) {
+    hideLoadingOverlay();
+    return;
+  }
 
-  // get time range
-  const { from, to } = getFilters();
-  const fromTs = parseUtc(from);
-  const toTs = parseUtc(to);
+  try {
+    // get time range
+    const { from, to } = getFilters();
+    const fromTs = parseUtc(from);
+    const toTs = parseUtc(to);
 
-  // get interval and step
-  const interval = getChartsCurrentInterval() || DEFAULT_INTERVAL;
-  const stepMs = intervalToStep(interval);
+    // get interval and step
+    const interval = getChartsCurrentInterval() || DEFAULT_INTERVAL;
+    const stepMs = intervalToStep(interval);
 
-  // get data
-  const metricsData = getMetricsData() || {};
-  const rows = getDataRows(metricsData);
+    // get data
+    const metricsData = getMetricsData() || {};
+    const rows = getDataRows(metricsData);
 
-  // compute layout
-  const height = ensureFixedChartHeight(host, mount);
+    // compute layout
+    const height = ensureFixedChartHeight(host, mount);
 
-  // shape payload
-  const { data, options } = shapeChartPayload(rows, {
-    type: currentType,
-    fromTs,
-    toTs,
-    stepMs,
-    height
-  });
+    // shape payload
+    const { data, options } = shapeChartPayload(rows, {
+      type: currentType,
+      fromTs,
+      toTs,
+      stepMs,
+      height
+    });
 
-  // build final options
-  const renderOptions = buildRenderOptions({
-    options,
-    stepMs,
-    interval,
-    metricsData,
-    rows
-  });
+    // build final options
+    const renderOptions = buildRenderOptions({
+      options,
+      stepMs,
+      interval,
+      metricsData,
+      rows
+    });
 
-  await renderer(mount, data, renderOptions);
+    await renderer(mount, data, renderOptions);
+  } finally {
+    hideLoadingOverlay();
+  }
 }
 
 // init on module load

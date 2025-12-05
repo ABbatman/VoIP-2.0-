@@ -12,7 +12,11 @@ router = APIRouter()
 
 
 @router.get("/suggest/{kind}")
-async def suggest(kind: str, q: str = Query("", alias="q")) -> Dict[str, List[str]]:
+async def suggest(
+    kind: str,
+    q: str = Query("", alias="q"),
+    limit: int = Query(100, ge=1, le=500),
+) -> Dict[str, List[str]]:
     """Return unique values for customer/supplier/destination with optional prefix filter.
     Response shape matches frontend expectations: { "items": ["..."] }
     """
@@ -26,7 +30,7 @@ async def suggest(kind: str, q: str = Query("", alias="q")) -> Dict[str, List[st
     if col is None:
         raise HTTPException(status_code=400, detail="Unsupported kind")
 
-    stmt = select(func.distinct(col)).order_by(col.asc())
+    stmt = select(func.distinct(col)).order_by(col.asc()).limit(limit)
     if q:
         stmt = stmt.where(col.ilike(f"{q}%"))
 

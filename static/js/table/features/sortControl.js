@@ -75,11 +75,9 @@ async function renderStandardTable() {
 
   const mod = await import('../../dom/table.js');
   const app = await import('../../data/tableProcessor.js');
-  const { getMetricsData } = await import('../../state/appState.js');
 
-  const data = getMetricsData();
-  const { pagedData } = app.getProcessedData();
-  mod.renderGroupedTable(pagedData || [], data?.peer_rows || [], data?.hourly_rows || []);
+  const { pagedData, peerRows, hourlyRows } = app.getProcessedData();
+  mod.renderGroupedTable(pagedData || [], peerRows || [], hourlyRows || []);
 }
 
 // ─────────────────────────────────────────────────────────────

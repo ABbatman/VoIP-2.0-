@@ -10,10 +10,10 @@ def calculate_metrics(rows):
     Calculate total metrics from raw rows.
     Uses centralized formulas from app/utils/formulas.py.
     """
-    log_info("📊 Starting metric calculation...")
+    log_info("Starting metric calculation")
 
     if not rows:
-        log_info("📭 No data received for metric calculation.")
+        log_info("No data for metric calculation")
         return {
             "Min": 0.0,
             "ACD": 0.0,
@@ -26,7 +26,7 @@ def calculate_metrics(rows):
             "UCall": 0
         }
 
-    log_info(f"📥 Received {len(rows)} rows for processing")
+    log_info(f"Received {len(rows)} rows for processing")
 
     total_seconds = 0
     total_pdd = 0
@@ -55,8 +55,8 @@ def calculate_metrics(rows):
         tcall += row.get("start_attempt", 0) or 0
         ucall += row.get("start_uniq_attempt", 0) or 0
 
-    log_info(f"⏱ Total seconds: {total_seconds}, Total PDD: {total_pdd}, Total Answer Time: {total_answer_time}")
-    log_info(f"📈 Counts — PDD: {pdd_count}, ATime: {atime_count}, SCal: {scal}, TCall: {tcall}, UCall: {ucall}")
+    log_info(f"Totals: seconds={total_seconds}, pdd={total_pdd}, answer_time={total_answer_time}")
+    log_info(f"Counts: pdd={pdd_count}, atime={atime_count}, scal={scal}, tcall={tcall}, ucall={ucall}")
 
     # Use centralized formulas
     asr = calc_asr(scal, tcall)
@@ -73,5 +73,5 @@ def calculate_metrics(rows):
         "UCall": ucall
     }
 
-    log_info(f"✅ Metrics calculated: {result}")
+    log_info(f"Metrics calculated: {result}")
     return result

@@ -30,6 +30,10 @@ const MESSAGES = {
 // ─────────────────────────────────────────────────────────────
 
 let lastDataEmpty = false;
+let loadingCounter = 0;
+let hideTimeout = null;
+let showTimestamp = 0;
+const MIN_SHOW_TIME_MS = 300;
 
 // ─────────────────────────────────────────────────────────────
 // Toast
@@ -81,9 +85,7 @@ function resetDefaultState() {
 
   const summaryBtn = getElement(IDS.summaryButton);
   if (summaryBtn) summaryBtn.disabled = false;
-
-  const overlay = getElement(IDS.loadingOverlay);
-  if (overlay) overlay.classList.add(HIDDEN_CLASS);
+  // don't hide overlay here - managed by showLoadingOverlay/hideLoadingOverlay
 }
 
 function handleLoading(isSummaryFetch) {
@@ -94,6 +96,9 @@ function handleLoading(isSummaryFetch) {
       findBtn.textContent = 'Finding...';
     }
     setButtonsEnabled(false);
+    // show overlay for data fetch
+    loadingCounter++;
+    showTimestamp = Date.now();
     const overlay = getElement(IDS.loadingOverlay);
     if (overlay) overlay.classList.remove(HIDDEN_CLASS);
   } else {
@@ -105,8 +110,22 @@ function handleLoading(isSummaryFetch) {
 function handleSuccess(isSummaryFetch) {
   if (!isSummaryFetch) {
     showToast(lastDataEmpty ? MESSAGES.noData : MESSAGES.success, lastDataEmpty ? 'error' : 'success');
-    const overlay = getElement(IDS.loadingOverlay);
-    if (overlay) overlay.classList.add(HIDDEN_CLASS);
+    
+    // decrement counter from handleLoading
+    loadingCounter = Math.max(0, loadingCounter - 1);
+    
+    // schedule hide after delay (render will show overlay again if needed)
+    if (loadingCounter === 0 && !hideTimeout) {
+      const elapsed = Date.now() - showTimestamp;
+      const delay = Math.max(0, MIN_SHOW_TIME_MS - elapsed);
+      hideTimeout = setTimeout(() => {
+        hideTimeout = null;
+        if (loadingCounter === 0) {
+          const overlay = getElement(IDS.loadingOverlay);
+          if (overlay) overlay.classList.add(HIDDEN_CLASS);
+        }
+      }, delay);
+    }
 
     // only manage table visibility for non-summary fetches
     const results = document.querySelector('.results-display');
@@ -151,6 +170,51 @@ function updateFeedbackUI(status) {
     default:
       break;
   }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Loading overlay control
+// ─────────────────────────────────────────────────────────────
+
+export function showLoadingOverlay() {
+  // clear any pending hide
+  if (hideTimeout) {
+    clearTimeout(hideTimeout);
+    hideTimeout = null;
+  }
+  
+  loadingCounter++;
+  if (loadingCounter === 1) {
+    showTimestamp = Date.now();
+  }
+  
+  const overlay = getElement(IDS.loadingOverlay);
+  if (overlay) overlay.classList.remove(HIDDEN_CLASS);
+}
+
+export function hideLoadingOverlay() {
+  loadingCounter = Math.max(0, loadingCounter - 1);
+  if (loadingCounter === 0) {
+    // ensure minimum visible time
+    const elapsed = Date.now() - showTimestamp;
+    const delay = Math.max(0, MIN_SHOW_TIME_MS - elapsed);
+    
+    hideTimeout = setTimeout(() => {
+      hideTimeout = null;
+      const overlay = getElement(IDS.loadingOverlay);
+      if (overlay) overlay.classList.add(HIDDEN_CLASS);
+    }, delay);
+  }
+}
+
+export function forceHideLoadingOverlay() {
+  if (hideTimeout) {
+    clearTimeout(hideTimeout);
+    hideTimeout = null;
+  }
+  loadingCounter = 0;
+  const overlay = getElement(IDS.loadingOverlay);
+  if (overlay) overlay.classList.add(HIDDEN_CLASS);
 }
 
 // ─────────────────────────────────────────────────────────────

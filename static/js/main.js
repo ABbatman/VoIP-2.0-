@@ -12,7 +12,6 @@ import '/css/results-display.css';
 import '/css/table-header.css';
 import '/css/layout.css';
 import '/css/top-scrollbar.css';
-import '/css/hideYColumns.css';
 import '/css/feedback.css';
 import '/css/virtual.css';
 import '/css/renderer.css';

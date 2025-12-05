@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from arq import Worker, cron
+from arq import cron
 from arq.connections import RedisSettings
 from opentelemetry import trace
 from app.utils.telemetry import init_otel
@@ -65,5 +65,3 @@ class WorkerSettings:
     async def startup(ctx):
         # Initialize telemetry on worker start (console exporter)
         init_otel(service_name="metrics-worker")
-
-

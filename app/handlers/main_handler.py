@@ -12,7 +12,7 @@ class _SafeFilter:
 
 class MainHandler(tornado.web.RequestHandler):
     def get(self):
-        log_info(" GET / — main page loaded")
+        log_info("GET / - main page loaded")
         # Provide vite tags explicitly to the template context
         # so templates that reference `vite_tags` can render without NameError
         tags = vite_script_tag(self)

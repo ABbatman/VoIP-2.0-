@@ -11,6 +11,7 @@ import { initTableControls } from '../dom/table-controls.js';
 import { initStickyFooter, initStickyHeader } from '../dom/sticky-table-chrome.js';
 import { getChartsCurrentInterval } from '../state/runtimeFlags.js';
 import { logError, ErrorCategory } from '../utils/errorLogger.js';
+import { showLoadingOverlay, hideLoadingOverlay } from '../dom/ui-feedback.js';
 
 // ─────────────────────────────────────────────────────────────
 // Constants
@@ -77,27 +78,34 @@ export class TableController {
     const hourlyRows = getHourlyRows(appData, processedHourlyRows);
 
     renderCoordinator.requestRender('table', async () => {
-      // prepare UI
-      safeCall(renderTableHeader);
-      safeCall(renderTableFooter);
-      safeCall(showTableControls);
-      safeCall(() => initTableControls(mainRows, peerRows, hourlyRows));
+      // show overlay at start of actual render
+      showLoadingOverlay();
 
-      // clear and render
-      safeCall(clearTableBody);
+      try {
+        // prepare UI
+        safeCall(renderTableHeader);
+        safeCall(renderTableFooter);
+        safeCall(showTableControls);
+        safeCall(() => initTableControls(mainRows, peerRows, hourlyRows));
 
-      if (this.tableRenderer && this.isInitialized) {
-        await this.tableRenderer.renderTable(mainRows, peerRows, hourlyRows);
-      } else {
-        renderGroupedTable(mainRows, peerRows, hourlyRows);
+        // clear and render
+        safeCall(clearTableBody);
+
+        if (this.tableRenderer && this.isInitialized) {
+          await this.tableRenderer.renderTable(mainRows, peerRows, hourlyRows);
+        } else {
+          renderGroupedTable(mainRows, peerRows, hourlyRows);
+        }
+
+        // post-render
+        safeCall(initTableView);
+        safeCall(initStickyHeader);
+        safeCall(initStickyFooter);
+        safeCall(updateTableFooter);
+        safeCall(initTooltips);
+      } finally {
+        hideLoadingOverlay();
       }
-
-      // post-render
-      safeCall(initTableView);
-      safeCall(initStickyHeader);
-      safeCall(initStickyFooter);
-      safeCall(updateTableFooter);
-      safeCall(initTooltips);
     }, { debounceMs: RENDER_DEBOUNCE_MS });
   }
 

@@ -16,5 +16,3 @@ class JobStatusResponse(BaseModel):
     task_id: str
     status: str
     result: object | None = None
-
-

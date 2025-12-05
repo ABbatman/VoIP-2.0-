@@ -9,7 +9,6 @@ from fastapi import Request, HTTPException, status
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
-from app.utils.logger import log_info
 import logging
 
 logger = logging.getLogger(__name__)

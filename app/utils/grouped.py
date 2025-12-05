@@ -1,88 +1,91 @@
 # app/utils/grouped.py
+# Single-pass aggregation for O(n) complexity
 
 from collections import defaultdict
 from datetime import datetime, timezone
+from typing import Any, Dict, List
 from app.utils.logger import log_info
 from app.utils.formulas import calc_minutes, calc_acd, calc_asr, calc_pdd_weighted, calc_atime_weighted
 
 
+def _zero_agg() -> Dict[str, int]:
+    """Return zeroed aggregation dict."""
+    return {"attempt": 0, "uniq": 0, "success": 0, "seconds": 0, "pdd_w": 0, "answer_w": 0}
+
+
 def calculate_grouped_metrics(rows, reverse=False):
     """
-    Groups raw rows by (main, peer, destination) and calculates metrics.
-    Uses centralized formulas from app/utils/formulas.py.
+    Single-pass aggregation by (main, peer, destination).
+    O(n) time, O(groups) memory.
     """
-    log_info("🔢 Starting grouped metric calculation for peer/main tables...")
-
-    grouped = defaultdict(list)
     main_key = "supplier" if reverse else "customer"
     peer_key = "customer" if reverse else "supplier"
+
+    # Single pass: accumulate sums directly
+    peer_agg: Dict[tuple, Dict[str, int]] = defaultdict(_zero_agg)
+    main_agg: Dict[tuple, Dict[str, int]] = defaultdict(_zero_agg)
 
     for row in rows:
         main = row.get(main_key)
         peer = row.get(peer_key)
         dest = row.get("destination")
-        key = (main, peer, dest)
-        grouped[key].append(row)
 
-    peer_metrics = []
-    main_aggregate = defaultdict(list)
+        attempt = row.get("start_attempt", 0) or 0
+        uniq = row.get("start_uniq_attempt", 0) or 0
+        success = row.get("start_nuber", 0) or 0
+        seconds = row.get("seconds", 0) or 0
+        pdd = row.get("pdd", 0) or 0
+        answer = row.get("answer_time", 0) or 0
 
-    for (main, peer, dest), items in grouped.items():
-        sum_attempt = sum(r.get("start_attempt", 0) for r in items)
-        sum_uniq_attempt = sum(r.get("start_uniq_attempt", 0) for r in items)
-        sum_success = sum(r.get("start_nuber", 0) for r in items)
-        sum_seconds = sum(r.get("seconds", 0) for r in items)
-        sum_pdd_weighted = sum(r.get("pdd", 0) * r.get("start_uniq_attempt", 0) for r in items)
-        sum_answer_weighted = sum(r.get("answer_time", 0) * r.get("start_nuber", 0) for r in items)
+        # Peer-level aggregation
+        pk = (main, peer, dest)
+        pa = peer_agg[pk]
+        pa["attempt"] += attempt
+        pa["uniq"] += uniq
+        pa["success"] += success
+        pa["seconds"] += seconds
+        pa["pdd_w"] += pdd * uniq
+        pa["answer_w"] += answer * success
 
-        peer_metrics.append({
-            "main": main,
-            "peer": peer,
-            "destination": dest,
-            "Min": calc_minutes(sum_seconds),
-            "TCall": sum_attempt,
-            "SCall": sum_success,
-            "ASR": calc_asr(sum_success, sum_attempt),
-            "ACD": calc_acd(sum_seconds, sum_success),
-            "PDD": calc_pdd_weighted(sum_pdd_weighted, sum_uniq_attempt),
-            "ATime": calc_atime_weighted(sum_answer_weighted, sum_success)
-        })
+        # Main-level aggregation (same values, different key)
+        mk = (main, dest)
+        ma = main_agg[mk]
+        ma["attempt"] += attempt
+        ma["uniq"] += uniq
+        ma["success"] += success
+        ma["seconds"] += seconds
+        ma["pdd_w"] += pdd * uniq
+        ma["answer_w"] += answer * success
 
-        main_aggregate[(main, dest)].append({
-            "sum_success": sum_success,
-            "sum_attempt": sum_attempt,
-            "sum_uniq_attempt": sum_uniq_attempt,
-            "sum_seconds": sum_seconds,
-            "sum_pdd_weighted": sum_pdd_weighted,
-            "sum_answer_weighted": sum_answer_weighted
-        })
+    # Build result lists
+    peer_metrics = [
+        {
+            "main": k[0], "peer": k[1], "destination": k[2],
+            "Min": calc_minutes(a["seconds"]),
+            "TCall": a["attempt"], "SCall": a["success"],
+            "ASR": calc_asr(a["success"], a["attempt"]),
+            "ACD": calc_acd(a["seconds"], a["success"]),
+            "PDD": calc_pdd_weighted(a["pdd_w"], a["uniq"]),
+            "ATime": calc_atime_weighted(a["answer_w"], a["success"]),
+        }
+        for k, a in peer_agg.items()
+    ]
 
-    main_metrics = []
-    for (main, dest), items in main_aggregate.items():
-        agg_success = sum(r["sum_success"] for r in items)
-        agg_attempt = sum(r["sum_attempt"] for r in items)
-        agg_uniq_attempt = sum(r["sum_uniq_attempt"] for r in items)
-        agg_seconds = sum(r["sum_seconds"] for r in items)
-        agg_pdd_weighted = sum(r["sum_pdd_weighted"] for r in items)
-        agg_answer_weighted = sum(r["sum_answer_weighted"] for r in items)
+    main_metrics = [
+        {
+            "main": k[0], "destination": k[1],
+            "Min": calc_minutes(a["seconds"]),
+            "TCall": a["attempt"], "SCall": a["success"],
+            "ASR": calc_asr(a["success"], a["attempt"]),
+            "ACD": calc_acd(a["seconds"], a["success"]),
+            "PDD": calc_pdd_weighted(a["pdd_w"], a["uniq"]),
+            "ATime": calc_atime_weighted(a["answer_w"], a["success"]),
+        }
+        for k, a in main_agg.items()
+    ]
 
-        main_metrics.append({
-            "main": main,
-            "destination": dest,
-            "Min": calc_minutes(agg_seconds),
-            "TCall": agg_attempt,
-            "SCall": agg_success,
-            "ACD": calc_acd(agg_seconds, agg_success),
-            "ASR": calc_asr(agg_success, agg_attempt),
-            "PDD": calc_pdd_weighted(agg_pdd_weighted, agg_uniq_attempt),
-            "ATime": calc_atime_weighted(agg_answer_weighted, agg_success),
-        })
-
-    log_info(f"✅ Grouped metrics calculated: {len(main_metrics)} main, {len(peer_metrics)} peer rows")
-    return {
-        "main_rows": main_metrics,
-        "peer_rows": peer_metrics
-    }
+    log_info(f"Grouped metrics: {len(main_metrics)} main, {len(peer_metrics)} peer")
+    return {"main_rows": main_metrics, "peer_rows": peer_metrics}
 
 def _parse_datetime(raw_time) -> datetime | None:
     """Parse datetime from various formats (reusable helper)."""
@@ -106,114 +109,97 @@ def _parse_datetime(raw_time) -> datetime | None:
 
 def calculate_hourly_metrics(rows, reverse=False):
     """
-    Groups rows by (main, peer, destination, hour) and calculates hourly metrics.
-    Uses centralized formulas from app/utils/formulas.py.
+    Single-pass hourly aggregation by (main, peer, destination, hour).
     """
-    grouped = defaultdict(list)
     main_key = "supplier" if reverse else "customer"
     peer_key = "customer" if reverse else "supplier"
+
+    agg: Dict[tuple, Dict[str, Any]] = defaultdict(_zero_agg)
 
     for row in rows:
         main = row.get(main_key)
         peer = row.get(peer_key)
         dest = row.get("destination")
-        raw_time = row.get("time")
-        dt = _parse_datetime(raw_time)
-
+        dt = _parse_datetime(row.get("time"))
         if dt is None:
-            try:
-                log_info(f"⏭️ Skipping row with unparsable time: {raw_time}")
-            except Exception:
-                pass
             continue
         if dt.tzinfo is not None:
             dt = dt.astimezone(timezone.utc)
+
         hour_key = dt.strftime("%Y-%m-%d %H:00")
-        full_key = (main, peer, dest, hour_key)
-        grouped[full_key].append(row)
+        k = (main, peer, dest, hour_key)
+        a = agg[k]
 
-    result = []
-    for (main, peer, dest, hour), items in grouped.items():
-        total_attempt = sum(r.get("start_attempt", 0) for r in items)
-        total_uniq = sum(r.get("start_uniq_attempt", 0) for r in items)
-        total_success = sum(r.get("start_nuber", 0) for r in items)
-        total_seconds = sum(r.get("seconds", 0) for r in items)
-        total_pdd = sum(r.get("pdd", 0) for r in items)
-        total_answer = sum(r.get("answer_time", 0) for r in items)
+        a["attempt"] += row.get("start_attempt", 0) or 0
+        a["uniq"] += row.get("start_uniq_attempt", 0) or 0
+        a["success"] += row.get("start_nuber", 0) or 0
+        a["seconds"] += row.get("seconds", 0) or 0
+        a["pdd_w"] += row.get("pdd", 0) or 0
+        a["answer_w"] += row.get("answer_time", 0) or 0
 
-        hour_of_day = hour.split(" ")[1] if " " in hour else hour
-        result.append({
-            "time": hour,
-            "hour": hour_of_day,
-            "main": main,
-            "peer": peer,
-            "destination": dest,
-            "Min": calc_minutes(total_seconds),
-            "TCall": total_attempt,
-            "SCall": total_success,
-            "ASR": calc_asr(total_success, total_attempt),
-            "ACD": calc_acd(total_seconds, total_success),
-            "PDD": calc_pdd_weighted(total_pdd, total_uniq),
-            "ATime": calc_atime_weighted(total_answer, total_success)
-        })
-
-    return result
+    return [
+        {
+            "time": k[3],
+            "hour": k[3].split(" ")[1] if " " in k[3] else k[3],
+            "main": k[0], "peer": k[1], "destination": k[2],
+            "Min": calc_minutes(a["seconds"]),
+            "TCall": a["attempt"], "SCall": a["success"],
+            "ASR": calc_asr(a["success"], a["attempt"]),
+            "ACD": calc_acd(a["seconds"], a["success"]),
+            "PDD": calc_pdd_weighted(a["pdd_w"], a["uniq"]),
+            "ATime": calc_atime_weighted(a["answer_w"], a["success"]),
+        }
+        for k, a in agg.items()
+    ]
 
 def calculate_5min_metrics(rows, reverse: bool = False):
     """
-    Groups rows by (main, peer, destination, 5-minute window) and calculates metrics.
-    Uses centralized formulas from app/utils/formulas.py.
+    Single-pass 5-minute aggregation by (main, peer, destination, 5m window).
     """
-    grouped = defaultdict(list)
     main_key = "supplier" if reverse else "customer"
     peer_key = "customer" if reverse else "supplier"
+
+    # key -> {agg dict + slot}
+    agg: Dict[tuple, Dict[str, Any]] = {}
 
     for row in rows:
         main = row.get(main_key)
         peer = row.get(peer_key)
         dest = row.get("destination")
-        raw_time = row.get("time")
-        dt = _parse_datetime(raw_time)
-
+        dt = _parse_datetime(row.get("time"))
         if dt is None:
-            try:
-                log_info(f"⏭️ Skipping row with unparsable time: {raw_time}")
-            except Exception:
-                pass
             continue
         if dt.tzinfo is not None:
             dt = dt.astimezone(timezone.utc)
+
         # Floor to 5-minute window
         minute_bucket = (dt.minute // 5) * 5
         dt5 = dt.replace(minute=minute_bucket, second=0, microsecond=0)
         key5 = dt5.strftime("%Y-%m-%d %H:%M")
         slot = dt5.strftime("%H:%M")
-        row_copy = dict(row)
-        row_copy["slot"] = slot
-        grouped[(main, peer, dest, key5)].append(row_copy)
 
-    result = []
-    for (main, peer, dest, t5), items in grouped.items():
-        total_attempt = sum(r.get("start_attempt", 0) for r in items)
-        total_uniq = sum(r.get("start_uniq_attempt", 0) for r in items)
-        total_success = sum(r.get("start_nuber", 0) for r in items)
-        total_seconds = sum(r.get("seconds", 0) for r in items)
-        total_pdd = sum(r.get("pdd", 0) for r in items)
-        total_answer = sum(r.get("answer_time", 0) for r in items)
+        k = (main, peer, dest, key5)
+        if k not in agg:
+            agg[k] = {"attempt": 0, "uniq": 0, "success": 0, "seconds": 0, "pdd_w": 0, "answer_w": 0, "slot": slot}
+        a = agg[k]
 
-        result.append({
-            "time": t5,
-            "slot": items[0].get("slot"),
-            "main": main,
-            "peer": peer,
-            "destination": dest,
-            "Min": calc_minutes(total_seconds),
-            "TCall": total_attempt,
-            "SCall": total_success,
-            "ASR": calc_asr(total_success, total_attempt),
-            "ACD": calc_acd(total_seconds, total_success),
-            "PDD": calc_pdd_weighted(total_pdd, total_uniq),
-            "ATime": calc_atime_weighted(total_answer, total_success),
-        })
+        a["attempt"] += row.get("start_attempt", 0) or 0
+        a["uniq"] += row.get("start_uniq_attempt", 0) or 0
+        a["success"] += row.get("start_nuber", 0) or 0
+        a["seconds"] += row.get("seconds", 0) or 0
+        a["pdd_w"] += row.get("pdd", 0) or 0
+        a["answer_w"] += row.get("answer_time", 0) or 0
 
-    return result
+    return [
+        {
+            "time": k[3], "slot": a["slot"],
+            "main": k[0], "peer": k[1], "destination": k[2],
+            "Min": calc_minutes(a["seconds"]),
+            "TCall": a["attempt"], "SCall": a["success"],
+            "ASR": calc_asr(a["success"], a["attempt"]),
+            "ACD": calc_acd(a["seconds"], a["success"]),
+            "PDD": calc_pdd_weighted(a["pdd_w"], a["uniq"]),
+            "ATime": calc_atime_weighted(a["answer_w"], a["success"]),
+        }
+        for k, a in agg.items()
+    ]

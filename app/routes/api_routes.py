@@ -59,8 +59,6 @@ def make_app():
             tornado.web.StaticFileHandler, 
             {"path": config.STATIC_PATH}
         ),
-    
-    
     ], **settings)
 
     # minimal prometheus instrumentation (no business logic changes)

@@ -21,11 +21,13 @@ const CLASSES = {
   floatingHeader: 'floating-table-header',
   floatingFooter: 'floating-table-footer',
   hidden: 'is-hidden',
-  yColumnsHidden: 'y-columns-hidden'
+  yColumnsHidden: 'y-columns-hidden',
+  focused: 'is-focused'
 };
 
 const INTERACTION_GRACE_MS = 300;
 const RESYNC_DELAY_MS = 60;
+const FOCUS_RESTORE_DELAY_MS = 10;
 
 // ─────────────────────────────────────────────────────────────
 // State
@@ -44,7 +46,8 @@ const state = {
   rafFooterScheduled: false,
   footerShown: false,
   footerEngaged: false,
-  lastInteractionTs: 0
+  lastInteractionTs: 0,
+  focusedInputKey: null
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -79,6 +82,49 @@ function setCellWidth(cell, width) {
   cell.style.width = `${width}px`;
   cell.style.minWidth = `${width}px`;
   cell.style.maxWidth = `${width}px`;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Focus visual sync
+// ─────────────────────────────────────────────────────────────
+
+function syncFocusVisual() {
+  const footer = state.floatingFooter;
+  if (!footer) return;
+
+  const inputs = footer.querySelectorAll('input[data-filter-key]');
+  const active = document.activeElement;
+  const activeKey = active?.dataset?.filterKey;
+
+  // update focusedInputKey based on current focus in floating or real footer
+  if (active && activeKey) {
+    const inFloating = footer.contains(active);
+    const inReal = document.querySelector('#summaryTable tfoot')?.contains(active);
+    if (inFloating || inReal) {
+      state.focusedInputKey = activeKey;
+    }
+  }
+
+  // sync visual class to all inputs
+  inputs.forEach(inp => {
+    const key = inp.dataset.filterKey;
+    const shouldBeFocused = key === state.focusedInputKey;
+    inp.classList.toggle(CLASSES.focused, shouldBeFocused);
+
+    // restore actual focus if needed
+    if (shouldBeFocused && document.activeElement !== inp && state.footerShown) {
+      inp.focus();
+    }
+  });
+}
+
+function clearFocusVisual() {
+  const footer = state.floatingFooter;
+  if (!footer) return;
+
+  footer.querySelectorAll('input[data-filter-key]').forEach(inp => {
+    inp.classList.remove(CLASSES.focused);
+  });
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -271,15 +317,18 @@ function restoreFocusState(focusState) {
   if (!input) return;
 
   input.value = focusState.value || '';
-  input.focus();
 
-  if (focusState.selStart != null && input.setSelectionRange) {
-    try {
-      input.setSelectionRange(focusState.selStart, focusState.selEnd);
-    } catch {
-      // selection not supported
+  // delay focus to ensure DOM is ready
+  setTimeout(() => {
+    input.focus();
+    if (focusState.selStart != null && input.setSelectionRange) {
+      try {
+        input.setSelectionRange(focusState.selStart, focusState.selEnd);
+      } catch {
+        // selection not supported
+      }
     }
-  }
+  }, FOCUS_RESTORE_DELAY_MS);
 }
 
 function createFloatingFooter(table, tfoot) {
@@ -297,11 +346,54 @@ function createFloatingFooter(table, tfoot) {
   return wrap;
 }
 
+function isFooterInteracting() {
+  const active = document.activeElement;
+  const footer = state.floatingFooter;
+  if (!footer || !active) return false;
+
+  const inFloating = footer.contains(active);
+  const inReal = document.querySelector('#summaryTable tfoot')?.contains(active);
+  const inGrace = (Date.now() - state.lastInteractionTs) < INTERACTION_GRACE_MS;
+
+  return inFloating || inReal || state.footerEngaged || inGrace;
+}
+
+function syncFooterInputValues(srcTfoot, dstTfoot) {
+  if (!srcTfoot || !dstTfoot) return;
+
+  const srcInputs = srcTfoot.querySelectorAll('input[data-filter-key]');
+  const dstInputs = dstTfoot.querySelectorAll('input[data-filter-key]');
+
+  const dstMap = new Map();
+  dstInputs.forEach(inp => dstMap.set(inp.dataset.filterKey, inp));
+
+  srcInputs.forEach(src => {
+    const key = src.dataset.filterKey;
+    const dst = dstMap.get(key);
+    if (dst && dst !== document.activeElement && dst.value !== src.value) {
+      dst.value = src.value;
+    }
+  });
+}
+
 function setupFloatingFooter() {
   const container = getContainer();
   const table = getTable();
   const tfoot = table?.querySelector('tfoot');
   if (!container || !table || !tfoot) return;
+
+  // skip full rebuild if user is interacting
+  if (state.floatingFooter && isFooterInteracting()) {
+    const ftable = state.floatingFooter.querySelector('table');
+    if (ftable) {
+      ftable.className = table.className;
+      mirrorYColumnsClass(table, ftable);
+      // sync input values without replacing DOM
+      syncFooterInputValues(tfoot, ftable.querySelector('tfoot'));
+    }
+    syncFloatingFooter();
+    return;
+  }
 
   const focusState = saveFocusState();
 
@@ -359,6 +451,10 @@ function transferFocusToRealFooter() {
 
   const key = active.getAttribute('data-filter-key');
   if (!key) return;
+
+  // keep focusedInputKey so visual focus restores when floating footer returns
+  state.focusedInputKey = key;
+  clearFocusVisual();
 
   const realInput = document.querySelector(SELECTORS.realFooterInput.replace('%key%', key));
   if (!realInput) return;
@@ -429,6 +525,9 @@ function syncFloatingFooter() {
   }
 
   syncFooterCellWidths(table, footer.querySelector('tfoot'));
+
+  // sync visual focus state
+  syncFocusVisual();
 }
 
 function syncFooterCellWidths(table, dstTfoot) {
@@ -495,6 +594,11 @@ function bindFooterInputs() {
     inp.addEventListener('focusin', () => {
       state.footerEngaged = true;
       state.lastInteractionTs = Date.now();
+      // clear old focus, set new
+      clearFocusVisual();
+      const key = inp.dataset.filterKey;
+      state.focusedInputKey = key;
+      inp.classList.add(CLASSES.focused);
     });
 
     inp.addEventListener('blur', () => {
@@ -503,7 +607,12 @@ function bindFooterInputs() {
         const stillInside = footer.contains(active);
         const inRealFooter = document.querySelector('#summaryTable tfoot')?.contains(active);
         state.footerEngaged = stillInside;
-        if (!stillInside && !inRealFooter) state.lastInteractionTs = Date.now();
+        if (!stillInside && !inRealFooter) {
+          state.lastInteractionTs = Date.now();
+          // clear focus state when leaving both footers
+          state.focusedInputKey = null;
+          clearFocusVisual();
+        }
       }, 0);
     });
 

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
-import base64
 import asyncio
+import base64
+import hashlib
+import json
+import time as time_module
 from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import delete, insert, select, update, union_all, literal
 from sqlalchemy.sql import and_
@@ -20,6 +23,7 @@ class MetricsRepository:
     # Cursor cache for pagination: key -> (result_tuple, timestamp)
     _cursor_cache: Dict[str, Tuple[Any, float]] = {}
     _cursor_cache_ttl = 300  # 5 minutes
+    _cursor_lock: asyncio.Lock = asyncio.Lock()  # thread-safe access
     
     def __init__(self):
         self._cache = Cache()
@@ -204,7 +208,7 @@ class MetricsRepository:
             new_id = result.scalar_one()
             await session.commit()
         # Invalidate API caches after mutation
-        self._cache.invalidate_prefix("api:metrics")
+        await self._cache.invalidate_prefix("api:metrics")
         return int(new_id)
 
     async def update_metric(self, id: int, data: Dict[str, Any]) -> None:
@@ -217,7 +221,7 @@ class MetricsRepository:
         async with get_session() as session:
             await session.execute(stmt)
             await session.commit()
-        self._cache.invalidate_prefix("api:metrics")
+        await self._cache.invalidate_prefix("api:metrics")
 
     async def delete_metric(self, id: int) -> None:
         """Delete metric by id and invalidate API caches."""
@@ -225,7 +229,7 @@ class MetricsRepository:
         async with get_session() as session:
             await session.execute(stmt)
             await session.commit()
-        self._cache.invalidate_prefix("api:metrics")
+        await self._cache.invalidate_prefix("api:metrics")
 
     # Cursor pagination helpers
     @staticmethod
@@ -238,8 +242,6 @@ class MetricsRepository:
 
     def _build_cache_key(self, prefix: str, filters: Dict[str, Any], limit: int, cursor: Optional[str]) -> str:
         """Build cache key for pagination."""
-        import json
-        import hashlib
         key_data = {
             "filters": {k: str(v) for k, v in (filters or {}).items() if v is not None},
             "limit": limit,
@@ -249,34 +251,34 @@ class MetricsRepository:
         digest = hashlib.md5(raw.encode()).hexdigest()[:16]
         return f"{prefix}:{digest}"
     
-    def _get_cursor_cache(self, key: str) -> Optional[Tuple[List[Dict[str, Any]], Optional[str], Optional[str]]]:
-        """Get cached cursor result if not expired."""
-        import time
-        if key in self._cursor_cache:
-            data, timestamp = self._cursor_cache[key]
-            if time.time() - timestamp < self._cursor_cache_ttl:
-                return data
-            else:
-                del self._cursor_cache[key]
-        return None
+    async def _get_cursor_cache(self, key: str) -> Optional[Tuple[List[Dict[str, Any]], Optional[str], Optional[str]]]:
+        """Get cached cursor result if not expired (thread-safe)."""
+        async with self._cursor_lock:
+            if key in self._cursor_cache:
+                data, timestamp = self._cursor_cache[key]
+                if time_module.time() - timestamp < self._cursor_cache_ttl:
+                    return data
+                else:
+                    del self._cursor_cache[key]
+            return None
     
-    def _set_cursor_cache(self, key: str, data: Tuple[List[Dict[str, Any]], Optional[str], Optional[str]]) -> None:
-        """Store cursor result in cache."""
-        import time
-        # Cleanup old entries periodically
-        if len(self._cursor_cache) > 1000:
-            now = time.time()
-            expired = [k for k, (_, ts) in self._cursor_cache.items() if now - ts > self._cursor_cache_ttl]
-            for k in expired:
-                del self._cursor_cache[k]
-        self._cursor_cache[key] = (data, time.time())
+    async def _set_cursor_cache(self, key: str, data: Tuple[List[Dict[str, Any]], Optional[str], Optional[str]]) -> None:
+        """Store cursor result in cache (thread-safe)."""
+        async with self._cursor_lock:
+            # cleanup old entries periodically
+            if len(self._cursor_cache) > 1000:
+                now = time_module.time()
+                expired = [k for k, (_, ts) in self._cursor_cache.items() if now - ts > self._cursor_cache_ttl]
+                for k in expired:
+                    del self._cursor_cache[k]
+            self._cursor_cache[key] = (data, time_module.time())
 
     async def get_metrics_page(self, filters: Dict[str, Any], limit: int, next_cursor: Optional[str], prev_cursor: Optional[str]) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[str]]:
         """Cursor pagination by time DESC; supports next and prev cursors with caching."""
         
         # Try cache first
         cache_key = self._build_cache_key("cursor", filters, limit, next_cursor or prev_cursor)
-        cached = self._get_cursor_cache(cache_key)
+        cached = await self._get_cursor_cache(cache_key)
         if cached is not None:
             return cached
         
@@ -345,8 +347,6 @@ class MetricsRepository:
         
         # Cache result
         result_tuple = (rows, next_c, prev_c)
-        self._set_cursor_cache(cache_key, result_tuple)
+        await self._set_cursor_cache(cache_key, result_tuple)
         
         return result_tuple
-
-
