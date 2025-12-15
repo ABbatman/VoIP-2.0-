@@ -3,13 +3,8 @@
 import { formatTimeRange } from './time.js';
 import { logError, ErrorCategory } from '../../../utils/errorLogger.js';
 import {
-  toArray,
-  pickName,
   narrowBySupplier,
-  readHoverValueFromEvent,
-  getTopSupplierName,
-  deriveTopCustomer,
-  deriveTopDestination
+  readHoverValueFromEvent
 } from './capsuleTooltipData.js';
 
 // singleton tooltip element
@@ -204,8 +199,8 @@ function fallbackSuppliers(chart, metric, ts) {
     if (!eff) return null;
 
     const cand = eff[ts] || eff[String(ts)] ||
-                 eff[Math.floor(Number(ts) / 1000)] ||
-                 eff[String(Math.floor(Number(ts) / 1000))];
+      eff[Math.floor(Number(ts) / 1000)] ||
+      eff[String(Math.floor(Number(ts) / 1000))];
 
     return Array.isArray(cand) && cand.length ? cand : null;
   } catch (e) {

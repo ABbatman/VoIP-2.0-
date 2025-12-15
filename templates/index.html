@@ -10,25 +10,29 @@
 <body>
   <header class="app-header">
     <div class="header-graph-art">
-      <svg viewBox="0 0 800 60" preserveAspectRatio="none">
+      <svg viewBox="0 0 800 80" preserveAspectRatio="none">
         <defs>
-          <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" style="stop-color:#007bff;stop-opacity:0.6" />
-            <stop offset="100%" style="stop-color:#007bff;stop-opacity:0" />
+          <!-- Line Gradient: Electric Cyan to Purple -->
+          <linearGradient id="headerLineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" style="stop-color:#38bdf8; stop-opacity:1" />
+            <stop offset="60%" style="stop-color:#818cf8; stop-opacity:1" />
+            <stop offset="100%" style="stop-color:#c084fc; stop-opacity:1" />
           </linearGradient>
-          <filter id="crispGlow" x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur stdDeviation="2" result="blur" />
-            <feComposite in="SourceGraphic" in2="blur" operator="over" />
-          </filter>
+
+          <!-- Area Gradient: Fade from line color to transparent -->
+          <linearGradient id="headerAreaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" style="stop-color:#38bdf8; stop-opacity:0.2" />
+            <stop offset="100%" style="stop-color:#38bdf8; stop-opacity:0" />
+          </linearGradient>
         </defs>
 
-        <!-- Digital Area Chart (Jagged/Tech style) -->
+        <!-- Gradient Area: Closed path anchored to bottom -->
         <path class="graph-area"
-          d="M0,60 L0,40 L30,40 L30,20 L60,20 L60,45 L90,45 L90,15 L120,15 L120,35 L150,35 L150,10 L180,10 L180,50 L210,50 L210,25 L240,25 L240,40 L270,40 L270,15 L300,15 L300,45 L330,45 L330,20 L360,20 L360,50 L390,50 L390,10 L420,10 L420,35 L450,35 L450,15 L480,15 L480,45 L510,45 L510,25 L540,25 L540,50 L570,50 L570,20 L600,20 L600,40 L630,40 L630,15 L660,15 L660,35 L690,35 L690,10 L720,10 L720,45 L750,45 L750,25 L780,25 L780,50 L800,50 L800,60 Z"
-          fill="url(#areaGradient)" />
+          d="M0,80 L0,72 C80,68 120,60 180,52 C240,44 280,48 340,38 C400,28 440,35 500,22 C560,9 620,18 680,8 C740,-2 780,5 800,2 L800,80 Z" />
 
+        <!-- The Line: Asymmetric growth curve -->
         <path class="graph-line-primary"
-          d="M0,40 L30,40 L30,20 L60,20 L60,45 L90,45 L90,15 L120,15 L120,35 L150,35 L150,10 L180,10 L180,50 L210,50 L210,25 L240,25 L240,40 L270,40 L270,15 L300,15 L300,45 L330,45 L330,20 L360,20 L360,50 L390,50 L390,10 L420,10 L420,35 L450,35 L450,15 L480,15 L480,45 L510,45 L510,25 L540,25 L540,50 L570,50 L570,20 L600,20 L600,40 L630,40 L630,15 L660,15 L660,35 L690,35 L690,10 L720,10 L720,45 L750,45 L750,25 L780,25 L780,50 L800,50"
+          d="M0,72 C80,68 120,60 180,52 C240,44 280,48 340,38 C400,28 440,35 500,22 C560,9 620,18 680,8 C740,-2 780,5 800,2"
           vector-effect="non-scaling-stroke" />
       </svg>
     </div>

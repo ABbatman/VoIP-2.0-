@@ -8,9 +8,7 @@ import { logError, ErrorCategory } from '../utils/errorLogger.js';
 // ─────────────────────────────────────────────────────────────
 
 // use Set for O(1) lookup
-const DEST_KEYS_SET = new Set(['destination', 'Destination', 'dst', 'Dst', 'country', 'Country', 'prefix', 'Prefix', 'route', 'Route', 'direction', 'Direction']);
 const DEST_KEYS_LOWER = new Set(['destination', 'dst', 'country', 'prefix', 'route', 'direction']);
-const CUST_KEYS_SET = new Set(['customer', 'Customer', 'client', 'Client', 'account', 'Account', 'buyer', 'Buyer']);
 const CUST_KEYS_LOWER = new Set(['customer', 'client', 'account', 'buyer']);
 
 // ─────────────────────────────────────────────────────────────

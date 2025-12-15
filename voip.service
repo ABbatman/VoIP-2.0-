@@ -1,0 +1,54 @@
+# /etc/systemd/system/voip.service
+# Systemd service file for VoIP application
+#
+# Installation:
+#   1. Copy this file to /etc/systemd/system/voip.service
+#   2. Edit paths and user below
+#   3. sudo systemctl daemon-reload
+#   4. sudo systemctl enable voip
+#   5. sudo systemctl start voip
+
+[Unit]
+Description=VoIP Metrics Application
+Documentation=https://github.com/your-org/voip
+After=network.target postgresql.service redis.service
+Wants=postgresql.service redis.service
+
+[Service]
+Type=simple
+User=voip
+Group=voip
+
+# Paths - EDIT THESE
+WorkingDirectory=/path/to/project
+Environment="PATH=/path/to/project/venv/bin:/usr/local/bin:/usr/bin"
+EnvironmentFile=/path/to/project/.env
+
+# Start command (choose one):
+
+# Option 1: Tornado (legacy)
+# ExecStart=/path/to/project/venv/bin/python -m app.main
+
+# Option 2: FastAPI with Gunicorn (recommended for production)
+ExecStart=/path/to/project/venv/bin/gunicorn app.main_fastapi:app \
+    --bind 0.0.0.0:8888 \
+    --workers 4 \
+    --worker-class uvicorn.workers.UvicornWorker \
+    --access-logfile /path/to/project/logs/access.log \
+    --error-logfile /path/to/project/logs/error.log
+
+# Process management
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Resource limits
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

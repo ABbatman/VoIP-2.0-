@@ -29,7 +29,7 @@ import {
   setChartsUsedZoomForLastFetch, setTableNeedsRebuild
 } from '../state/runtimeFlags.js';
 import { getVirtualManager, setVirtualManager, getTableRenderer, setTableRenderer } from '../state/moduleRegistry.js';
-import { logError, logWarn, ErrorCategory } from '../utils/errorLogger.js';
+import { logError, ErrorCategory } from '../utils/errorLogger.js';
 
 // ─────────────────────────────────────────────────────────────
 // Constants

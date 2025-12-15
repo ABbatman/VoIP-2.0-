@@ -6,8 +6,8 @@ import { resolve } from "node:path";
 export default defineConfig({
   // The root of our frontend assets
   root: "static",
-  // Base public path is '/' during development
-  base: "/",
+  // Base public path - use './' for relative paths (subdirectory compatible)
+  base: "./",
 
   server: {
     // --- THIS IS THE KEY ---
@@ -21,8 +21,9 @@ export default defineConfig({
   build: {
     // Output directory relative to the project root
     outDir: "../static/dist",
-    // We need to set the base path for production build
-    base: "/static/",
+    // Use relative base path for production - critical for subdirectory deployment
+    // e.g., domain.com/modules/voip/ will work correctly
+    base: "./",
     manifest: true,
     rollupOptions: {
       // Input path relative to the `root` option

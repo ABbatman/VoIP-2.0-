@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from typing import Optional
 
 from fastapi import APIRouter, status
@@ -8,6 +7,7 @@ from pydantic import BaseModel
 from arq.connections import ArqRedis, create_pool, RedisSettings
 from arq.jobs import Job
 from app.schemas.common import JobEnqueueResponse, JobStatusResponse
+from app.config import settings
 
 
 router = APIRouter()
@@ -26,8 +26,8 @@ async def _get_arq() -> ArqRedis:
     """Get or create shared ArqRedis connection pool."""
     global _arq_pool
     if _arq_pool is None:
-        settings = RedisSettings.from_dsn(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
-        _arq_pool = await create_pool(settings)
+        redis_settings = RedisSettings.from_dsn(settings.REDIS_URL)
+        _arq_pool = await create_pool(redis_settings)
     return _arq_pool
 
 

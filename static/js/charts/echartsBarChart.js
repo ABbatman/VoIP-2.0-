@@ -54,7 +54,7 @@ function resetZoomIfRangeExpanded(fromTs, toTs) {
   }
 }
 
-function syncZoomRange(chart, sliderChart, fromTs, toTs) {
+function syncZoomRange(chart, sliderChart, _fromTs, _toTs) {
   try {
     const zr = getRange();
     if (!zr || !Number.isFinite(zr.fromTs) || !Number.isFinite(zr.toTs)) return;
@@ -176,7 +176,7 @@ export async function renderBarChartEcharts(container, data = [], options = {}) 
   const chart = await initChart(el);
   if (!chart) {
     console.warn('[echartsBarChart] Container has no dimensions, skipping render');
-    return { update: () => {}, dispose: () => {}, getInstance: () => null };
+    return { update: () => { }, dispose: () => { }, getInstance: () => null };
   }
 
   // init slider chart
@@ -218,7 +218,7 @@ export async function renderBarChartEcharts(container, data = [], options = {}) 
     return buildChartOptions({ opts, data: d, containerHeight, chart });
   };
 
-  const { main, slider, labelsEffective } = buildOption(base, data);
+  const { main, slider } = buildOption(base, data);
 
   // attach capsule tooltip
   const attachTooltip = (mainOption, opts) => {
@@ -313,7 +313,7 @@ export async function renderBarChartEcharts(container, data = [], options = {}) 
       logError(ErrorCategory.CHART, 'echartsBarChart:updateBase', e);
     }
 
-    const { main: nextMain, slider: nextSlider, labelsEffective: nextLabels } = buildOption(merged, newData);
+    const { main: nextMain, slider: nextSlider } = buildOption(merged, newData);
 
     setOptionWithZoomSync(chart, nextMain, {
       onAfterSet: () => {

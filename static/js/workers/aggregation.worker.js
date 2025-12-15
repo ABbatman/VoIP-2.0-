@@ -89,7 +89,7 @@ function aggregatePeerRows(hourlyRows) {
     g.YSCall += int(row.YSCall);
     g.YTCall += int(row.YTCall);
     const ySCall = int(row.YSCall);
-    const yTCall = int(row.YTCall);
+    const _yTCall = int(row.YTCall);
     if (row.YASR != null) { g._yasrW += num(row.YASR) * (ySCall > 0 ? ySCall : 1); g._yAttempts += (ySCall > 0 ? ySCall : 1); }
     if (row.YACD != null) { g._yacdW += num(row.YACD) * (ySCall > 0 ? ySCall : 1); g._ySCalls += (ySCall > 0 ? ySCall : 1); }
   }
@@ -212,7 +212,7 @@ function computeAggregates(mainRows) {
 // Message handler
 // ─────────────────────────────────────────────────────────────
 
-self.onmessage = function(e) {
+self.onmessage = function (e) {
   const { type, payload, requestId } = e.data;
 
   try {

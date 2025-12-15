@@ -143,7 +143,7 @@ function applyMorphdom(tbody, html) {
     } else {
       tbody.innerHTML = html;
     }
-  } catch {
+  } catch (_e) {
     tbody.innerHTML = html;
   }
 }
@@ -241,7 +241,7 @@ async function redrawTable() {
 function handleToggleClick(event, btn) {
   event.preventDefault();
   event.stopPropagation();
-  try { btn.blur(); } catch {}
+  try { btn.blur(); } catch (_e) { /* intentional */ }
 
   const row = btn.closest('tr');
   if (!row) return;
@@ -262,7 +262,7 @@ function handlePeerRowClick(event, row) {
 
   const innerBtn = row.querySelector('.toggle-btn');
   if (innerBtn && !event.target.closest('.toggle-btn')) {
-    try { innerBtn.click(); } catch {}
+    try { innerBtn.click(); } catch (_e) { /* intentional */ }
     event.preventDefault();
     event.stopPropagation();
   }

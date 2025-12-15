@@ -1,13 +1,8 @@
-import os
-from dotenv import load_dotenv
 from arq import cron
 from arq.connections import RedisSettings
 from opentelemetry import trace
 from app.utils.telemetry import init_otel
-
-
-# Load environment (.env) so REDIS_URL is available when running via CLI
-load_dotenv()
+from app.config import settings
 
 
 async def generate_report(ctx, customer: str, supplier: str, hours: int) -> dict:
@@ -56,7 +51,7 @@ async def cleanup_jobs(ctx) -> dict:
 
 class WorkerSettings:
     functions = [generate_report, cleanup_jobs]
-    redis_settings = RedisSettings.from_dsn(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+    redis_settings = RedisSettings.from_dsn(settings.REDIS_URL)
     cron_jobs = [
         cron(cleanup_jobs, minute={0, 15, 30, 45}),
     ]

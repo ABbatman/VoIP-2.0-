@@ -1,7 +1,8 @@
 import json
 import hashlib
-import os
 from typing import Optional, Tuple, Any
+
+from app.config import settings
 
 try:
     import redis.asyncio as aioredis  # type: ignore
@@ -18,8 +19,7 @@ async def _get_pool() -> Any:
     """Get or create async Redis connection pool."""
     global _pool
     if _pool is None:
-        url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-        _pool = aioredis.from_url(url, decode_responses=True)  # type: ignore
+        _pool = aioredis.from_url(settings.REDIS_URL, decode_responses=True)  # type: ignore
     return _pool
 
 

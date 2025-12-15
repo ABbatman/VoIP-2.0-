@@ -44,7 +44,7 @@ function getStepMsFromInterval(interval) {
 // Anomaly detection
 // ─────────────────────────────────────────────────────────────
 
-function createAnomalySymbol(scale) {
+function createAnomalySymbol(_scale) {
   return (val, params) => {
     if (params.seriesName.includes('ASR') && val?.[1] < LOW_ASR_THRESHOLD) {
       return 'circle';

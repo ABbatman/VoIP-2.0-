@@ -50,7 +50,7 @@ function ensureEmptyDatalist() {
 function setAttributes(el, attrs) {
   // use for-in instead of Object.entries().forEach()
   for (const key in attrs) {
-    try { el.setAttribute(key, attrs[key]); } catch {}
+    try { el.setAttribute(key, attrs[key]); } catch (_e) { /* intentional */ }
   }
 }
 

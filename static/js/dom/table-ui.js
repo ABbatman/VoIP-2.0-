@@ -384,15 +384,15 @@ function saveScrollState() {
 }
 
 function disableScrollAnchoring(container) {
-  try { document.documentElement.style.overflowAnchor = 'none'; } catch {}
-  try { document.body.style.overflowAnchor = 'none'; } catch {}
-  try { if (container) container.style.overflowAnchor = 'none'; } catch {}
+  try { document.documentElement.style.overflowAnchor = 'none'; } catch (_e) { /* intentional */ }
+  try { document.body.style.overflowAnchor = 'none'; } catch (_e) { /* intentional */ }
+  try { if (container) container.style.overflowAnchor = 'none'; } catch (_e) { /* intentional */ }
 }
 
 function enableScrollAnchoring(container) {
-  try { document.documentElement.style.overflowAnchor = ''; } catch {}
-  try { document.body.style.overflowAnchor = ''; } catch {}
-  try { if (container) container.style.overflowAnchor = ''; } catch {}
+  try { document.documentElement.style.overflowAnchor = ''; } catch (_e) { /* intentional */ }
+  try { document.body.style.overflowAnchor = ''; } catch (_e) { /* intentional */ }
+  try { if (container) container.style.overflowAnchor = ''; } catch (_e) { /* intentional */ }
 }
 
 function restoreScrollState(state) {
@@ -405,7 +405,7 @@ function restoreScrollState(state) {
         container.scrollLeft = containerX ?? 0;
       }
       window.scrollTo({ left: windowX, top: windowY, behavior: 'instant' });
-    } catch {}
+    } catch (_e) { /* intentional */ }
   };
 
   const finalRestore = () => {
@@ -549,7 +549,7 @@ function handleColumnFilterChange(event) {
             const tbody = document.getElementById(SELECTORS.tableBody);
             if (tbody) tbody.innerHTML = '';
           }
-        } catch {}
+        } catch (_e) { /* intentional */ }
       });
 
       if (wasFocused || fromFloating) {
@@ -611,4 +611,4 @@ export function restoreFilterFocusIfPending() {
 }
 
 // backward compatibility
-try { if (typeof window !== 'undefined') window.restoreFilterFocusIfPending = restoreFilterFocusIfPending; } catch {}
+try { if (typeof window !== 'undefined') window.restoreFilterFocusIfPending = restoreFilterFocusIfPending; } catch (_e) { /* intentional */ }

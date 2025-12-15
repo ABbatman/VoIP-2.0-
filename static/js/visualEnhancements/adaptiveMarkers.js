@@ -1,7 +1,8 @@
 // static/js/visualEnhancements/adaptiveMarkers.js
 // Responsibility: Adaptive marker sizing for chart bars
 import { clamp } from './visualMapping.js';
-import { logError, ErrorCategory } from '../utils/errorLogger.js';
+// Error logger available if needed
+// import { logError, ErrorCategory } from '../utils/errorLogger.js';
 
 // ─────────────────────────────────────────────────────────────
 // Constants
@@ -54,21 +55,21 @@ function buildMediumPillStyle(x, y, barWidth, color, secondary, text, CSS_BG) {
   return {
     shape: { x: x - w / 2, y: y - h / 2, width: w, height: h, r: h / 2 },
     style: { fill: CSS_BG(), stroke: color, lineWidth: 1, opacity: secondary ? 0.9 : 1 },
-    textStyle: { text, x, y, align: 'center', verticalAlign: 'middle', font: `600 ${fontSize}px ${FONT_BASE}`, fill: color, opacity: 1 },
+    textStyle: { text, x, y, align: 'center', verticalAlign: 'middle', font: `600 ${fontSize}px ${FONT_BASE} `, fill: color, opacity: 1 },
     showText: true
   };
 }
 
 function buildFullCapsuleStyle(x, y, barWidth, color, secondary, text, defaultH, CSS_BG, echarts) {
   const fontSize = clamp(barWidth * 0.25, 10, 14);
-  const tr = echarts?.format?.getTextRect?.(text, `600 ${fontSize}px ${FONT_BASE}`) ?? { width: String(text).length * 7 };
+  const tr = echarts?.format?.getTextRect?.(text, `600 ${fontSize}px ${FONT_BASE} `) ?? { width: String(text).length * 7 };
   const padX = 8;
   const w = Math.min(tr.width + padX * 2, barWidth * 0.95);
   const h = defaultH || 14;
   return {
     shape: { x: x - w / 2, y: y - h / 2, width: w, height: h, r: h / 2 },
     style: { fill: CSS_BG(), stroke: color, lineWidth: 1, opacity: secondary ? 0.9 : 1 },
-    textStyle: { text, x, y, align: 'center', verticalAlign: 'middle', font: `600 ${fontSize}px ${FONT_BASE}`, fill: color, opacity: 1 },
+    textStyle: { text, x, y, align: 'center', verticalAlign: 'middle', font: `600 ${fontSize}px ${FONT_BASE} `, fill: color, opacity: 1 },
     showText: true
   };
 }

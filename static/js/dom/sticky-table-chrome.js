@@ -2,7 +2,7 @@
 // Responsibility: Sticky clones for table header and footer
 import { subscribe } from '../state/eventBus.js';
 import { getState, toggleYColumnsVisible } from '../state/tableState.js';
-import { logError, logWarn, ErrorCategory } from '../utils/errorLogger.js';
+import { logError, ErrorCategory } from '../utils/errorLogger.js';
 import { setPendingFilterFocus } from '../state/runtimeFlags.js';
 
 // ─────────────────────────────────────────────────────────────
@@ -417,7 +417,7 @@ function setupFloatingFooter() {
 
 function getInteractionContext() {
   const active = document.activeElement;
-  const footer = state.floatingFooter;
+  const _footer = state.floatingFooter;
 
   const activeInFloating = !!(active && active.closest('.' + CLASSES.floatingFooter));
   const activeInReal = !!(active && active.closest('#summaryTable tfoot'));

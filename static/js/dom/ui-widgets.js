@@ -1,7 +1,8 @@
 // static/js/dom/ui-widgets.js
 // Responsibility: Date/time picker widgets (Flatpickr, time controls)
 /* global flatpickr */
-import { logError, ErrorCategory } from '../utils/errorLogger.js';
+// Error logger available if needed for future debugging
+// import { logError, ErrorCategory } from '../utils/errorLogger.js';
 import { setDateManuallyCommittedAt } from '../state/runtimeFlags.js';
 
 // ─────────────────────────────────────────────────────────────
@@ -37,7 +38,7 @@ function parseMultiFormat(dateStr, defaultFormat) {
     try {
       const d = flatpickr.parseDate(s, f);
       if (d) return d;
-    } catch {}
+    } catch (_e) { /* format not supported */ }
   }
 
   // compact numeric: 20251002 -> Y-m-d
@@ -59,7 +60,7 @@ function createCommitHandler(input, fp) {
     if (!v) {
       fp.clear();
       setDateManuallyCommittedAt(Date.now());
-      try { input.dataset.userCommittedTs = String(Date.now()); } catch {}
+      try { input.dataset.userCommittedTs = String(Date.now()); } catch (_e) { /* intentional */ }
       return { parsed: false, cleared: true };
     }
 
@@ -70,7 +71,7 @@ function createCommitHandler(input, fp) {
       input.value = fp.formatDate(dateObj, fp.config.dateFormat);
       if (fp.altInput) fp.altInput.value = fp.formatDate(dateObj, fp.config.altFormat);
       setDateManuallyCommittedAt(Date.now());
-      try { input.dataset.userCommittedTs = String(Date.now()); } catch {}
+      try { input.dataset.userCommittedTs = String(Date.now()); } catch (_e) { /* intentional */ }
       return { parsed: true, cleared: false };
     }
 
@@ -79,7 +80,7 @@ function createCommitHandler(input, fp) {
 }
 
 function setupInputListeners(input, fp) {
-  const openOnClick = () => { try { fp.open(); } catch {} };
+  const openOnClick = () => { try { fp.open(); } catch (_e) { /* intentional */ } };
   input.addEventListener('click', openOnClick);
   if (fp.altInput) fp.altInput.addEventListener('click', openOnClick);
 

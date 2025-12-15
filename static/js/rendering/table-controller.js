@@ -64,7 +64,7 @@ export class TableController {
     }
   }
 
-  redrawTable(loadedState = null) {
+  redrawTable(_loadedState = null) {
     const appData = getMetricsData();
     if (!appData) return;
 

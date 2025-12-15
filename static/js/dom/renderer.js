@@ -16,11 +16,12 @@ const SELECTORS = {
   virtualContainer: 'virtual-scroll-container'
 };
 
-const FILTER_IDS = [
-  'customerInput', 'supplierInput', 'destinationInput',
-  'customerGroupInput', 'supplierGroupInput', 'destinationGroupInput',
-  'fromDate', 'toDate', 'fromTime', 'toTime'
-];
+// Filter IDs kept for reference
+// const FILTER_IDS = [
+//   'customerInput', 'supplierInput', 'destinationInput',
+//   'customerGroupInput', 'supplierGroupInput', 'destinationGroupInput',
+//   'fromDate', 'toDate', 'fromTime', 'toTime'
+// ];
 
 // ─────────────────────────────────────────────────────────────
 // Helpers
@@ -201,7 +202,6 @@ export class DashboardRenderer {
             ${renderButton({ id: 'findButton', className: 'btn btn--primary', text: 'Find' })}
             <div id="tableModeControls" class="filters-panel__control-group" style="${showModeControls ? '' : 'display:none'}">
               <button id="btnSummary" class="btn btn--primary ${dashboardView.currentMode === 'summary' ? 'active' : ''}">Summary Table</button>
-              <button id="btnCDR" class="btn ${dashboardView.currentMode === 'cdr' ? 'active' : ''}">CDR</button>
             </div>
         </div> <!-- End filters-row-primary -->
 
@@ -214,6 +214,12 @@ export class DashboardRenderer {
         </div>
         <div id="destination-group-filter-item" class="filters-panel__item">
           <input id="destinationGroupInput" class="filters-panel__input" type="text" placeholder="Destination group" value="${filters.destinationGroup || ''}" />
+        </div>
+        
+        <div class="filters-panel__spacer"></div>
+
+        <div id="cdr-button-item" class="filters-panel__item" style="${showModeControls ? '' : 'display:none'}">
+          <button id="btnCDR" class="btn ${dashboardView.currentMode === 'cdr' ? 'active' : ''}">CDR</button>
         </div>
       </div>
     `;

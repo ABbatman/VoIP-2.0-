@@ -97,7 +97,7 @@ function collectState() {
 function applyState(state) {
   if (!state) return;
 
-  const isNewFormat = state.version === STATE_VERSION || state.appState;
+  const _isNewFormat = state.version === STATE_VERSION || state.appState;
 
   if (state.appState) setAppFullState(state.appState);
 

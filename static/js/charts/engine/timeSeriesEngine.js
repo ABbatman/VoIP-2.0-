@@ -6,9 +6,9 @@ import { parseRowTs } from '../echarts/helpers/dataTransform.js';
 // Helpers
 // ─────────────────────────────────────────────────────────────
 
-const METRIC_NAMES = ['TCalls', 'ASR', 'Minutes', 'ACD'];
-// use Set for O(1) lookup
-const TIME_KEYS_SET = new Set(['time', 'slot', 'hour', 'Time', 'timestamp']);
+// Constants kept for future use
+// const METRIC_NAMES = ['TCalls', 'ASR', 'Minutes', 'ACD'];
+// const TIME_KEYS_SET = new Set(['time', 'slot', 'hour', 'Time', 'timestamp']);
 
 function clamp(v, lo, hi) {
   return Math.max(lo, Math.min(hi, v));
@@ -218,7 +218,7 @@ export function shapeChartPayload(rows, { type, fromTs, toTs, stepMs, height }) 
 
   // handle invalid input case
   if (!bins) {
-    return { 
+    return {
       data: type === 'line' ? { TCalls: [], ASR: [], Minutes: [], ACD: [] } : [],
       options: { height: height || 0, fromTs, toTs, xDomain: [fromTs, toTs] }
     };
