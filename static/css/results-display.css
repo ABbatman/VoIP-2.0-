@@ -6,14 +6,17 @@
    =================================================================== */
 
 .summary-display {
-  display: flex; /* visible by default; JS toggles .is-hidden */
+  display: flex;
+  /* visible by default; JS toggles .is-hidden */
   flex-wrap: wrap;
   gap: 10px;
   padding: 10px;
   margin-bottom: 20px;
 }
 
-.summary-display.is-hidden { display: none !important; }
+.summary-display.is-hidden {
+  display: none !important;
+}
 
 .summary-display .metric-item {
   background: #f4f4f4;
@@ -75,8 +78,10 @@
   width: 100%;
   table-layout: fixed;
   font-size: 13px;
-  color: #212529; /* ensure readable text */
-  background-color: #ffffff; /* solid background for contrast */
+  color: #212529;
+  /* ensure readable text */
+  background-color: #ffffff;
+  /* solid background for contrast */
 }
 
 /* ===================================================================
@@ -85,8 +90,10 @@
 
 .results-display__table th,
 .results-display__table td {
-  color: #212529; /* ensure readable text in all cells */
-  background-color: #ffffff; /* keep solid background for cells */
+  color: #212529;
+  /* ensure readable text in all cells */
+  background-color: #ffffff;
+  /* keep solid background for cells */
   padding: 6px 10px;
   text-align: left;
   white-space: nowrap;
@@ -113,7 +120,8 @@
   justify-content: space-between;
   align-items: center;
   gap: 8px;
-  padding: 4px 10px;
+  padding: 6px 10px;
+  /* Increased from 4px to 6px to match standard row height */
   width: 100%;
   box-sizing: border-box;
   overflow: hidden;
@@ -356,7 +364,8 @@
 }
 
 .metric-cell-hour {
-  padding: 3px 6px;
+  padding: 6px 6px;
+  /* Increased from 3px 6px to match standard row height (which relies on 6px padding) */
   font-size: 12px;
   text-align: right;
   font-weight: 400;
@@ -567,8 +576,11 @@
   pointer-events: none;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
 }
+
 .pdd-atime-tooltip.is-hidden,
-.ellipsis-tooltip.is-hidden { display: none !important; }
+.ellipsis-tooltip.is-hidden {
+  display: none !important;
+}
 
 /* metric group borders */
 .results-display__table th:nth-child(3),
@@ -696,12 +708,45 @@
 }
 
 /* floating footer */
-.floating-table-footer .results-display__table tfoot td {
-  background: #f8f9fa;
+/* Apply base styles to all footer cells */
+.floating-table-footer .results-display__table tfoot td,
+.results-display__table tfoot td {
+  background-color: #eef2f7 !important;
+  /* Match table header bg */
+  color: #000 !important;
+  /* Match table header text */
+  border-bottom: none !important;
+  border-left: none;
+  border-right: none;
+  border-top: none !important;
+  /* Default to no top border */
 }
 
-.floating-table-footer .results-display__table tfoot [data-y-toggleable] {
-  background-color: #e9ecef;
+.results-display__table,
+.results-display__footer {
+  margin-bottom: 0 !important;
+}
+
+/* Apply the 2px top border ONLY to the first row (Filters Row) */
+.floating-table-footer .results-display__table tfoot tr:first-child td,
+.results-display__table tfoot tr:first-child td {
+  border-top: 2px solid #c8d1dc !important;
+}
+
+/* Fix "24h ago" column color to be standard gray, not blueish */
+.floating-table-footer .results-display__table tfoot [data-y-toggleable],
+.results-display__table tfoot [data-y-toggleable] {
+  background-color: #eef2f7 !important;
+  /* Force same gray as other cells */
+  color: #000 !important;
+}
+
+/* Ensure inputs inside the footer look standard */
+.floating-table-footer .results-display__table tfoot input,
+.results-display__table tfoot input {
+  background-color: #fff;
+  color: #000;
+  border: 1px solid #ccc;
 }
 
 /* footer filter inputs width */
@@ -715,12 +760,22 @@
   min-width: 60px;
 }
 
+/* Remove unwanted borders on the footer row/container */
+.floating-table-footer .results-display__table tfoot tr,
+.results-display__table tfoot tr {
+  border: none !important;
+}
+
 /* floating header/footer - inherit metric column styling */
+/* Ensure text properties override correctly */
 .floating-table-header .results-display__table th:nth-child(n+4),
-.floating-table-footer .results-display__table td:nth-child(n+4) {
+.floating-table-footer .results-display__table td:nth-child(n+4),
+.results-display__table tfoot td:nth-child(n+4) {
   text-align: right;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  /* Re-apply vertical borders for metric grouping if needed, or clear them if user wants "clean" */
+  /* Keeping existing vertical borders from global rules (lines 570+) is likely desired for column separation */
 }

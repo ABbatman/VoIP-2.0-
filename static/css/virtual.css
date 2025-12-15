@@ -20,13 +20,17 @@
 }
 
 /* spacer for scrollbar height */
-.virtual-scroll-spacer {
+.virtual-scroll-spacer,
+#virtual-scroll-spacer {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
   pointer-events: none;
   z-index: 1;
+  /* Collapse spacer height to prevent it from adding to page height */
+  height: 0 !important;
+  overflow: hidden;
 }
 
 /* table positioning */

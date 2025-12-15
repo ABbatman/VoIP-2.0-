@@ -167,19 +167,45 @@ export class DashboardRenderer {
 
     return `
       <div id="filters-block" class="filters-panel">
-        <div id="customer-filter-item" class="filters-panel__item">
-          <input id="customerInput" class="filters-panel__input" type="text" placeholder="Customer" value="${filters.customer || ''}" />
-        </div>
-        <div id="reverse-button-item" class="filters-panel__item">
-          ${renderButton({ id: 'btnReverse', className: 'btn btn--icon', title: 'Reverse Customer/Supplier', icon: reverseIcon })}
-        </div>
-        <div id="supplier-filter-item" class="filters-panel__item">
-          <input id="supplierInput" class="filters-panel__input" type="text" placeholder="Supplier" value="${filters.supplier || ''}" />
-        </div>
-        <div id="destination-filter-item" class="filters-panel__item">
-          <input id="destinationInput" class="filters-panel__input" type="text" placeholder="Destination" value="${filters.destination || ''}" />
-        </div>
-        <div class="filters-panel__row-sep"></div>
+        <div class="filters-row-primary">
+            <div id="customer-filter-item" class="filters-panel__item">
+              <input id="customerInput" class="filters-panel__input" type="text" placeholder="Customer" value="${filters.customer || ''}" />
+            </div>
+            <div id="reverse-button-item" class="filters-panel__item">
+              ${renderButton({ id: 'btnReverse', className: 'btn btn--icon', title: 'Reverse Customer/Supplier', icon: reverseIcon })}
+            </div>
+            <div id="supplier-filter-item" class="filters-panel__item">
+              <input id="supplierInput" class="filters-panel__input" type="text" placeholder="Supplier" value="${filters.supplier || ''}" />
+            </div>
+            <div id="destination-filter-item" class="filters-panel__item">
+              <input id="destinationInput" class="filters-panel__input" type="text" placeholder="Destination" value="${filters.destination || ''}" />
+            </div>
+
+            <div class="filters-panel__spacer"></div>
+
+            <div class="filters-panel__item filters-panel__item--datetime">
+              <div class="filters-panel__input-group">
+                <input id="fromDate" class="filters-panel__input date-part" type="text" title="From Date" value="${filters.from ? filters.from.split(' ')[0] : ''}" />
+                <input id="fromTime" class="filters-panel__input time-part" type="time" step="1" title="From Time" value="${filters.from ? filters.from.split(' ')[1] : ''}" />
+              </div>
+            </div>
+            <div class="filters-panel__item filters-panel__item--datetime">
+              <div class="filters-panel__input-group">
+                <input id="toDate" class="filters-panel__input date-part" type="text" title="To Date" value="${filters.to ? filters.to.split(' ')[0] : ''}" />
+                <input id="toTime" class="filters-panel__input time-part" type="time" step="1" title="To Time" value="${filters.to ? filters.to.split(' ')[1] : ''}" />
+              </div>
+            </div>
+
+            <div class="filters-panel__spacer"></div>
+
+            ${renderButton({ id: 'findButton', className: 'btn btn--primary', text: 'Find' })}
+            <div id="tableModeControls" class="filters-panel__control-group" style="${showModeControls ? '' : 'display:none'}">
+              <button id="btnSummary" class="btn btn--primary ${dashboardView.currentMode === 'summary' ? 'active' : ''}">Summary Table</button>
+              <button id="btnCDR" class="btn ${dashboardView.currentMode === 'cdr' ? 'active' : ''}">CDR</button>
+            </div>
+        </div> <!-- End filters-row-primary -->
+
+        <!-- Secondary Row: Group Inputs -->
         <div id="customer-group-filter-item" class="filters-panel__item">
           <input id="customerGroupInput" class="filters-panel__input" type="text" placeholder="Customer group" value="${filters.customerGroup || ''}" />
         </div>
@@ -188,25 +214,6 @@ export class DashboardRenderer {
         </div>
         <div id="destination-group-filter-item" class="filters-panel__item">
           <input id="destinationGroupInput" class="filters-panel__input" type="text" placeholder="Destination group" value="${filters.destinationGroup || ''}" />
-        </div>
-        <div class="filters-panel__spacer"></div>
-        <div class="filters-panel__item filters-panel__item--datetime">
-          <div class="filters-panel__input-group">
-            <input id="fromDate" class="filters-panel__input date-part" type="text" title="From Date" value="${filters.from ? filters.from.split(' ')[0] : ''}" />
-            <input id="fromTime" class="filters-panel__input time-part" type="time" step="1" title="From Time" value="${filters.from ? filters.from.split(' ')[1] : ''}" />
-          </div>
-        </div>
-        <div class="filters-panel__item filters-panel__item--datetime">
-          <div class="filters-panel__input-group">
-            <input id="toDate" class="filters-panel__input date-part" type="text" title="To Date" value="${filters.to ? filters.to.split(' ')[0] : ''}" />
-            <input id="toTime" class="filters-panel__input time-part" type="time" step="1" title="To Time" value="${filters.to ? filters.to.split(' ')[1] : ''}" />
-          </div>
-        </div>
-        <div class="filters-panel__spacer"></div>
-        ${renderButton({ id: 'findButton', className: 'btn btn--primary', text: 'Find' })}
-        <div id="tableModeControls" class="filters-panel__control-group" style="${showModeControls ? '' : 'display:none'}">
-          <button id="btnSummary" class="btn ${dashboardView.currentMode === 'summary' ? 'active' : ''}">Summary Table</button>
-          <button id="btnCDR" class="btn ${dashboardView.currentMode === 'cdr' ? 'active' : ''}">CDR</button>
         </div>
       </div>
     `;

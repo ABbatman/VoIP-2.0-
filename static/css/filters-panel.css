@@ -8,15 +8,30 @@
  */
 .filters-panel {
   position: relative;
-  z-index: 150; /* above floating footer (z-index: 100) */
+  z-index: 150;
+  /* above floating footer (z-index: 100) */
   display: flex;
-  align-items: flex-start;
+  align-items: center;
+  /* Center items vertically */
   gap: 8px;
   padding: 10px;
   background-color: #f8f9fa;
   border-radius: 8px;
   margin-bottom: 20px;
   flex-wrap: wrap;
+  /* Allow wrapping for Group inputs */
+}
+
+/* New: Primary row for main controls (Customer, Supplier, Dest, Dates, Buttons) */
+.filters-row-primary {
+  display: flex;
+  flex-wrap: nowrap;
+  /* FORCE SINGLE LINE */
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  overflow-x: auto;
+  /* Scroll if too narrow */
 }
 
 /*
@@ -193,18 +208,8 @@
 /* No longer needed, as the legacy buttons have been removed */
 
 /* --- NEW: Add a specific, permanent style for the #btnSummary --- */
-#btnSummary {
-  background-color: #28a745;
-  border-color: #28a745;
-  color: white;
-  font-weight: bold;
-}
-
-#btnSummary:hover {
-  background-color: #218838;
-  /* A darker green for hover */
-  border-color: #1e7e34;
-}
+/* --- NEW: Add a specific, permanent style for the #btnSummary --- */
+/* REMOVED: Green style override to allow btn--primary (blue) to take effect */
 
 
 /*
@@ -222,7 +227,7 @@
   border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: 12px;
   padding: 6px;
-  box-shadow: 
+  box-shadow:
     0 4px 16px rgba(0, 0, 0, 0.08),
     0 1px 3px rgba(0, 0, 0, 0.04);
   z-index: 1000;
@@ -262,39 +267,41 @@
   background: #e2e8f0;
 }
 
-/* + and - buttons: subtle style */
+/* + and - buttons: subtle style but blue on hover */
 .time-popup__button[data-action="hour-plus"],
 .time-popup__button[data-action="hour-minus"] {
   font-size: 18px;
   font-weight: 400;
+  color: #007bff;
+  /* Base color blue */
 }
 
 .time-popup__button[data-action="hour-plus"]:hover {
-  background: #dcfce7;
-  color: #16a34a;
+  background: #e7f1ff;
+  color: #0056b3;
 }
 
 .time-popup__button[data-action="hour-minus"]:hover {
-  background: #fee2e2;
-  color: #dc2626;
+  background: #e7f1ff;
+  color: #0056b3;
 }
 
-/* N (Now) button: accent blue */
+/* N (Now) button: primary blue */
 .time-popup__button[data-action="now"] {
-  color: #3b82f6;
+  color: #007bff;
 }
 
 .time-popup__button[data-action="now"]:hover {
-  background: #dbeafe;
-  color: #1d4ed8;
+  background: #e7f1ff;
+  color: #0056b3;
 }
 
-/* Z (Zero) button: neutral */
+/* Z (Zero) button: primary blue */
 .time-popup__button[data-action="zero"] {
-  color: #8b5cf6;
+  color: #007bff;
 }
 
 .time-popup__button[data-action="zero"]:hover {
-  background: #ede9fe;
-  color: #6d28d9;
+  background: #e7f1ff;
+  color: #0056b3;
 }

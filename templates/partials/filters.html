@@ -2,50 +2,65 @@
 <!-- Block: filters-panel -->
 <div id="filters-block" class="filters-panel">
 
-  <form id="filters-typeahead-form" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" onsubmit="return false;" novalidate>
+  <form id="filters-typeahead-form" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+    onsubmit="return false;" novalidate>
     <!-- dummy fields to absorb browser autofill/history -->
-    <input type="text" style="position:absolute;left:-9999px;height:0;width:0;opacity:0" autocomplete="off" tabindex="-1" aria-hidden="true" />
-    <input type="password" style="position:absolute;left:-9999px;height:0;width:0;opacity:0" autocomplete="new-password" tabindex="-1" aria-hidden="true" />
+    <input type="text" style="position:absolute;left:-9999px;height:0;width:0;opacity:0" autocomplete="off"
+      tabindex="-1" aria-hidden="true" />
+    <input type="password" style="position:absolute;left:-9999px;height:0;width:0;opacity:0" autocomplete="new-password"
+      tabindex="-1" aria-hidden="true" />
 
-  <!-- Element: item (Customer Input) -->
-  <div id="customer-filter-item" class="filters-panel__item">
-    <input id="customerInput" class="filters-panel__input" type="text" placeholder="Customer" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-autocomplete="list" />
-  </div>
+    <!-- PRIMARY ROW WRAPPER -->
+    <div class="filters-row-primary">
 
-  <!-- Include the reverse button partial (correct path) -->
-  {% include "partials/reverse_button.html" %}
+      <!-- Element: item (Customer Input) -->
+      <div id="customer-filter-item" class="filters-panel__item">
+        <input id="customerInput" class="filters-panel__input" type="text" placeholder="Customer" autocomplete="off"
+          autocapitalize="off" autocorrect="off" spellcheck="false" aria-autocomplete="list" />
+      </div>
 
-  <!-- Element: item (Supplier Input) -->
-  <div id="supplier-filter-item" class="filters-panel__item">
-    <input id="supplierInput" class="filters-panel__input" type="text" placeholder="Supplier" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-autocomplete="list" />
-  </div>
+      <!-- Include the reverse button partial (correct path) -->
+      {% include "partials/reverse_button.html" %}
 
-  <!-- Element: item (Destination Input) -->
-  <div id="destination-filter-item" class="filters-panel__item">
-    <input id="destinationInput" class="filters-panel__input" type="text" placeholder="Destination" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-autocomplete="list" />
-  </div>
+      <!-- Element: item (Supplier Input) -->
+      <div id="supplier-filter-item" class="filters-panel__item">
+        <input id="supplierInput" class="filters-panel__input" type="text" placeholder="Supplier" autocomplete="off"
+          autocapitalize="off" autocorrect="off" spellcheck="false" aria-autocomplete="list" />
+      </div>
+
+      <!-- Element: item (Destination Input) -->
+      <div id="destination-filter-item" class="filters-panel__item">
+        <input id="destinationInput" class="filters-panel__input" type="text" placeholder="Destination"
+          autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-autocomplete="list" />
+      </div>
+
+      <!-- Element: spacer -->
+      <div class="filters-panel__spacer"></div>
+
+      <!-- Element: item for datetime picker -->
+      <div class="filters-panel__item filters-panel__item--datetime">
+        <div class="filters-panel__input-group">
+          <input id="fromDate" class="filters-panel__input date-part" type="text" title="From Date"
+            autocomplete="off" />
+          <input id="fromTime" class="filters-panel__input time-part" type="text" step="1" title="From Time"
+            autocomplete="off" />
+        </div>
+      </div>
+      <div class="filters-panel__item filters-panel__item--datetime">
+        <div class="filters-panel__input-group">
+          <input id="toDate" class="filters-panel__input date-part" type="text" title="To Date" autocomplete="off" />
+          <input id="toTime" class="filters-panel__input time-part" type="text" step="1" title="To Time"
+            autocomplete="off" />
+        </div>
+      </div>
+
+      <!-- Element: spacer -->
+      <div class="filters-panel__spacer"></div>
+
+      <!-- Include the main action buttons (correct path) -->
+      {% include "partials/buttons.html" %}
+
+    </div> <!-- END PRIMARY ROW -->
 
   </form>
-
-  <!-- Element: spacer -->
-  <div class="filters-panel__spacer"></div>
-
-  <!-- Element: item for datetime picker -->
-    <div class="filters-panel__input-group">
-      <input id="fromDate" class="filters-panel__input date-part" type="text" title="From Date" autocomplete="off" />
-      <input id="fromTime" class="filters-panel__input time-part" type="text" step="1" title="From Time" autocomplete="off" />
-    </div>
-  </div>
-  <div class="filters-panel__item filters-panel__item--datetime">
-    <div class="filters-panel__input-group">
-      <input id="toDate" class="filters-panel__input date-part" type="text" title="To Date" autocomplete="off" />
-      <input id="toTime" class="filters-panel__input time-part" type="text" step="1" title="To Time" autocomplete="off" />
-    </div>
-  </div>
-
-  <!-- Element: spacer -->
-  <div class="filters-panel__spacer"></div>
-
-  <!-- Include the main action buttons (correct path) -->
-  {% include "partials/buttons.html" %}
 </div>

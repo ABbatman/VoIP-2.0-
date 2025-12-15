@@ -11,11 +11,14 @@ body {
 }
 
 .results-display {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
+  /* Changed from flex: 1 1 auto - don't stretch, shrink-wrap to content */
   display: flex;
   flex-direction: column;
   min-height: 0;
   /* allow child scroll container to size correctly */
+  padding-bottom: 20px;
+  /* Fixed small space after footer */
 }
 
 #virtual-scroll-container {
@@ -24,7 +27,11 @@ body {
   height: auto;
   max-height: none;
   /* override inline if any */
-  overflow-y: visible;
+  /* Removed overflow-y: visible - it was causing spacer to add to page height */
+  overflow-y: hidden;
+  /* Hide spacer overflow, table content visible via natural flow */
+  position: relative;
+  /* Ensure spacer is positioned relative to this */
 }
 
 /* static/css/layout.css */
@@ -37,46 +44,192 @@ body,
 }
 
 
-/* --- Custom Flatpickr Theme (existing styles) --- */
+
+/* --- Custom Flatpickr Theme (Minimalist Professional) --- */
 
 .flatpickr-calendar {
   border-radius: 8px;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
-  border: 1px solid #ddd;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  /* Softer shadow */
+  border: 1px solid #eaeaea;
+  /* Lighter border */
+  background: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
-/* Change the main colors of the calendar */
+.flatpickr-calendar:before,
+.flatpickr-calendar:after {
+  display: none !important;
+  /* Remove arrow */
+}
+
+.flatpickr-month {
+  background: transparent;
+  color: #333;
+  fill: #333;
+  height: 40px;
+  padding-top: 10px;
+}
+
+.flatpickr-current-month {
+  font-size: 110%;
+  font-weight: 600;
+}
+
+.flatpickr-weekdays {
+  background: transparent;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.flatpickr-weekday {
+  color: #888;
+  font-weight: 500;
+  font-size: 90%;
+}
+
+/* Days container */
+.flatpickr-days {
+  border-top: none;
+}
+
+/* Day styling */
+.flatpickr-day {
+  border-radius: 6px;
+  /* Slightly squarer than default */
+  color: #333;
+  border: 1px solid transparent;
+}
+
+.flatpickr-day:hover {
+  background: #f5f7fa;
+  border-color: transparent;
+}
+
+/* Selected state - using main blue #007bff */
 .flatpickr-day.selected,
 .flatpickr-day.startRange,
-.flatpickr-day.endRange {
+.flatpickr-day.endRange,
+.flatpickr-day.selected.inRange,
+.flatpickr-day.startRange.inRange,
+.flatpickr-day.endRange.inRange,
+.flatpickr-day.selected:focus,
+.flatpickr-day.startRange:focus,
+.flatpickr-day.endRange:focus,
+.flatpickr-day.selected:hover,
+.flatpickr-day.startRange:hover,
+.flatpickr-day.endRange:hover,
+.flatpickr-day.selected.prevMonthDay,
+.flatpickr-day.startRange.prevMonthDay,
+.flatpickr-day.endRange.prevMonthDay,
+.flatpickr-day.selected.nextMonthDay,
+.flatpickr-day.startRange.nextMonthDay,
+.flatpickr-day.endRange.nextMonthDay {
   background: #007bff;
-  /* Main selection color (blue) */
   border-color: #007bff;
+  color: #fff;
+  box-shadow: none;
 }
 
 .flatpickr-day.today {
-  border-color: #007bff;
+  border-color: #eaeaea;
+  background: #f8f9fa;
+  color: #333;
 }
 
 .flatpickr-day.today:hover {
-  background: #007bff;
-  color: #fff;
+  background: #e7f1ff;
+  border-color: #007bff;
+  color: #007bff;
+}
+
+/* Range background */
+.flatpickr-day.inRange {
+  box-shadow: -5px 0 0 #e7f1ff, 5px 0 0 #e7f1ff;
+  background: #e7f1ff;
+  border-color: #e7f1ff;
+  color: #007bff;
+}
+
+.flatpickr-months .flatpickr-prev-month svg,
+.flatpickr-months .flatpickr-next-month svg {
+  fill: #007bff !important;
+  /* Force Blue Arrows */
 }
 
 .flatpickr-months .flatpickr-prev-month:hover svg,
 .flatpickr-months .flatpickr-next-month:hover svg {
-  fill: #007bff;
+  fill: #0056b3 !important;
 }
+
 /* Ensure flatpickr calendar overlays UI */
-.flatpickr-calendar { z-index: 9999 !important; }
+.flatpickr-calendar {
+  z-index: 9999 !important;
+}
 
 /* Anchor calendar under input when using static:true */
 .flatpickr-wrapper {
   position: relative;
   display: inline-block;
 }
+
 .flatpickr-calendar.static {
   position: absolute !important;
   top: calc(100% + 4px) !important;
   left: 0 !important;
+}
+
+
+/* --- App Header (New) --- */
+.app-header {
+  height: 80px;
+  background-color: #596068;
+  /* Lighter Gray as requested */
+  border-bottom: 1px solid #6c757d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 20px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.header-graph-art {
+  width: 100%;
+  max-width: 900px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 1;
+  /* Full opacity for the glow */
+}
+
+.header-graph-art svg {
+  width: 100%;
+  height: 60px;
+  overflow: visible;
+}
+
+.graph-line-primary {
+  stroke: #007bff;
+  /* Pure blue for tech look */
+  stroke-width: 2;
+  fill: none;
+  stroke-linejoin: round;
+  /* Sharp corners */
+  filter: drop-shadow(0 0 5px rgba(0, 123, 255, 0.6));
+}
+
+.graph-area {
+  /* Used for the filled area under the line */
+  opacity: 0.8;
+}
+
+.graph-line-secondary {
+  stroke: rgba(255, 255, 255, 0.1);
+  /* Very subtle white/gray for depth */
+  stroke-width: 1.5;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
