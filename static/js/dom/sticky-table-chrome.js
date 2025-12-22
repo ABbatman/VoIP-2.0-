@@ -85,6 +85,15 @@ function setCellWidth(cell, width) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// Zoom Helper
+// ─────────────────────────────────────────────────────────────
+
+function getZoomFactor() {
+  const z = parseFloat(getComputedStyle(document.body).zoom);
+  return (isNaN(z) || z === 0) ? 1 : z;
+}
+
+// ─────────────────────────────────────────────────────────────
 // Focus visual sync
 // ─────────────────────────────────────────────────────────────
 
@@ -221,6 +230,7 @@ function syncFloatingHeader() {
   const header = state.floatingHeader;
   if (!container || !table || !thead || !header) return;
 
+  const zoom = getZoomFactor();
   const rect = container.getBoundingClientRect();
   const headerBox = thead.getBoundingClientRect();
   const viewportH = getViewportHeight();
@@ -245,36 +255,43 @@ function syncFloatingHeader() {
     state.headerShown = true;
   }
 
-  // position
+  // position (unscale by zoom)
   const ftable = header.querySelector('table');
-  const tableWidth = Math.round(table.getBoundingClientRect().width);
+
+  // We use clientWidth/table offsetWidth because they are unzoomed layout values usually.
+  // But for fixed positioning `element.style.width`, we might need adjustment if using rect.
+  // Let's use rect for precise screen alignment, then unscale.
+  const containerWidth = rect.width / zoom;
+  const containerLeft = rect.left / zoom;
+
+  // table internal width likely doesn't need scaling if we use offsetWidth (pixels inside container)
+  const tableWidth = table.offsetWidth; // native layout width
 
   header.style.position = 'fixed';
   header.style.top = '0px';
-  header.style.left = `${rect.left}px`;
+  header.style.left = `${containerLeft}px`;
   header.style.zIndex = '10000';
-  header.style.width = `${container.clientWidth}px`;
+  header.style.width = `${containerWidth}px`;
 
   if (ftable) {
     ftable.style.width = `${tableWidth}px`;
     ftable.style.transform = `translateX(${-container.scrollLeft}px)`;
   }
 
-  syncCellWidths(table.querySelectorAll('thead th'), header.querySelectorAll('thead th'));
+  syncCellWidths(table.querySelectorAll('thead th'), header.querySelectorAll('thead th'), zoom);
 }
 
-function syncCellWidths(srcCells, dstCells) {
-  // use indexed loop to avoid creating intermediate arrays
+function syncCellWidths(srcCells, dstCells, zoom = 1) {
   const srcLen = srcCells.length;
   const dstLen = dstCells.length;
   const minLen = Math.min(srcLen, dstLen);
 
   for (let i = 0; i < minLen; i++) {
-    const width = Math.round(srcCells[i].getBoundingClientRect().width);
+    const rect = srcCells[i].getBoundingClientRect();
+    const width = rect.width / zoom;
     setCellWidth(dstCells[i], width);
   }
 
-  // handle remaining dst cells with 0 width
   for (let i = minLen; i < dstLen; i++) {
     setCellWidth(dstCells[i], 0);
   }
@@ -475,6 +492,7 @@ function syncFloatingFooter() {
   const footer = state.floatingFooter;
   if (!container || !table || !tfoot || !footer) return;
 
+  const zoom = getZoomFactor();
   const rect = container.getBoundingClientRect();
   const viewportH = getViewportHeight();
   const tfootBox = tfoot.getBoundingClientRect();
@@ -514,58 +532,39 @@ function syncFloatingFooter() {
   }
 
   const ftable = footer.querySelector('table');
-  const tableWidth = Math.round(table.getBoundingClientRect().width);
+  const tableWidth = table.offsetWidth; // use unscaled layout width
 
-  footer.style.left = `${rect.left}px`;
-  footer.style.width = `${container.clientWidth}px`;
+  const containerLeft = rect.left / zoom;
+  const containerWidth = rect.width / zoom;
+
+  // Apply unscaled position
+  footer.style.left = `${containerLeft}px`;
+  footer.style.width = `${containerWidth}px`;
 
   if (ftable) {
     ftable.style.width = `${tableWidth}px`;
     ftable.style.transform = `translateX(${-container.scrollLeft}px)`;
   }
 
-  syncFooterCellWidths(table, footer.querySelector('tfoot'));
+  syncFooterCellWidths(table, footer.querySelector('tfoot'), zoom);
 
   // sync visual focus state
   syncFocusVisual();
 }
 
-function syncFooterCellWidths(table, dstTfoot) {
+function syncFooterCellWidths(table, dstTfoot, zoom = 1) {
   if (!dstTfoot) return;
 
-  const tableHasHiddenY = table.classList.contains(CLASSES.yColumnsHidden);
-  const headerThs = Array.from(table.querySelectorAll('thead th'));
+  const cells = Array.from(table.querySelectorAll('tfoot tr:first-child td'));
+  const dstCells = Array.from(dstTfoot.querySelectorAll('tr:first-child td'));
 
-  // collect visible header widths
-  const visibleWidths = headerThs
-    .filter(th => !tableHasHiddenY || th.dataset?.yToggleable !== 'true')
-    .map(th => Math.round(th.getBoundingClientRect().width));
+  const minLen = Math.min(cells.length, dstCells.length);
 
-  const tableWidth = Math.round(table.getBoundingClientRect().width);
-
-  Array.from(dstTfoot.querySelectorAll('tr')).forEach(tr => {
-    const cells = Array.from(tr.querySelectorAll('td'));
-
-    // single colspan cell (info row)
-    if (cells.length === 1 && parseInt(cells[0].getAttribute('colspan') || '1', 10) > 1) {
-      setCellWidth(cells[0], tableWidth);
-      return;
-    }
-
-    // filter visible cells
-    const visibleCells = cells.filter(td =>
-      !tableHasHiddenY || td.getAttribute('data-y-toggleable') !== 'true'
-    );
-
-    // fallback if mismatch
-    if (visibleCells.length !== visibleWidths.length) {
-      const share = Math.floor(tableWidth / Math.max(1, visibleCells.length));
-      visibleCells.forEach(td => setCellWidth(td, share));
-      return;
-    }
-
-    visibleCells.forEach((td, i) => setCellWidth(td, visibleWidths[i]));
-  });
+  for (let i = 0; i < minLen; i++) {
+    const rect = cells[i].getBoundingClientRect();
+    const width = rect.width / zoom;
+    setCellWidth(dstCells[i], width);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────

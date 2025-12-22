@@ -106,8 +106,10 @@ export class DashboardRenderer {
   async _initializeUIComponents() {
     try {
       const { initFlatpickr, initTimeControls } = await import('./ui-widgets.js');
+      const { initTooltipSystem } = await import('./tooltip-manager.js');
       initFlatpickr();
       initTimeControls();
+      initTooltipSystem();
       this._setDefaultDatesIfEmpty();
     } catch (e) {
       logError(ErrorCategory.RENDER, 'DashboardRenderer:initUIComponents', e);

@@ -254,3 +254,53 @@ body,
     opacity: 0.6;
   }
 }
+
+/* --- Responsive Scaling (Aggressive Fit) --- */
+
+/* Standard Laptop (13-14 inch) or small desktop window */
+@media screen and (max-width: 1600px) {
+  body {
+    zoom: 0.9;
+  }
+}
+
+/* Smaller Laptop (12-13 inch) */
+@media screen and (max-width: 1366px) {
+  body {
+    zoom: 0.8;
+  }
+}
+
+/* Very small screens / Tablets */
+@media screen and (max-width: 1100px) {
+  body {
+    zoom: 0.7;
+  }
+}
+
+/* Height-based constraints (Critical for "fitting vertically") */
+@media screen and (max-height: 950px) {
+  body {
+    zoom: 0.85;
+    /* Force shrink if vertical space is tight */
+  }
+}
+
+@media screen and (max-height: 800px) {
+  body {
+    zoom: 0.75;
+  }
+}
+
+/* Ensure flex containers allow shrinking */
+.results-display {
+  flex-shrink: 1 !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+#virtual-scroll-container {
+  flex-shrink: 1 !important;
+  min-height: 200px;
+  /* Minimum reasonable height */
+}

@@ -122,7 +122,17 @@ export function initFlatpickr() {
       disableMobile: true,
       parseDate: (str, fmt) => parseMultiFormat(str, fmt),
       appendTo: document.body,
-      positionElement: input,
+      onOpen(selectedDates, dateStr, instance) {
+        // Hack to fix zoom positioning
+        const zoom = parseFloat(getComputedStyle(document.body).zoom) || 1;
+        if (zoom !== 1 && instance.calendarContainer) {
+          setTimeout(() => {
+            const rect = instance.element.getBoundingClientRect();
+            instance.calendarContainer.style.top = `${rect.bottom / zoom}px`;
+            instance.calendarContainer.style.left = `${rect.left / zoom}px`;
+          }, 0);
+        }
+      },
       onReady(_, __, inst) {
         if (inst?.calendarContainer) {
           inst.calendarContainer.style.zIndex = CALENDAR_Z_INDEX;
@@ -171,12 +181,24 @@ export function initTimeControls() {
   let activeInput = null;
   let clickInProgress = false;
 
+  // zoom helper
+  function getZoomFactor() {
+    const z = parseFloat(getComputedStyle(document.body).zoom);
+    return (isNaN(z) || z === 0) ? 1 : z;
+  }
+
   // position popup under input
   function positionPopup(input) {
+    const zoom = getZoomFactor();
     const r = input.getBoundingClientRect();
+
+    // unscale coordinates
+    const bottom = (r.bottom / zoom);
+    const left = (r.left / zoom);
+
     popup.style.position = 'fixed';
-    popup.style.top = `${r.bottom + POPUP_OFFSET}px`;
-    popup.style.left = `${r.left}px`;
+    popup.style.top = `${bottom + POPUP_OFFSET}px`;
+    popup.style.left = `${left}px`;
     popup.style.zIndex = POPUP_Z_INDEX;
   }
 
@@ -185,8 +207,10 @@ export function initTimeControls() {
     popup.style.display = 'flex';
     positionPopup(input);
 
-    popup._scrollHandler = () => positionPopup(input);
-    popup._resizeHandler = () => positionPopup(input);
+    // Ensure we re-position on scroll/resize
+    popup._scrollHandler = () => requestAnimationFrame(() => positionPopup(input));
+    popup._resizeHandler = () => requestAnimationFrame(() => positionPopup(input));
+
     window.addEventListener('scroll', popup._scrollHandler, true);
     window.addEventListener('resize', popup._resizeHandler);
   }
