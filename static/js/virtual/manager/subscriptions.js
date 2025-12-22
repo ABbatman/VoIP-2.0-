@@ -65,6 +65,8 @@ export function attachSubscriptions(vm) {
     safeCall(() => vm.syncExpandCollapseAllButtonLabel?.(), 'vmSub:reverseBtn');
     safeCall(() => vm.initializeLazyData?.(), 'vmSub:reverseLazy');
     safeCall(() => vm.refreshVirtualTable?.(), 'vmSub:reverseRefresh');
+    // Force rebind toggle handlers after data refresh
+    safeCall(() => vm.render?.setupDomCallbacks?.(), 'vmSub:reverseRebind');
   };
   unsubs.push(subscribe('appState:reverseModeChanged', debounce(onReverse, 24)));
 

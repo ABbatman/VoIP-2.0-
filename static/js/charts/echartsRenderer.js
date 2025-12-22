@@ -78,7 +78,7 @@ async function initSliderChart() {
 // Null chart result
 // ─────────────────────────────────────────────────────────────
 
-const NULL_CHART = { update: () => {}, dispose: () => {}, getInstance: () => null };
+const NULL_CHART = { update: () => { }, dispose: () => { }, getInstance: () => null };
 
 // ─────────────────────────────────────────────────────────────
 // Multi-line chart renderer

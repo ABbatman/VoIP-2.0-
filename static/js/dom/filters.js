@@ -677,6 +677,9 @@ function resetVirtualTableState() {
 function handleReverseClick() {
   setReverseMode(!isReverseMode());
 
+  // Fully destroy existing table and virtual manager to ensure clean state
+  destroyTableHard();
+
   toggleHidden(getElementBySelector(ELEMENT_IDS.resultsDisplay), true);
   safeCall(() => setShowTable(false), 'handleReverseClick:hide');
   safeCall(() => setTableNeedsRebuild(true), 'handleReverseClick:rebuild');

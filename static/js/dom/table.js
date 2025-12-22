@@ -247,9 +247,14 @@ function handleToggleClick(event, btn) {
   if (!row) return;
 
   const groupId = btn.dataset.targetGroup;
-  if (row.classList.contains('main-row')) {
+  if (!groupId) return; // Should not happen
+
+  // Use dataset to determine type if class check is flaky, 
+  // though class check 'main-row' should generally work.
+  // We can also infer from ID prefix if needed.
+  if (row.classList.contains('main-row') || groupId.startsWith('main-')) {
     toggleMain(groupId);
-  } else if (row.classList.contains('peer-row')) {
+  } else if (row.classList.contains('peer-row') || groupId.startsWith('peer-')) {
     togglePeer(groupId);
   }
 

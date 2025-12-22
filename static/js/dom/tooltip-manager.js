@@ -102,7 +102,16 @@ function handleMouseOver(e) {
     }
 
     // buffer of 1px to avoid false positives due to sub-pixel rendering
-    const isTruncated = checkEl.scrollWidth > (checkEl.clientWidth + 1);
+    let isTruncated = checkEl.scrollWidth > (checkEl.clientWidth + 1);
+
+    // Header fix: th-label inside flex container (th-left-part) often reports 0 or full width
+    // while parent has overflow hidden. Check parent width if not detected on label.
+    if (!isTruncated && checkEl.classList.contains('th-label')) {
+        const parent = checkEl.parentElement;
+        if (parent && parent.classList.contains('th-left-part')) {
+            isTruncated = checkEl.scrollWidth > (parent.clientWidth + 1);
+        }
+    }
 
     if (isTruncated) {
         // Get text content
