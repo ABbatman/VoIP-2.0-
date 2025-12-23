@@ -159,28 +159,59 @@
   margin-left: 8px;
 }
 
-/* Responsive: reduce min width of first column on smaller screens to avoid overlap */
+/* Responsive: adjust min width for text columns (1-3) on smaller screens
+   Using ID selectors to match specificity of base rules */
 @media (max-width: 1200px) {
 
-  .results-display__table th:nth-child(1),
-  .results-display__table td:nth-child(1) {
-    min-width: 160px;
+  #summaryTable th:nth-child(1),
+  #summaryTable td:nth-child(1) {
+    min-width: 180px !important;
+  }
+
+  #summaryTable th:nth-child(2),
+  #summaryTable td:nth-child(2) {
+    min-width: 140px !important;
+  }
+
+  #summaryTable th:nth-child(3),
+  #summaryTable td:nth-child(3) {
+    min-width: 140px !important;
   }
 }
 
 @media (max-width: 992px) {
 
-  .results-display__table th:nth-child(1),
-  .results-display__table td:nth-child(1) {
-    min-width: 140px;
+  #summaryTable th:nth-child(1),
+  #summaryTable td:nth-child(1) {
+    min-width: 160px !important;
+  }
+
+  #summaryTable th:nth-child(2),
+  #summaryTable td:nth-child(2) {
+    min-width: 130px !important;
+  }
+
+  #summaryTable th:nth-child(3),
+  #summaryTable td:nth-child(3) {
+    min-width: 130px !important;
   }
 }
 
 @media (max-width: 768px) {
 
-  .results-display__table th:nth-child(1),
-  .results-display__table td:nth-child(1) {
-    min-width: 120px;
+  #summaryTable th:nth-child(1),
+  #summaryTable td:nth-child(1) {
+    min-width: 140px !important;
+  }
+
+  #summaryTable th:nth-child(2),
+  #summaryTable td:nth-child(2) {
+    min-width: 110px !important;
+  }
+
+  #summaryTable th:nth-child(3),
+  #summaryTable td:nth-child(3) {
+    min-width: 110px !important;
   }
 
   /* Reduce date/time font size to ~75% on small screens */
@@ -203,29 +234,30 @@
   padding: 6px 8px;
 }
 
-/* Text columns (1-3): flexible width with ellipsis */
-.results-display__table th:nth-child(1),
-.results-display__table td:nth-child(1) {
-  width: 15%;
-  min-width: 140px;
+/* Text columns (1-3): flexible width with ellipsis
+   Widths increased by ~30-40% to ensure readability and enforced via ID selector */
+#summaryTable th:nth-child(1),
+#summaryTable td:nth-child(1) {
+  width: 20%;
+  min-width: 200px !important;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.results-display__table th:nth-child(2),
-.results-display__table td:nth-child(2) {
-  width: 12%;
-  min-width: 100px;
+#summaryTable th:nth-child(2),
+#summaryTable td:nth-child(2) {
+  width: 16%;
+  min-width: 160px !important;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.results-display__table th:nth-child(3),
-.results-display__table td:nth-child(3) {
-  width: 13%;
-  min-width: 120px;
+#summaryTable th:nth-child(3),
+#summaryTable td:nth-child(3) {
+  width: 16%;
+  min-width: 160px !important;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

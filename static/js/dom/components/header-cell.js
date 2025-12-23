@@ -1,6 +1,6 @@
 // static/js/dom/components/header-cell.js
 // Pure renderer: returns HTML string for a header cell with label, optional Y toggle, and sort arrow
-import { areYColumnsVisible } from '../../state/tableState.js';
+import { areYColumnsVisible, getColumnWidth } from '../../state/tableState.js';
 import { getYColumnToggleIcon } from '../hideYColumns.js';
 
 export function renderHeaderCellString({ col, reverse = false } = {}) {
@@ -8,6 +8,14 @@ export function renderHeaderCellString({ col, reverse = false } = {}) {
   const headerClass = col.headerClass ? ` ${col.headerClass}` : '';
   const yAttr = col.isYColumn ? ' data-y-toggleable="true"' : '';
   const label = typeof col.label === 'function' ? col.label(reverse) : (col.label || '');
+
+  // Force width for text columns to ensure readability
+  const FIXED_WIDTH_COLS = ['main', 'peer', 'destination'];
+  let styleAttr = '';
+  if (FIXED_WIDTH_COLS.includes(key)) {
+    const w = getColumnWidth(key);
+    styleAttr = ` style="width:${w}px;min-width:${w}px"`;
+  }
 
   // optional Y toggle only for main column
   const yToggle = key === 'main'
@@ -17,12 +25,12 @@ export function renderHeaderCellString({ col, reverse = false } = {}) {
   // sort arrow placeholder (delegated handler will process clicks)
   const sortArrow = `<span class="sort-arrow" data-sort-key="${key}"></span>`;
 
-  return `<th data-sort-key="${key}" class="th${headerClass}"${yAttr}>`+
-           `<div class="th-content-wrapper">`+
-             `<div class="th-left-part"><span class="th-label">${escapeHtml(label)}</span>${yToggle}</div>`+
-             `${sortArrow}`+
-           `</div>`+
-         `</th>`;
+  return `<th data-sort-key="${key}" class="th${headerClass}"${yAttr}${styleAttr}>` +
+    `<div class="th-content-wrapper">` +
+    `<div class="th-left-part"><span class="th-label">${escapeHtml(label)}</span>${yToggle}</div>` +
+    `${sortArrow}` +
+    `</div>` +
+    `</th>`;
 }
 
 function escapeHtml(str) {

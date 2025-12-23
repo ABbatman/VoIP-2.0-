@@ -304,11 +304,21 @@ function handleCellDoubleClick(event) {
   setColumnFilter(filterKey, value);
 }
 
-export function initTableInteractions() {
-  const tbody = getElement(IDS.tableBody);
-  if (!tbody) return;
+// ─────────────────────────────────────────────────────────────
+// Init interactions with global delegation
+// ─────────────────────────────────────────────────────────────
 
-  tbody.addEventListener('click', (event) => {
+let interactionsBound = false;
+
+export function initTableInteractions() {
+  if (interactionsBound) return;
+
+  // Global click handler for Standard Mode interactions
+  document.addEventListener('click', (event) => {
+    // Only handle clicks inside our table
+    if (!event.target.closest(`#${IDS.table}`) && !event.target.closest('.floating-table-header')) return;
+
+    // Delegate to VirtualManager if active
     const vm = getVirtualManager();
     if (vm?.isActive) return;
 
@@ -324,8 +334,20 @@ export function initTableInteractions() {
       return;
     }
 
-    handleRowSelection(tbody, row);
+    const tbody = getElement(IDS.tableBody);
+    if (tbody) handleRowSelection(tbody, row);
   });
 
-  tbody.addEventListener('dblclick', handleCellDoubleClick);
+  // Global dblclick handler for Standard Mode
+  document.addEventListener('dblclick', (event) => {
+    // Only handledblclicks inside our table
+    if (!event.target.closest(`#${IDS.table}`)) return;
+
+    const vm = getVirtualManager();
+    if (vm?.isActive) return;
+
+    handleCellDoubleClick(event);
+  });
+
+  interactionsBound = true;
 }

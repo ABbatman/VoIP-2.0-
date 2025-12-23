@@ -32,31 +32,35 @@ function getCellFilterValue(td) {
 // Toggle handlers (click)
 // ─────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────
+// Toggle handlers (click)
+// ─────────────────────────────────────────────────────────────
+
 export function bindToggleHandlers(vm) {
-  if (!getContainer()) return;
-  const tbody = getTbody();
-  if (!tbody) return;
+  // Use global delegation to be resilient against DOM replacements (e.g. morphdom updates after zoom)
+  if (vm._toggleBound) return;
 
-  // already bound to same element
-  if (vm._toggleBound && vm._toggleBoundElement === tbody && vm.boundToggleHandler) return;
+  vm.boundToggleHandler = event => {
+    // Ensure this VM instance is still active
+    if (!vm.isActive) return;
 
-  // unbind from old element
-  if (vm._toggleBound && vm._toggleBoundElement !== tbody) {
-    safeRemove(vm._toggleBoundElement, 'click', vm.boundToggleHandler);
-  }
+    // Optimization: quick check for toggle button before any heavy logic
+    if (!event.target.closest('.toggle-btn')) return;
 
-  vm.boundToggleHandler ??= event => {
+    // Ensure we are interacting with the correct table
+    if (!event.target.closest('#summaryTable') && !event.target.closest('.floating-table-header')) return;
+
     safeCall(() => vm.toggles?.handleVirtualToggle?.(event), 'vmEvents:toggle');
   };
 
-  tbody.addEventListener('click', vm.boundToggleHandler);
+  document.addEventListener('click', vm.boundToggleHandler);
   vm._toggleBound = true;
-  vm._toggleBoundElement = tbody;
+  vm._toggleBoundElement = document;
 }
 
 export function unbindToggleHandlers(vm) {
-  if (vm._toggleBound && vm._toggleBoundElement && vm.boundToggleHandler) {
-    safeRemove(vm._toggleBoundElement, 'click', vm.boundToggleHandler);
+  if (vm._toggleBound && vm.boundToggleHandler) {
+    document.removeEventListener('click', vm.boundToggleHandler);
   }
   vm._toggleBound = false;
   vm._toggleBoundElement = null;

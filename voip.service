@@ -10,7 +10,6 @@
 
 [Unit]
 Description=VoIP Metrics Application
-Documentation=https://github.com/your-org/voip
 After=network.target postgresql.service redis.service
 Wants=postgresql.service redis.service
 

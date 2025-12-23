@@ -8,7 +8,8 @@
  */
 .filters-panel {
   position: relative;
-  z-index: 150;
+  z-index: 20000;
+  /* Ensure it stays above everything */
   /* above floating footer (z-index: 100) */
   display: flex;
   align-items: center;
@@ -16,10 +17,13 @@
   gap: 8px;
   padding: 10px;
   background-color: #f8f9fa;
+  /* Should be opaque */
   border-radius: 8px;
   margin-bottom: 20px;
   flex-wrap: wrap;
   /* Allow wrapping for Group inputs */
+  contain: layout style;
+  will-change: transform;
 }
 
 /* New: Primary row for main controls (Customer, Supplier, Dest, Dates, Buttons) */

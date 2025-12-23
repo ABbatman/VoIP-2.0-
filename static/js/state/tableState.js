@@ -9,7 +9,7 @@ import { publish } from './eventBus.js';
 const DEFAULT_COLUMNS = ['main', 'peer', 'destination', 'calls', 'duration', 'pdd', 'atime', 'asr', 'acd', 'mos'];
 
 const DEFAULT_COLUMN_WIDTHS = {
-  main: 150, peer: 150, destination: 200, calls: 80,
+  main: 200, peer: 160, destination: 160, calls: 80,
   duration: 100, pdd: 80, atime: 80, asr: 80, acd: 80, mos: 80
 };
 
