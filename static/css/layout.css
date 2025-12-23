@@ -163,7 +163,8 @@ body,
 
 /* Ensure flatpickr calendar overlays UI */
 .flatpickr-calendar {
-  z-index: 9999 !important;
+  z-index: 20002 !important;
+  /* Must be > filters-panel (20000) */
 }
 
 /* Anchor calendar under input when using static:true */

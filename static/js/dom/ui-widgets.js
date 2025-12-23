@@ -12,7 +12,7 @@ import { setDateManuallyCommittedAt } from '../state/runtimeFlags.js';
 const DATE_INPUT_SELECTOR = '.date-part';
 const DATE_FORMAT = 'Y-m-d';
 const ALT_FORMAT = 'F j, Y';
-const CALENDAR_Z_INDEX = '9999';
+const CALENDAR_Z_INDEX = '20005';
 
 const DATE_PARSE_FORMATS = [
   'Y-m-d',
@@ -151,7 +151,7 @@ export function initFlatpickr() {
 
 const TIME_CONTROLS_ID = 'time-controls';
 const TIME_INPUT_IDS = ['fromTime', 'toTime'];
-const POPUP_Z_INDEX = '10000';
+const POPUP_Z_INDEX = '20005';
 const POPUP_OFFSET = 5;
 const HIDE_DELAY = 100;
 
